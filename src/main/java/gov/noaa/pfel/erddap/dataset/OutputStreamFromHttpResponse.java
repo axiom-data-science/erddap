@@ -14,6 +14,8 @@ import java.util.zip.GZIPOutputStream;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -238,7 +240,7 @@ public class OutputStreamFromHttpResponse implements OutputStreamSource {
 
         //set the characterEncoding
         if (characterEncoding != null && characterEncoding.length() > 0)
-            response.setCharacterEncoding(characterEncoding);
+            ((ServletRequest) response).setCharacterEncoding(characterEncoding);
 
         //specify contentLength if known
 //???!!! using this causes firefox to freeze (unknown reason)
