@@ -1,0 +1,67 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>axiomalaska</groupId>
+  <artifactId>erddap</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>erddap</name>
+  <url>http://maven.apache.org</url>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.1</version>
+        <configuration>
+          <source>1.7</source>
+          <target>1.7</target>
+          <excludes>
+            <exclude>**/org/jdom/xpath/JaxenXPath.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/sgt/LandMask.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/griddata/Grd.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/griddata/WriteShapefile.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/pointdata/TwoTable.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/pointdata/DigirIobisTDSP.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/pointdata/DigirObisTDSP.java</exclude>
+		    <exclude>**/gov/noaa/pfel/coastwatch/hdf/HdfWriter.java</exclude>
+		    <exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromBMD.java</exclude>
+		    <exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromBMDE.java</exclude>
+		    <exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromMWFS.java</exclude>
+		    <exclude>**/com/sshtools/daemon/session/SessionChannelServer.java</exclude>
+		  </excludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+    	<groupId>org.apache.ant</groupId>
+    	<artifactId>ant</artifactId>
+    	<version>1.9.4</version>
+    </dependency>
+    <dependency>
+    	<groupId>gnu-regexp</groupId>
+    	<artifactId>gnu-regexp</artifactId>
+    	<version>1.1.4</version>
+    </dependency>
+    <dependency>
+    	<groupId>gnu.getopt</groupId>
+    	<artifactId>java-getopt</artifactId>
+    	<version>1.0.13</version>
+    </dependency>
+  </dependencies>
+</project>
