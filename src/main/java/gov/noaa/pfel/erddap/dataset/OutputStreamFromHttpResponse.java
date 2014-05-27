@@ -240,7 +240,7 @@ public class OutputStreamFromHttpResponse implements OutputStreamSource {
 
         //set the characterEncoding
         if (characterEncoding != null && characterEncoding.length() > 0)
-            ((ServletRequest) response).setCharacterEncoding(characterEncoding);
+            response.setCharacterEncoding(characterEncoding);
 
         //specify contentLength if known
 //???!!! using this causes firefox to freeze (unknown reason)
