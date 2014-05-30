@@ -1532,6 +1532,7 @@ WaitThenTryAgainException wttae;
         EDDTableFromAsciiServiceNOS.test(false); 
         EDDTableFromErddap.test(); 
         EDDTableFromAsciiFiles.test(false); //rarely: true=delete cached info
+        EDDTableFromAxiomSensorCSVService.test();
         EDDTableFromAwsXmlFiles.test();
         EDDTableFromThreddsFiles.test(false); //rarely: true=delete cached info
         //EDDTableFromMWFS.test(false); //doLongTest); //as of 2009-01-14 no longer active

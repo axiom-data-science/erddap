@@ -52,6 +52,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.NoSuchElementException;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -59,7 +60,6 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Field.Index;
 import org.apache.lucene.document.Field.Store;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONString;
@@ -347,6 +347,7 @@ public abstract class EDD {
             if (type.equals("EDDTableCopy"))            return EDDTableCopy.fromXml(xmlReader);
             if (type.equals("EDDTableCopyPost"))        return EDDTableCopyPost.fromXml(xmlReader);
             if (type.equals("EDDTableFromAsciiServiceNOS")) return EDDTableFromAsciiServiceNOS.fromXml(xmlReader);
+            if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(xmlReader);
             //if (type.equals("EDDTableFromBMDE"))        return EDDTableFromBMDE.fromXml(xmlReader); //inactive
             if (type.equals("EDDTableFromDapSequence")) return EDDTableFromDapSequence.fromXml(xmlReader);
             if (type.equals("EDDTableFromDatabase"))    return EDDTableFromDatabase.fromXml(xmlReader);
