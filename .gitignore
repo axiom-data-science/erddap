@@ -4,3 +4,4 @@ WebContent/*
 .classpath
 .settings/*
 *.class
+/target

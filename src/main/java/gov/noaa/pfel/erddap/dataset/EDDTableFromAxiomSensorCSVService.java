@@ -49,13 +49,14 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
     private static int sensor_name_column_num = 4;
     private static int latitude_column_num = 5;
     private static int longitude_column_num = 6;
-    
+
     protected String noData = "";
     
     public static EDDTableFromAxiomSensorCSVService fromXml(SimpleXMLReader xmlReader) throws Throwable {
         String tDatasetID = xmlReader.attributeValue("datasetID");
         Attributes tGlobalAttributes = null;
         String tLocalSourceUrl = null;
+        String tRegionSubset = "all";
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
@@ -78,6 +79,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             else if (localTags.equals("<sourceUrl>")) {
             } else if (localTags.equals("</sourceUrl>"))
                 tLocalSourceUrl = content;
+            else if (localTags.equals("<region>")) {
+            } else if (localTags.equals("</region>"))
+                tRegionSubset = content;
             else if (localTags.equals("<reloadEveryNMinutes>")) {
             } else if (localTags.equals("</reloadEveryNMinutes>"))
                 tReloadEveryNMinutes = String2.parseInt(content);
@@ -91,11 +95,16 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 xmlReader.unexpectedTagException();
             }
         }
-        
+
         if (tGlobalAttributes == null)
             tGlobalAttributes = new Attributes();
-        tGlobalAttributes.set("title", AXIOM_SENSOR_TITLE);
-        tGlobalAttributes.set("summary", AXIOM_SENSOR_SUMMARY);
+
+        if (tGlobalAttributes.get("title") == null) {
+            tGlobalAttributes.set("title", AXIOM_SENSOR_TITLE);
+        }
+        if (tGlobalAttributes.get("summary") == null) {
+            tGlobalAttributes.set("summary", AXIOM_SENSOR_SUMMARY);
+        }
         tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
         tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
         tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
@@ -135,7 +144,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         for (int i = 0; i < tDataVariables.size(); i++)
             ttDataVariables[i] = (Object[]) tDataVariables.get(i);
         
-        makeSubsetFile(tDatasetID, tLocalSourceUrl );
+        makeSubsetFile(tDatasetID, tLocalSourceUrl, tRegionSubset);
         
         return new EDDTableFromAxiomSensorCSVService(tDatasetID, null, new StringArray(),
                 null, null, tDefaultDataQuery, tDefaultGraphQuery,
@@ -169,7 +178,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         }
     }
 
-    public static void makeSubsetFile(String dataset_id, String source_url) throws Exception {
+    public static void makeSubsetFile(String dataset_id, String source_url, String region) throws Exception {
         String2.log("\nMaking Axiom Sensor Service subset file...");
         
         IntArray station_ids = new IntArray();
@@ -190,7 +199,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         
 
         // Get all sensors and stations
-        InputStream is = new URL(source_url + "getDataValues?method=GetStationsResultSetRowsJSON&version=2&appregion=all&realtimeonly=false&verbose=true&jsoncallback=false").openStream();
+        InputStream is = new URL(source_url + "getDataValues?method=GetStationsResultSetRowsJSON&version=2&appregion=" + region + "&realtimeonly=false&verbose=true&jsoncallback=false").openStream();
         try {
             BufferedReader rd = new BufferedReader(
                     new InputStreamReader(is, Charset.forName("UTF-8")));
