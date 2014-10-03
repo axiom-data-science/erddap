@@ -134,6 +134,12 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         Attributes lonats = new Attributes();
         lonats.set("ioos_category", EDV.LOCATION_CATEGORY);
         tDataVariables.add(new Object[] { "longitude", "longitude", lonats, "double" });
+        // Value
+        Attributes depatts = new Attributes();
+        depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
+        depatts.set("units", "m");
+        depatts.set("positive", "down");
+        tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });        
         // Station
         Attributes staatts = new Attributes();
         staatts.set("ioos_category", EDV.LOCATION_CATEGORY);
@@ -151,6 +157,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         Attributes valatts = new Attributes();
         valatts.set("ioos_category", "Other");
         tDataVariables.add(new Object[] { "value", "value", valatts, "double" });
+        
 
         int ndv = tDataVariables.size();
         Object ttDataVariables[][] = new Object[ndv][];
@@ -404,22 +411,44 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 JSONArray data = results.getJSONArray("data");
 
                 Table table = new Table();
-                IntArray epoch_times_array = new IntArray();
+                IntArray epoch_times_array = new IntArray();  // Holds the single time list
+                IntArray actual_times_array = new IntArray(); // Holds N number of time lists, one for each depth this parameter is at
                 // Using a Double here resulted in crazy sigfigs.
                 FloatArray values_array = new FloatArray();
+                DoubleArray depth_array  = new DoubleArray();
+                Double depth = new Double(0);
 
                 for (int c = 0 ; c < data.length() ; c++) {
                     JSONObject vari = data.getJSONObject(c);
                     if (vari.getJSONObject("metadata").getString("label").equals("time")) {
                         // TIME
-                        table.addColumn("time", epoch_times_array);
+                        table.addColumn("time", actual_times_array);
                         JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
                         for (int d = 0 ; d < values.length() ; d++) {
                             epoch_times_array.add(values.getInt(d));
                         }
-                    } else if (vari.getJSONObject("metadata").getInt("parameterId") == parameter_id) {
+                    }
+                }
+                
+                for (int f = 0 ; f < data.length() ; f++) {
+                    JSONObject vari = data.getJSONObject(f);
+                    if (vari.getJSONObject("metadata").getInt("parameterId") == parameter_id) {
                         // DESIRED PARAMETER
-                        table.addColumn("value", values_array);
+                        
+                        // Add times to ongoing array
+                        actual_times_array.add(epoch_times_array.toArray());
+                                                
+                        try {
+                            // Column already exists, so we have multiple depths.
+                            table.getColumn("value");
+                            table.getColumn("depth");
+                        } catch (IllegalArgumentException e) {
+                            // Column does not exist yet, so we create it
+                            table.addColumn("depth", depth_array);
+                            table.addColumn("value", values_array);    
+                        }
+                                                    
+                        depth = vari.getJSONObject("metadata").getDouble("depth");
                         JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
                         for (int e = 0 ; e < values.length() ; e++) {
                             try {
@@ -428,6 +457,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                                 // Most likely the "null" string which is used for a fill value in the sensor service.
                                 values_array.add(new Float(-9999.99));
                             }
+                            depth_array.add(depth);
                         }
                     }
                 }
