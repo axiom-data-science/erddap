@@ -844,7 +844,7 @@ public abstract class EDDTable extends EDD {
         parseUserDapQuery(userDapQuery, resultsVariables,
             constraintVariables, constraintOps, constraintValues, //non-regex EDVTimeStamp conValues will be ""+epochSeconds
             false);
-        if (debugMode) String2.log(">>constraintValues=" + constraintValues);
+        if (reallyVerbose) String2.log(">>constraintValues=" + constraintValues);
 
         //remove any fixedValue variables from resultsVariables (source can't provide their data values)
         //work backwards since I may remove some variables
@@ -862,6 +862,7 @@ public abstract class EDDTable extends EDD {
         //!!!!! VERY IMPORTANT CODE. THINK IT THROUGH CAREFULLY.
         //!!!!! THE IF/ELSE STRUCTURE HERE IS EXACTLY THE SAME AS IN standardizeResultsTable.
         //!!!!! SO IF YOU MAKE A CHANGE HERE, MAKE A CHANGE THERE.
+        if (reallyVerbose) String2.log(">>constraintVariables=" + constraintVariables);
         for (int cv = constraintVariables.size() - 1; cv >= 0; cv--) { 
             String constraintVariable = constraintVariables.get(cv);
             int dv = String2.indexOf(dataVariableDestinationNames(), constraintVariable);
@@ -9809,6 +9810,8 @@ public abstract class EDDTable extends EDD {
            
         String tSubsetVars[] = subsetVariables();
         String subsetVariablesCSV = String2.toSVString(tSubsetVars, ",", false);
+        
+        if (reallyVerbose) String2.log("Subset Variables " + subsetVariablesCSV);
 
         // are the combinations available in a .json or .csv file created by ERDDAP admin?
         // <contentDir>subset/datasetID.json
