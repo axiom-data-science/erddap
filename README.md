@@ -51,3 +51,7 @@ To add the Axiom sensor service as an ERDDAP dataset, add this to your datasets.
 
 **Axiom specific code is in `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService.java`**
 
+To test this package, there is a main() method, so you can just run the file like so (replacing paths as needed):
+
+`mvn compile war:exploded && pushd . && cd target/erddap-0.0.2-axiom/WEB-INF/ &&  /opt/java/jdk_64/bin/java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/apache-tomcat/eclipse-7.0.47/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd`
+
