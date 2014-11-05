@@ -10,9 +10,6 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.FileInputStream;
-import java.io.FileReader;
-import java.io.BufferedReader;
-import java.io.DataStream;
 import java.io.FileOutputStream;
 import java.util.Date;
 import java.text.SimpleDateFormat;
@@ -33,7 +30,7 @@ import java.util.Vector;
 public class WriteShapefile {
 
     /**
-     * Set this to true (by calling verbose=true in your program, not but changing the code here)
+     * Set this to true (by calling verbose=true in your program, not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean verbose = false;
@@ -88,7 +85,7 @@ public class WriteShapefile {
         float m[][] = new float[nX][nY];  //M is shapefile term for "measure"
         for (y = 0; y < nY; y++) {
             for (x = 0; x < nX; x++) {
-                float f = String2.parseFloat(reader.readLine());
+                float f = String2.parseDouble(reader.readLine());
                 if (f == mv) {
                     f = Float.NaN;
                 } else {

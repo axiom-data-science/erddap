@@ -1,7 +1,6 @@
 package gov.noaa.pfel.coastwatch;
 
 import java.io.*;
-
 import javax.servlet.*;
 import javax.servlet.http.*;
 public class HelloWorld extends HttpServlet {
@@ -9,7 +8,7 @@ public class HelloWorld extends HttpServlet {
         throws ServletException, IOException {
 
         res.setContentType("text/html");
-        ((ServletRequest) res).setCharacterEncoding("UTF-8");
+        res.setEncoding("UTF-8");
         OutputStreamWriter out = new OutputStreamWriter(res.getOutputStream(), "UTF-8");
         out.write(
             "<html>\n" +

@@ -133,14 +133,14 @@ public class Calendar2 {
 
     /**
      * Set this to true (by calling verbose=true in your program, 
-     * not but changing the code here)
+     * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean verbose = false; 
 
     /**
      * Set this to true (by calling reallyVerbose=true in your program, 
-     * not but changing the code here)
+     * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean reallyVerbose = false; 
@@ -337,12 +337,11 @@ public class Calendar2 {
      * The 'T' connector can be any non-digit.
      * This may include hours, minutes, seconds, decimal, and Z or timezone offset (default=Zulu).  
      *
-     * @param isoZuluString
+     * @param isoZuluString (to millis precision)
      * @return seconds 
      * @throws exception if trouble (e.g., input is null or invalid format)
      */
     public static double isoStringToEpochSeconds(String isoZuluString) {
-        //pre 2012-05-22 was return Math2.floorDiv(isoZuluStringToMillis(isoZuluString), 1000);
         return isoZuluStringToMillis(isoZuluString) / 1000.0;
     }
 
@@ -351,7 +350,6 @@ public class Calendar2 {
      */
     public static double safeIsoStringToEpochSeconds(String isoZuluString) {
         try {
-            //pre 2012-05-22 was return Math2.floorDiv(isoZuluStringToMillis(isoZuluString), 1000);
             return isoZuluStringToMillis(isoZuluString) / 1000.0;
         } catch (Exception e) {
             return Double.NaN;
@@ -370,9 +368,9 @@ public class Calendar2 {
     public static double nowStringToEpochSeconds(String nowString) {
 
         //now is next second (ms=0)
-        GregorianCalendar gc = Calendar2.newGCalendarZulu();
-        gc.add(Calendar2.SECOND, 1);
-        gc.set(Calendar2.MILLISECOND, 0); 
+        GregorianCalendar gc = newGCalendarZulu();
+        gc.add(SECOND, 1);
+        gc.set(MILLISECOND, 0); 
         String tError = 
             "Query error: Timestamp constraints with \"now\" must be in the form " +
             "\"now(+|-)[positiveInteger](seconds|minutes|hours|days|months|years)\".  " +
@@ -408,26 +406,26 @@ public class Calendar2 {
                 String sUnits = nowString.substring(start);  
                 if (     sUnits.equals("second") || 
                          sUnits.equals("seconds"))
-                    gc.add(Calendar2.SECOND, n);
+                    gc.add(SECOND, n);
                 else if (sUnits.equals("minute") || 
                          sUnits.equals("minutes"))
-                    gc.add(Calendar2.MINUTE, n);
+                    gc.add(MINUTE, n);
                 else if (sUnits.equals("hour") || 
                          sUnits.equals("hours"))
-                    gc.add(Calendar2.HOUR, n);
+                    gc.add(HOUR, n);
                 else if (sUnits.equals("day") || 
                          sUnits.equals("days"))
-                    gc.add(Calendar2.DATE, n);
+                    gc.add(DATE, n);
                 else if (sUnits.equals("month") || 
                          sUnits.equals("months"))
-                    gc.add(Calendar2.MONTH, n);
+                    gc.add(MONTH, n);
                 else if (sUnits.equals("year") || 
                          sUnits.equals("years"))
-                    gc.add(Calendar2.YEAR, n);
+                    gc.add(YEAR, n);
                 else throw new SimpleException(tError);
             }
         } 
-        return Calendar2.gcToEpochSeconds(gc);
+        return gcToEpochSeconds(gc);
     }
 
     /**
@@ -507,7 +505,7 @@ public class Calendar2 {
     /**
      * This converts seconds since 1970-01-01T00:00:00Z  
      * to an ISO Zulu dateTime String with 'T'.
-     * The doubles are rounded to the nearest second.
+     * The doubles are rounded to the nearest millisecond.
      * In many ways trunc would be better, but doubles are often bruised.
      * round works symmetrically with + and - numbers.
      *
@@ -1011,7 +1009,7 @@ public class Calendar2 {
      * limited precision string.
      *
      * @param time_precision can be "1970", "1970-01", "1970-01-01", "1970-01-01T00Z",
-     *    "1970-01-01T00:00Z", "1970-01-01T00:00:00Z" (used if time_precision not matched), 
+     *    "1970-01-01T00:00Z", "1970-01-01T00:00:00Z" (used if time_precision is null or not matched), 
      *    "1970-01-01T00:00:00.0Z", "1970-01-01T00:00:00.00Z", "1970-01-01T00:00:00.000Z".
      *    Versions without 'Z' are allowed.
      */
@@ -1020,7 +1018,7 @@ public class Calendar2 {
 
         String zString = "";  
         if (time_precision == null || time_precision.length() == 0) 
-            time_precision = "Z";
+            time_precision = "1970-01-01T00:00:00Z";
         if (time_precision.charAt(time_precision.length() - 1) == 'Z') {
             time_precision = time_precision.substring(0, time_precision.length() - 1);
             zString = "Z";
@@ -1797,7 +1795,7 @@ public class Calendar2 {
     /**
      * This returns the current local dateTime in ISO T format.
      *
-     * @return the current local dateTime in ISO T format (without the trailing Z)
+     * @return the current local dateTime in ISO T format (with no timezone id)
      */
     public static String getCurrentISODateTimeStringLocal() {
         return formatAsISODateTimeT(newGCalendarLocal());
@@ -2181,11 +2179,11 @@ public class Calendar2 {
      */
     public static double backNDays(int nDays, double max) throws Exception {
         GregorianCalendar gc = Math2.isFinite(max)?
-            Calendar2.epochSecondsToGc(max) :
-            Calendar2.newGCalendarZulu();
+            epochSecondsToGc(max) :
+            newGCalendarZulu();
         //round to previous midnight, then go back nDays
-        Calendar2.clearSmallerFields(gc, Calendar2.DATE);
-        return Calendar2.gcToEpochSeconds(gc) - Calendar2.SECONDS_PER_DAY * nDays;
+        clearSmallerFields(gc, DATE);
+        return gcToEpochSeconds(gc) - SECONDS_PER_DAY * nDays;
     }
 
     /**
@@ -2346,6 +2344,18 @@ public class Calendar2 {
             //check for julian date before ISO 8601 format
             if (sample.matches("[0-2][0-9]{3}-[0-3][0-9]{2}"))         return "yyyy-DDD";  
             if (sample.matches("[0-2][0-9]{3}[0-3][0-9]{2}"))          return "yyyyDDD";  
+            //space-separated 1970-01-01 00:00:00.000
+            if (sample.matches("[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9] [0-5][0-9]:[0-5][0-9]:[0-5][0-9].[0-9]{1,3}"))
+                                                                       return "yyyy-MM-dd HH:mm:ss.sss"; 
+            if (sample.matches("[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9] [0-5][0-9]:[0-5][0-9]:[0-5][0-9][+-][0-9].*"))
+                                                                       return "yyyy-MM-dd HH:mm:ssZ"; 
+            if (sample.matches("[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9] [0-5][0-9]:[0-5][0-9]:[0-5][0-9]"))
+                                                                       return "yyyy-MM-dd HH:mm:ss"; 
+            if (sample.matches("[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9] [0-5][0-9]:[0-5][0-9]"))
+                                                                       return "yyyy-MM-dd HH:mm"; 
+            if (sample.matches("[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9] [0-5][0-9]"))
+                                                                       return "yyyy-MM-dd HH"; 
+            if (sample.matches("[0-2][0-9]{3}-[0-1][0-9]-[0-3][0-9]")) return "yyyy-MM-dd"; 
             //special EDVTimeStamp.ISO8601TZ_FORMAT accepts a wide range of variants of 1970-01-01T00:00:00Z
             if (sample.matches("[0-2][0-9]{3}-[0-1][0-9].*"))          return "yyyy-MM-dd'T'HH:mm:ssZ"; 
             if (sample.matches("[0-2][0-9]{3}[0-1][0-9][0-3][0-9][0-2][0-9][0-5][0-9][0-5][0-9]"))         

@@ -27,7 +27,7 @@ public abstract class TableWriter {
 
     /**
      * Set this to true (by calling verbose=true in your program, 
-     * not but changing the code here)
+     * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean verbose = false; 
@@ -83,7 +83,8 @@ public abstract class TableWriter {
             columnTypes = tColumnTypes;
             columnAttributes = new Attributes[nColumns];
             for (int col = 0; col < nColumns; col++) {
-                //no need to make copies (clones) off atts since standardizeResultsTable has made copies for the table
+                //no need to make copies (clones) off atts since standardizeResultsTable
+                //has made copies for the table
                 columnAttributes[col] = table.columnAttributes(col); 
                 //String2.log("\nTableWriter attributes " + columnNames[col] + "\n" + columnAttributes[col]);
             }
@@ -101,7 +102,7 @@ public abstract class TableWriter {
                       ", newName=" + tColumnNames[c] + 
                     " != oldName=" + columnNames[c] + ".");
             if (!columnTypes[c].equals(tColumnTypes[c]))
-                throw new RuntimeException("Internal error in TableWriter: for column=" + c +
+                throw new RuntimeException("Internal error in TableWriter: for column#" + c + "=" + columnNames[c] +
                       ", newType=" + PrimitiveArray.elementClassToString(tColumnTypes[c]) + 
                     " != oldType=" + PrimitiveArray.elementClassToString(columnTypes[c]) + ".");
         }
@@ -219,7 +220,7 @@ public abstract class TableWriter {
      */
     public Table makeEmptyTable() {
         if (columnNames == null) 
-            throw new SimpleException(MustBe.THERE_IS_NO_DATA);
+            throw new SimpleException(MustBe.THERE_IS_NO_DATA + " (nRows = 0)");
 
         int nColumns = columnNames.length;
         Table table = new Table();

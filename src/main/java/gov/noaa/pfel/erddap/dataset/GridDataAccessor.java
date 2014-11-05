@@ -47,14 +47,14 @@ public class GridDataAccessor {
 
     /**
      * Set this to true (by calling verbose=true in your program, 
-     * not but changing the code here)
+     * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean verbose = false; 
 
     /**
      * Set this to true (by calling reallyVerbose=true in your program, 
-     * not but changing the code here)
+     * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean reallyVerbose = false; 
@@ -231,8 +231,13 @@ public class GridDataAccessor {
                     globalAttributes.set("geospatial_vertical_max", dMax);
                 }
             } else if (av == eddGrid.timeIndex) {
-                globalAttributes.set("time_coverage_start", Calendar2.epochSecondsToIsoStringT(dMin) + "Z");   //unidata-related
-                globalAttributes.set("time_coverage_end",   Calendar2.epochSecondsToIsoStringT(dMax) + "Z");
+                String tp = axisAttributes[av].getString(EDV.TIME_PRECISION);
+                //"" unsets the attribute if dMin or dMax isNaN
+                globalAttributes.set("time_coverage_start", 
+                    Calendar2.epochSecondsToLimitedIsoStringT(tp, dMin, ""));
+                //for tables (not grids) will be NaN for 'present'.   Deal with this better???
+                globalAttributes.set("time_coverage_end", 
+                    Calendar2.epochSecondsToLimitedIsoStringT(tp, dMax, ""));
             }
         }
 
@@ -547,7 +552,7 @@ public class GridDataAccessor {
                     " nElements/dv=" + partialResults[partialResults.length - 1].size() +
                     " time=" + (System.currentTimeMillis() - time));
             //for (int i = 0; i < partialResults.length; i++)
-            //    String2.log("      pa[" + i + "]=" + partialResults[i]);
+            //    String2.log("!pa[" + i + "]=" + partialResults[i]);
 
         } catch (WaitThenTryAgainException twwae) {
             throw twwae;
@@ -561,7 +566,6 @@ public class GridDataAccessor {
                 throw t;
 
             //rewrap it as WTTAE
-            eddGrid.requestReloadASAP();
             throw new WaitThenTryAgainException(EDStatic.waitThenTryAgain + 
                 "\n(" + EDStatic.errorFromDataSource + tToString + ")", 
                 t); 
@@ -573,7 +577,6 @@ public class GridDataAccessor {
             if (avInDriver[av]) {
                 if (pa.size() != 1 ||
                     !Math2.almostEqual(9, pa.getDouble(0), avInDriverExpectedValues[av])) { //source values
-                    eddGrid.requestReloadASAP();
                     throw new WaitThenTryAgainException(EDStatic.waitThenTryAgain +
                         "\n(Details: GridDataAccessor.increment: partialResults[" + av +
                         "]=\"" + pa + "\" was expected to be " + 
@@ -583,20 +586,20 @@ public class GridDataAccessor {
                 //convert source values to destination values
                 pa = axisVariables[av].toDestination(pa);
                 String tError = axisValues[av].almostEqual(pa); //destination values
-                if (tError.length() > 0) {
-                    eddGrid.requestReloadASAP();
+                if (tError.length() > 0) 
                     throw new WaitThenTryAgainException(EDStatic.waitThenTryAgain +
                         "\n(Details: GridDataAccessor.increment: partialResults[" + 
                         av + "] was not as expected.\n" + 
                         tError + ")");
-                }
             }
         }
             
         //process the results
         for (int dv = 0; dv < dataVariables.length; dv++) { //dv in the query
             //convert source values to destination values and store
+            //String2.log("!source  dv=" + dataVariables[dv].destinationName() + " " + partialResults[nAxisVariables + dv]);
             partialDataValues[dv] = dataVariables[dv].toDestination(partialResults[nAxisVariables + dv]);
+            //String2.log("!dest    dv=" + dataVariables[dv].destinationName() + " " + partialDataValues[dv]);
 
             //convert missing_value to NaN
             if (convertToNaN) {

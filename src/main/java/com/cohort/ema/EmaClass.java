@@ -11,20 +11,17 @@ import com.cohort.util.ResourceBundle2;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
 import com.cohort.util.XML;
-
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.GregorianCalendar;
 import java.util.Vector;
-
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
 
 /**
  * You can make subclasses of this class to store groups of attributes.
@@ -1052,7 +1049,7 @@ public class EmaClass extends HttpServlet {
 
         //output the response html page 
         response.setContentType("text/html");
-        ((ServletRequest) response).setCharacterEncoding("UTF-8");
+        response.setCharacterEncoding("UTF-8");
         OutputStreamWriter out = new OutputStreamWriter(response.getOutputStream(), "UTF-8");
         out.write(getHTMLPage(request, request.getContentLength() > 0)); //displayErrorMessages
     }

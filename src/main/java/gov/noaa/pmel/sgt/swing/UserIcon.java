@@ -12,20 +12,21 @@
 
 package gov.noaa.pmel.sgt.swing;
 
+import gov.noaa.pmel.sgt.JPane;
+
 import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 
-import gov.noaa.pmel.sgt.JPane;
 import gov.noaa.pmel.sgt.LayerChild;
 import gov.noaa.pmel.sgt.Layer;
 import gov.noaa.pmel.sgt.CartesianGraph;
 import gov.noaa.pmel.sgt.AbstractPane;
+
 import gov.noaa.pmel.util.Point2D;
 import gov.noaa.pmel.util.Debug;
 import gov.noaa.pmel.util.SoTPoint;
 
 import javax.swing.ImageIcon;
-
 import java.awt.Rectangle;
 import java.awt.Point;
 import java.awt.Image;

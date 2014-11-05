@@ -65,6 +65,8 @@
 						<exclude>**/gov/noaa/pfel/coastwatch/pointdata/DigirIobisTDSP.java</exclude>
 						<exclude>**/gov/noaa/pfel/coastwatch/pointdata/DigirObisTDSP.java</exclude>
 						<exclude>**/gov/noaa/pfel/coastwatch/hdf/HdfWriter.java</exclude>
+						<exclude>**/gov/noaa/pfel/coastwatch/netcheck/SftpTest.java</exclude>
+						<exclude>**/gov/noaa/pfel/coastwatch/HelloWorld.java</exclude>
 						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromBMD.java</exclude>
 						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromBMDE.java</exclude>
 						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromMWFS.java</exclude>
