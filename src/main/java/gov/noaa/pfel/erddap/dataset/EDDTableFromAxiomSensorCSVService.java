@@ -156,6 +156,8 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         // Value
         Attributes valatts = new Attributes();
         valatts.set("ioos_category", "Other");
+        valatts.set("missing_value", new Double(-9999.99));
+        valatts.set("_FillValue", new Double(-9999.99));
         tDataVariables.add(new Object[] { "value", "value", valatts, "double" });
         
 
