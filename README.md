@@ -53,7 +53,10 @@ To add the Axiom sensor service as an ERDDAP dataset, add this to your datasets.
 
 To test this package, there is a main() method, so you can just run the file like so (replacing paths as needed):
 
-`mvn compile war:exploded && pushd . && cd target/erddap-0.0.2-axiom/WEB-INF/ &&  /opt/java/jdk_64/bin/java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/apache-tomcat/eclipse-7.0.47/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd`
+```bash
+mvn compile war:exploded && pushd . && cd target/erddap-0.0.2-axiom/WEB-INF/ &&  /opt/java/jdk_64/bin/java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/apache-tomcat/eclipse-7.0.47/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd
+```
+
 
 ### Syncing upstream
 
@@ -66,9 +69,9 @@ in Git and usally put an entire release into a single commit.  That being said..
 git clone https://github.com/BobSimons/erddap.git
 cd erddap
 cp -r WEB-INF/classes/gov/* ERDDAP_DEV_ROOT/src/main/java/gov/*
-cp -r WEB-INF/classes/dods/* ~/Development/erddap-dev/erddap/src/main/java/dods/
-cp -r WEB-INF/classes/com/cohort/* ~/Development/erddap-dev/erddap/src/main/java/com/cohort/
-cp -r WEB-INF/classes/net/jmge/gif/* ~/Development/erddap-dev/erddap/src/main/java/net/jmge/gif/
+cp -r WEB-INF/classes/dods/* ERDDAP_DEV_ROOT/src/main/java/dods/
+cp -r WEB-INF/classes/com/cohort/* ERDDAP_DEV_ROOT/src/main/java/com/cohort/
+cp -r WEB-INF/classes/net/jmge/gif/* ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif/
 ```
 
 Now you will need to make a ton of changes to the source to get it to compile.  Pretty much a nightmare, but doable in a few hours.
