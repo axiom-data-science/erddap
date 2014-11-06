@@ -63,6 +63,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tSosOfferingPrefix = null;
 
         ArrayList<Object[]> tDataVariables = new ArrayList<Object[]>();
 
@@ -99,6 +100,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             } else if (localTags.equals("<defaultGraphQuery>")) {
             } else if (localTags.equals("</defaultGraphQuery>")) {
                 tDefaultGraphQuery = content;
+            } else if (localTags.equals("<sosOfferingPrefix>")) {
+            } else if (localTags.equals("</sosOfferingPrefix>")) {
+                tSosOfferingPrefix = content;
             } else {
                 xmlReader.unexpectedTagException();
             }
@@ -170,20 +174,20 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         makeSubsetFile(tDatasetID, tLocalSourceUrl, tRegionSubset, tPortalId);
 
         return new EDDTableFromAxiomSensorCSVService(tDatasetID, null, new StringArray(),
-                null, null, tDefaultDataQuery, tDefaultGraphQuery,
+                null, null, tSosOfferingPrefix, tDefaultDataQuery, tDefaultGraphQuery,
                 tGlobalAttributes, ttDataVariables, tReloadEveryNMinutes, tLocalSourceUrl,
                 null, null, null);
 
     }
 
     public EDDTableFromAxiomSensorCSVService(String tDatasetID, String tAccessibleTo,
-            StringArray tOnChange, String tFgdcFile, String tIso19115File,
+            StringArray tOnChange, String tFgdcFile, String tIso19115File, String tSosOfferingPrefix,
             String tDefaultDataQuery, String tDefaultGraphQuery, Attributes tAddGlobalAttributes,
             Object[][] tDataVariables, int tReloadEveryNMinutes, String tLocalSourceUrl,
             String tBeforeData[], String tAfterData, String tNoData) throws Throwable {
 
         super("EDDTableFromAxiomSensorCSVService", tDatasetID, tAccessibleTo, tOnChange, tFgdcFile,
-                tIso19115File, tDefaultDataQuery, tDefaultGraphQuery, tAddGlobalAttributes,
+                tIso19115File, tSosOfferingPrefix, tDefaultDataQuery, tDefaultGraphQuery, tAddGlobalAttributes,
                 tDataVariables, tReloadEveryNMinutes, tLocalSourceUrl, tBeforeData, tAfterData,
                 tNoData);
 

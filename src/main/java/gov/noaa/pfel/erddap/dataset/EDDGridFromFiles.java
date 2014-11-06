@@ -859,8 +859,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             writeBadFileMap(    badFilesFileName + random, badFileMap);
         try {
             //if Windows, give OS file system time to settle, so things below go quickly
-            if (String2.OSIsWindows)
-                Math2.gc(4000);
+            if (String2.OSIsWindows) Math2.gc(2000); //in constructor, give Windows time to settle
             
             //Integrity of these files is important. Rename is less likely to have error.
             if (badFileMap.isEmpty())
@@ -873,9 +872,9 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         } catch (Throwable t) {
             msg = "Exception while saving dirTable, fileTable, or badFiles:\n" + 
                 MustBe.throwableToString(t);
-            String2.log(msg);
+            String2.log(errorInMethod + ":\n" + msg);
             emailSB.append(msg + "\n\n");
-            EDStatic.email(EDStatic.emailEverythingTo, errorInMethod, emailSB.toString());
+            EDStatic.email(EDStatic.emailEverythingToCsv, errorInMethod, emailSB.toString());
 
             File2.delete( dirTableFileName + random);
             File2.delete(fileTableFileName + random);
@@ -903,7 +902,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
 
         //send email with bad file info
         if (emailSB.length() > 0) 
-            EDStatic.email(EDStatic.emailEverythingTo, errorInMethod, emailSB.toString());
+            EDStatic.email(EDStatic.emailEverythingToCsv, errorInMethod, emailSB.toString());
         emailSB = null; //allow gc
 
         //no valid files?
@@ -989,6 +988,10 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 axisVariables[av] = new EDVTimeGridAxis(tSourceName,
                     tSourceAtt, tAddAtt, sourceAxisValues[av]);
                 timeIndex = av;
+            } else if (EDVTimeStampGridAxis.hasTimeUnits(tSourceAtt, tAddAtt)) {
+                axisVariables[av] = new EDVTimeStampGridAxis(
+                    tSourceName, tDestName,
+                    tSourceAtt, tAddAtt, sourceAxisValues[av]);
             } else {
                 axisVariables[av] = new EDVGridAxis(tSourceName, tDestName, 
                     tSourceAtt, tAddAtt, sourceAxisValues[av]); 
@@ -996,7 +999,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             }
         }
 
-        //if aggregating time index, fix time_coverate_start/end global metadata
+        //if aggregating time index, fix time_coverage_start/end global metadata
         if (timeIndex == 0) {
             EDVTimeGridAxis tga = (EDVTimeGridAxis)axisVariables[0];
             combinedGlobalAttributes.add("time_coverage_start", 
@@ -1010,6 +1013,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         for (int dv = 0; dv < ndv; dv++) {
             String tSourceName = sourceDataNames.get(dv);
             String tDestName = (String)tDataVariables[dv][1];
+            if (tDestName == null || tDestName.length() == 0)
+                tDestName = tSourceName;
             Attributes tSourceAtt = sourceDataAttributes[dv];
             Attributes tAddAtt = (Attributes)tDataVariables[dv][2];
             //PrimitiveArray taa = tAddAtt.get("_FillValue");
@@ -1017,7 +1022,13 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             String tSourceType = sourceDataTypes[dv];
             //if (reallyVerbose) String2.log("  dv=" + dv + " sourceName=" + tSourceName + " sourceType=" + tSourceType);
 
-            dataVariables[dv] = new EDV(tSourceName, tDestName, 
+            if (tDestName.equals(EDV.TIME_NAME))
+                throw new RuntimeException(errorInMethod +
+                    "No EDDGrid dataVariable may have destinationName=" + EDV.TIME_NAME);
+            else if (EDVTime.hasTimeUnits(tSourceAtt, tAddAtt)) 
+                dataVariables[dv] = new EDVTimeStamp(tSourceName, tDestName,
+                    tSourceAtt, tAddAtt, tSourceType);  
+            else dataVariables[dv] = new EDV(tSourceName, tDestName, 
                 tSourceAtt, tAddAtt, tSourceType, Double.NaN, Double.NaN); 
             dataVariables[dv].setActualRangeFromDestinationMinMax();
         }
@@ -1045,8 +1056,10 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      * 
      * <p>For simple failures, this writes into to log.txt but doesn't throw an exception.
      *
-     * <p>If the dataset has changed in a serious / incompatible way and needs a full
-     * reload, this calls requestReloadASAP() and throws WaitThenTryAgainException.
+     * @throws Throwable if trouble. 
+     * If the dataset has changed in a serious / incompatible way and needs a full
+     * reload, this throws WaitThenTryAgainException 
+     * (usually, catcher calls LoadDatasets.tryToUnload(...) and EDD.requestReloadASAP(tDatasetID))..
      */
     public void update() {
         //Seems like a full reload is needed to do any kind of check:
@@ -1147,7 +1160,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      *   are the dataValues (using the sourceDataTypeClass).
      *   Both the axisValues and dataValues are straight from the source,
      *   not modified.
-     * @throws Throwable if trouble
+     * @throws Throwable if trouble (notably, WaitThenTryAgainException)
      */
     public PrimitiveArray[] getSourceData(EDV tDataVariables[], IntArray tConstraints) 
         throws Throwable {
@@ -1161,11 +1174,9 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             String2.log("  fileTableInMemory=true");
         if (tFileTable == null && tDirTable != null) 
             tFileTable = tryToLoadDirFileTable(datasetDir() + FILE_TABLE_FILENAME);
-        if (tDirTable == null || tFileTable == null) {
-            requestReloadASAP(); 
+        if (tDirTable == null || tFileTable == null) 
             throw new WaitThenTryAgainException(EDStatic.waitThenTryAgain +
                 "\n(Details: unable to read fileTable.)"); 
-        }
 
         //get the tDirTable and tFileTable PrimitiveArrays
         StringArray dirList      = (StringArray)tDirTable.getColumn(0);
@@ -1187,9 +1198,11 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 tConstraints.get(avi*3 + 0),
                 tConstraints.get(avi*3 + 1),
                 tConstraints.get(avi*3 + 2));
-        for (int dvi = 0; dvi < ndv; dvi++)
+        for (int dvi = 0; dvi < ndv; dvi++) {
+            //String2.log("!dvi#" + dvi + " " + tDataVariables[dvi].destinationName() + " " + tDataVariables[dvi].sourceDataTypeClass().toString());
             results[nav + dvi] = PrimitiveArray.factory(
-                dataVariables[dvi].sourceDataTypeClass(), 64, false);
+                tDataVariables[dvi].sourceDataTypeClass(), 64, false);
+        }
         IntArray ttConstraints = (IntArray)tConstraints.clone();
         int nFiles = ftStartIndex.size();
         int axis0Start  = tConstraints.get(0);
@@ -1203,9 +1216,12 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             int tNValues = ftNValues.get(ftRow);
             int tStart = axis0Start - ftStartIndex.get(ftRow);
             int tStop = tStart;
-            //get as many as possible from this file
-            while (tStop + axis0Stride < tNValues) 
+            //get as many axis0 values as possible from this file
+            //                    (in this file, if this file had all the remaining values)
+            int lookMax = Math.min(tNValues - 1, axis0Stop - ftStartIndex.get(ftRow));
+            while (tStop + axis0Stride <= lookMax) 
                 tStop += axis0Stride;          
+            //String2.log("!tStart=" + tStart + " stride=" + axis0Stride + " tStop=" + tStop + " tNValues=" + tNValues);
 
             //set ttConstraints
             ttConstraints.set(0, tStart);
@@ -1222,6 +1238,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             try {
                 tResults = getSourceDataFromFile(tFileDir, tFileName, 
                     tDataVariables, ttConstraints);
+                //String2.log("!tResults[0]=" + tResults[0].toString());
             } catch (Throwable t) {
                 EDStatic.rethrowClientAbortException(t);  //first thing in catch{}
 
@@ -1241,7 +1258,6 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     //mark the file as bad   and reload the dataset
                     addBadFileToTableOnDisk(ftDirIndex.get(ftRow), tFileName, 
                         ftLastMod.get(ftRow), MustBe.throwableToShortString(t)); 
-                    requestReloadASAP();
                     //an exception here will cause data request to fail (as it should)
                     throw new WaitThenTryAgainException(t);  //original exception
                 }
@@ -1250,6 +1266,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             //merge dataVariables   (converting to sourceDataTypeClass if needed)
             for (int dv = 0; dv < ndv; dv++) 
                 results[nav + dv].append(tResults[dv]);
+            //String2.log("!merged tResults[1stDV]=" + results[nav].toString());
 
             //set up for next while-iteration
             axis0Start += (tStop - tStart) + axis0Stride; 

@@ -21,16 +21,20 @@ import java.io.*;
 import java.util.Collections;
 import java.util.Map;
 
-
 /**
- * This class has methods related to GSHHS -
+ *   2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
+ *   When it is time to resucitate this, merge changes from this into GSHHS.java.
+ *
+ *
+ *
+ * <p>This class has methods related to GSHHS -
  * A Global Self-consistent, Hierarchical, High-resolution Shoreline Database
  * created by the GMT authors Wessel and Smith 
  * (http://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html and 
  * bob's c:/programs/gshhs/2009v7/readme.txt).
  * GPL License http://www.soest.hawaii.edu/pwessel/gshhs/README.TXT
  */
-public class GSHHSNewOnHold {
+public class GSHHSNewOnHold  {
 
     /** The characters of the RESOLUTIONS string represent the 5 resolutions
      * in order of decreasing accuracy: "fhilc": 'f'ull, 'h'igh, 'i'ntermediate, 'l'ow, 'c'rude.
@@ -39,13 +43,13 @@ public class GSHHSNewOnHold {
 
 
     /**
-     * Set this to true (by calling verbose=true in your program, not but changing the code here)
+     * Set this to true (by calling verbose=true in your program, not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean verbose = false;
 
     /**
-     * Set this to true (by calling reallyVerbose=true in your program, not but changing the code here)
+     * Set this to true (by calling reallyVerbose=true in your program, not by changing the code here)
      * if you want lots and lots of diagnostic messages sent to String2.log.
      */
     public static boolean reallyVerbose = false;
@@ -457,7 +461,7 @@ if (true) { //(useStandard || useShiftedLeft || useShiftedRight) && !skip) {
                     }
                 }
 
-                //if polygon crosses greenwhich, x's < 0 are stored +360 degrees
+                //if polygon crosses greenwich, x's < 0 are stored +360 degrees
                 //see http://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html  where is new gshhs.c?
                 if ((greenwich & 1) == 1) {
                     for (int i = 0; i < n; i++) 

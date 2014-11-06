@@ -90,6 +90,7 @@ public class EDDTableFromTaoFiles extends EDDTableFromNcFiles {
      */
     public EDDTableFromTaoFiles(String tDatasetID, String tAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
+        String tSosOfferingPrefix, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
@@ -103,7 +104,7 @@ public class EDDTableFromTaoFiles extends EDDTableFromNcFiles {
         throws Throwable {
 
         super("EDDTableFromTaoFiles", true, tDatasetID, tAccessibleTo, 
-            tOnChange, tFgdcFile, tIso19115File, 
+            tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery,
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes,

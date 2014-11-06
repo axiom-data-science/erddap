@@ -47,7 +47,8 @@ public class Math2 {
      */
     public static long maxSafeMemory = Math.max(
         maxMemory - 500L * BytesPerMB,  //if maxMemory>2GB, just keep 500MB aside for safety
-        maxMemory / 4 * 3); //operator order avoids numeric overflow 
+        (maxMemory / 4) * 3); //operator order avoids numeric overflow 
+    public static long ensureMemoryAvailableTrigger = maxSafeMemory / 8;
 
     /** 
      * These are *not* final so EDStatic can replace them with translated Strings. 
@@ -61,12 +62,23 @@ public class Math2 {
         "than is ever safely available in this Java setup ({1} MB).";
     public static String memoryArraySize = 
         "The request needs an array size ({0}) bigger than Java ever allows ({1}).";
+    /** gcSleep is used by gcAndWait() and a few other places.
+     * 2013-12-06 If I use -verbose:gc with my localhost ERDDAP 
+     * and hammer it with WMS requests, I can get memory use up to 500 MB (1.5 GB allocated).
+     * GC (&lt; 0.02 s) runs often by itself and Full GC (&lt; 0.06 s) runs fairly often.
+     * So I'm guessing delay of 0.25 s is sufficient even for coastwatch ERDDAP
+     * with high memory use and heavy usage.
+     * This is one value (not adjusted by total memory or ...), on the theory that 
+     * bigger tasks are usually given to computers with more, faster cores and more memory,
+     * and smaller tasks are usually given to computers with fewer, slower cores and less memory.
+     */
+    public static int gcSleep = 250; 
 
 
     /** If memory use jumps by this amount, a call to incgc will trigger a call
      * to System.gc.
      */
-    public static long gcTrigger = maxMemory / 16;
+    public static long gcTrigger = maxMemory / 8;
 
 
     /** This should return "?", "32", or "64". */
@@ -276,8 +288,6 @@ public class Math2 {
 
     /**
      * Asks this thread to sleep for a specified number of milliseconds.
-     * When millis>=500, most callers call incgc() instead
-     * (so time is used by garbage collector).
      *
      * @param millis the number of milliseconds for the thread to pause
      */
@@ -315,7 +325,6 @@ public class Math2 {
 
     /**
      * This returns the number of bytes currently in use by this program.
-     * This is often called getMemoryInUse(getAllocatedMemory());
      *
      * @param allocatedMemory the value from getAllocatedMemory()
      * @return the number of bytes currently in use by this program
@@ -365,6 +374,7 @@ public class Math2 {
      *   sleeps for a specified number of milliseconds.
      * This will always sleep or yield.
      * It will call gc() (not incgc) if memory use is creeping up.
+     * 2013-12-05 Years ago, I called this often. But now Java recommends letting Java handle memory/gc.
      * 
      * @param millis the number of millis to sleep
      */
@@ -372,7 +382,7 @@ public class Math2 {
         //long time = System.currentTimeMillis(); //diagnostic
 
         //get usingMemory 
-        long using = getMemoryInUse(getAllocatedMemory());
+        long using = getMemoryInUse();
         maxUsingMemory = Math.max(maxUsingMemory, using); //before gc
 
         //memory usage declined?
@@ -395,6 +405,14 @@ public class Math2 {
         //if (millis == 0) //diagnostic
         //    System.err.println("incgc0 " + (System.currentTimeMillis() - time));
 
+    }
+
+    /** 
+     * This calls gc(standardWaitTime).
+     * standardWaitTime is intended to give gc sufficient time to do its job, even under heavy use.
+     */
+    public static void gcAndWait() {
+        gc(gcSleep);
     }
 
     /**
@@ -424,7 +442,7 @@ public class Math2 {
         //sleep - subtract time already used by gc
         //always call sleep, even if <0, since it yields, too.
         sleep(millis - (System.currentTimeMillis() - time));
-        lastUsingMemory = getMemoryInUse(getAllocatedMemory());
+        lastUsingMemory = getMemoryInUse();
     }
 
 
@@ -443,12 +461,12 @@ public class Math2 {
      */
     public static void ensureMemoryAvailable(long nBytes, String attributeTo) {
 
-        if (nBytes < 10000000) //10MB
+        if (nBytes < ensureMemoryAvailableTrigger) //e.g., 8GB -> maxSafe=6GB  /8=750MB    //2014-09-05 was 10MB!
             return;
         String attributeToParen = 
             attributeTo == null || attributeTo.length() == 0? "" : " (" + attributeTo + ")";
        
-        //is the request too big under any circumstances?
+        //is this single request too big under any circumstances?
         if (nBytes > maxSafeMemory) {
             throw new RuntimeException(memoryTooMuchData + "  " +
                 MessageFormat.format(memoryThanSafe, "" + (nBytes / BytesPerMB),  
@@ -457,21 +475,21 @@ public class Math2 {
         }
 
         //request is fine without gc?
-        long memoryInUse = Math2.getMemoryInUse();
-        if (memoryInUse + nBytes < maxSafeMemory / 2)  //getting close   was /4*3
+        long memoryInUse = getMemoryInUse();
+        if (memoryInUse + nBytes <= maxSafeMemory)  //it'll work
             return;
 
         //lots of memory is in use
         //is the request is too big for right now?
-        Math2.gc(500);
-        memoryInUse = Math2.getMemoryInUse();
-        if (memoryInUse + nBytes > Math2.maxSafeMemory) {
+        gcAndWait();
+        memoryInUse = getMemoryInUse();
+        if (memoryInUse + nBytes > maxSafeMemory) {
             //eek! not enough memory! 
             //Wait, then try gc again and hope that some other thread requiring lots of memory will finish.
-            //If nothing else, this 5 second delay will delay another request by same user (e.g., programmatic re-request)
-            Math2.sleep(5000);
-            Math2.gc(500); 
-            memoryInUse = Math2.getMemoryInUse();
+            //If nothing else, this 1 second delay will delay another request by same user (e.g., programmatic re-request)
+            sleep(1000);
+            gcAndWait(); 
+            memoryInUse = getMemoryInUse();
         }
         if (memoryInUse > maxSafeMemory) {
             String2.log("WARNING: memoryInUse > maxSafeMemory" + attributeToParen + ".");
@@ -1098,7 +1116,7 @@ public class Math2 {
      * <UL>
      * <LI> Euclidean greatest common divisor algorithm.
      * <LI> If either is 0, it returns 1.
-     * <LI> For example, Math2.gcd(18,30) returns 6.
+     * <LI> For example, gcd(18,30) returns 6.
      * </UL>
      */
     public static int gcd(int n, int d) {
@@ -1132,7 +1150,7 @@ public class Math2 {
      * <pre>
      *     int ar[]=new int[3];
      *     double d=-1.75;
-     *     int whole=Math2.guessFrac(d,ar);
+     *     int whole=guessFrac(d,ar);
      *     //results: ar[0]=-1, ar[1]=-3, ar[2]=4
      * </pre>
      * </UL>
@@ -1410,7 +1428,7 @@ public class Math2 {
         if (!isFinite(range) || range == 0)
             return 0.1;
 
-        return Math2.exponent(Math.abs(range) / 2) / 10;
+        return exponent(Math.abs(range) / 2) / 10;
     }
 
     /**
@@ -1463,7 +1481,7 @@ public class Math2 {
             return d;
 
         //which 15degree step?
-        int i = floorDiv(Math2.roundToInt(angle0360(d)), 15) + 1;
+        int i = floorDiv(roundToInt(angle0360(d)), 15) + 1;
 
         if (i >= 24)
             i -= 24;
@@ -1484,7 +1502,7 @@ public class Math2 {
             return d;
 
         //which 15degree step?
-        int i = floorDiv(Math2.roundToInt(angle0360(d)), 15) - 1;
+        int i = floorDiv(roundToInt(angle0360(d)), 15) - 1;
 
         if (i < 0)
             i += 24;
@@ -1626,9 +1644,9 @@ public class Math2 {
         //man10 must be in range 10..99
         range = Math.abs(range);
         int man10 =
-            Math2.minMax(10, 99,
-                Math2.roundToInt(Math2.trunc(10 * Math2.mantissa(range))));
-        double power = Math2.exponent(range);
+            minMax(10, 99,
+                roundToInt(trunc(10 * mantissa(range))));
+        double power = exponent(range);
 
         if (man10 <= 12) {
             results[0] = (2 * power) / 10;
@@ -1678,8 +1696,8 @@ public class Math2 {
         double dist = range / maxDivisions;
 
         //man1 must be in range 1..9.99999
-        double man   = Math2.mantissa(dist);
-        double power = Math2.exponent(dist);
+        double man   = mantissa(dist);
+        double power = exponent(dist);
 
         //round up to nice number
         if (man <=  1) return power * factor;
