@@ -72,6 +72,10 @@ cp -r WEB-INF/classes/gov/* ERDDAP_DEV_ROOT/src/main/java/gov/*
 cp -r WEB-INF/classes/dods/* ERDDAP_DEV_ROOT/src/main/java/dods/
 cp -r WEB-INF/classes/com/cohort/* ERDDAP_DEV_ROOT/src/main/java/com/cohort/
 cp -r WEB-INF/classes/net/jmge/gif/* ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif/
+cp -r WEB-INF/cptfiles/* ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/cptfiles/
+cp -r WEB-INF/ref/* ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/ref/
+cp -r WEB-INF/images/* ERDDAP_DEV_ROOT/src/main/webapp/images/
+
 ```
 
 Now you will need to make a ton of changes to the source to get it to compile.  Pretty much a nightmare, but doable in a few hours.
