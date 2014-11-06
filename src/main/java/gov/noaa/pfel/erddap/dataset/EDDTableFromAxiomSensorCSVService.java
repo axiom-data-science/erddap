@@ -118,8 +118,8 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
         tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
         tGlobalAttributes.set("cdm_data_type", EDD.CDM_TIMESERIES);
-        tGlobalAttributes.set("cdm_timeseries_variables", "sensor");
-        tGlobalAttributes.set("subsetVariables", "latitude,longitude,station,sensor");
+        tGlobalAttributes.set("cdm_timeseries_variables", "parameter");
+        tGlobalAttributes.set("subsetVariables", "latitude,longitude,station,parameter");
 
         // Time
         Attributes tatts = new Attributes();
@@ -145,10 +145,10 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         staatts.set("ioos_category", EDV.LOCATION_CATEGORY);
         staatts.set("cf_role", "timeseries_id");
         tDataVariables.add(new Object[] { "station", "station", staatts, "String" });
-        // Sensor
+        // Parameter
         Attributes senatts = new Attributes();
         senatts.set("ioos_category", "Other");
-        tDataVariables.add(new Object[] { "sensor", "sensor", senatts, "String" });
+        tDataVariables.add(new Object[] { "parameter", "parameter", senatts, "String" });
         // Unit
         Attributes unitatts = new Attributes();
         unitatts.set("ioos_category", "Other");
@@ -187,8 +187,6 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 tDataVariables, tReloadEveryNMinutes, tLocalSourceUrl, tBeforeData, tAfterData,
                 tNoData);
 
-        //dataVariableSourceNames = new String[] {"station", "sensor", "longitude", "latitude", "time", "value" };
-
         // find a user who is authorized to access this dataset
         String user = (accessibleTo == null || accessibleTo.length == 0) ? null : accessibleTo[0];
         stationTable = subsetVariablesDataTable(user);
@@ -216,7 +214,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         Table table = new Table();
         table.addColumn("station_id", station_ids);
         table.addColumn("sensor_id", sensor_ids);
-        table.addColumn("sensor", parameter_names);
+        table.addColumn("parameter", parameter_names);
         table.addColumn("station", station_urns);
         table.addColumn("station_name", station_names);
         table.addColumn("latitude", latitudes);
@@ -481,7 +479,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
                 // Fill the sensor_urn column
                 StringArray sens = new StringArray();
-                table.addColumn("sensor", sens);
+                table.addColumn("parameter", sens);
                 sens.addN(nRows, parameter_name);
 
                 // Fill the longitude column
