@@ -49,8 +49,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
     private static int station_name_column_num = 4;
     private static int latitude_column_num = 5;
     private static int longitude_column_num = 6;
-    private static int units_column_num = 7;
-    private static int parameter_id_column_num = 8;
+    private static int units_label_column_num = 7;
+    private static int units_column_num = 8;
+    private static int parameter_id_column_num = 9;
 
     protected String noData = "";
 
@@ -214,6 +215,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         IntArray sensor_ids = new IntArray();
         IntArray parameter_ids = new IntArray();
         StringArray parameter_names = new StringArray();
+        StringArray parameter_units_label = new StringArray();
         StringArray parameter_units = new StringArray();
         Table table = new Table();
         table.addColumn("station_id", station_ids);
@@ -223,9 +225,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         table.addColumn("station_name", station_names);
         table.addColumn("latitude", latitudes);
         table.addColumn("longitude", longitudes);
+        table.addColumn("units_label", parameter_units_label);
         table.addColumn("units", parameter_units);
         table.addColumn("parameter_id", parameter_ids);
-
 
         // Parameters (from Oikos...)
         HashMap<Integer,String[]> parameter_lookup = new HashMap<Integer,String[]>();
@@ -241,22 +243,41 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             JSONObject param_json = new JSONObject(strbf.toString());
 
             // Units
-            HashMap<Integer,String> units_lookup = new HashMap<Integer,String>();
+            HashMap<Integer,String[]> units_lookup = new HashMap<Integer,String[]>();
             JSONArray units_array = param_json.getJSONArray("units");
             for (int a = 0 ; a < units_array.length() ; a++) {
                 JSONObject unit = units_array.getJSONObject(a);
-                if (unit.getBoolean("parameterDefault") == true) {
-                    units_lookup.put(unit.getInt("idParameter"), unit.getString("label"));
+                String[] unit_array = new String[2];
+                unit_array[0] = unit.getString("unit");
+                unit_array[1] = unit.getString("label");
+                units_lookup.put(unit.getInt("id"), unit_array);
+            }
+
+            // ParameterTypeUnits
+            HashMap<Integer,String[]> parameter_type_lookup = new HashMap<Integer,String[]>();
+            JSONArray param_type_units_array = param_json.getJSONArray("parameterTypeUnits");
+            for (int b = 0 ; b < param_type_units_array.length() ; b++) {
+                JSONObject param = param_type_units_array.getJSONObject(b);
+                // Add only the default units
+                if (param.getBoolean("parameterTypeDefault") == true) {
+                    parameter_type_lookup.put(param.getInt("idParameterType"), units_lookup.get(param.getInt("idUnit")));
                 }
             }
 
             // Parameters
             JSONArray param_array = param_json.getJSONArray("parameters");
-            for (int b = 0 ; b < param_array.length() ; b++) {
-                JSONObject param = param_array.getJSONObject(b);
-                String[] name_unit = new String[2];
+            for (int c = 0 ; c < param_array.length() ; c++) {
+                JSONObject param = param_array.getJSONObject(c);
+                String[] name_unit = new String[3];
                 name_unit[0] = param.getString("label");
-                name_unit[1] = units_lookup.get(param.getInt("id"));
+                if (param.get("idParameterType").equals(null)) {
+                    name_unit[1] = "Unknown";
+                    name_unit[2] = "Unknown";
+                } else {
+                    String[] unit_metadata = parameter_type_lookup.get(param.getInt("idParameterType"));
+                    name_unit[1] = unit_metadata[0];
+                    name_unit[2] = unit_metadata[1];
+                }
                 parameter_lookup.put(param.getInt("id"), name_unit);
             }
 
@@ -321,6 +342,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                         parameter_ids.add(parameter_id);
                         parameter_names.add(parameter_lookup.get(parameter_id)[0]);
                         parameter_units.add(parameter_lookup.get(parameter_id)[1]);
+                        parameter_units_label.add(parameter_lookup.get(parameter_id)[2]);
                     }
                 }
             }
@@ -388,9 +410,11 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             String station_id     = lookupTable.getStringData(station_id_column_num,  stationRow);
             String sensor_id      = lookupTable.getStringData(sensor_id_column_num,   stationRow);
             String station_urn    = lookupTable.getStringData(station_urn_column_num, stationRow);
+            String station_name    = lookupTable.getStringData(station_name_column_num, stationRow);
             Integer parameter_id  = lookupTable.getIntData(parameter_id_column_num, stationRow);
             String parameter_name = lookupTable.getStringData(parameter_name_column_num, stationRow);
             String units          = lookupTable.getStringData(units_column_num, stationRow);
+            String units_label    = lookupTable.getStringData(units_label_column_num, stationRow);
             Double latitude       = lookupTable.getDoubleData(latitude_column_num, stationRow);
             Double longitude      = lookupTable.getDoubleData(longitude_column_num, stationRow);
 
@@ -398,6 +422,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             String encodedSourceUrl = localSourceUrl + "getDataValues" +
                     "?stationid=" + SSR.minimalPercentEncode(station_id) +
                     "&sensorid=" + SSR.minimalPercentEncode(sensor_id) +
+                    "&units=" + (int)parameter_id + ";" + units +
                     "&start_time=" + (int)beginSeconds +
                     "&end_time="   + (int)endSeconds +
                     "&jsoncallback=false" +
@@ -431,6 +456,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                         for (int d = 0 ; d < values.length() ; d++) {
                             epoch_times_array.add(values.getInt(d));
                         }
+                        break;
                     }
                 }
                 
@@ -463,6 +489,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                             }
                             depth_array.add(depth);
                         }
+                        break;
                     }
                 }
 
@@ -499,7 +526,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 // Fill the units column
                 StringArray units_array = new StringArray();
                 table.addColumn("unit", units_array);
-                units_array.addN(nRows, units);
+                units_array.addN(nRows, units_label);
 
                 standardizeResultsTable(requestUrl, userDapQuery, table);
 
@@ -536,7 +563,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
         EDD edd = EDD.oneFromDatasetXml("axiom_sensor_service");
         // Test specific station and sensor
-        String query = "&station=\"urn:ioos:station:wmo:46214\"&sensor=\"Wind Wave Direction\"";
+        String query = "&station=\"urn:ioos:station:wmo:46214\"&parameter=\"Wave To Direction\"&time>=2013-04-01T00:00:00Z&time<=2014-06-01T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         String results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
