@@ -9,6 +9,7 @@ import gov.noaa.pfel.erddap.variable.EDV;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -231,7 +232,11 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
         // Parameters (from Oikos...)
         HashMap<Integer,ArrayList<String[]>> parameter_lookup = new HashMap<Integer,ArrayList<String[]>>();
-        InputStream ps = new URL("http://pdx0.axiomalaska.com/oikos-service/rest/minimal-portal-data?id="+portal_id).openStream();
+        URL url = new URL("http://pdx0.axiomalaska.com/oikos-service/rest/minimal-portal-data?id="+portal_id);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.addRequestProperty("Accept", "application/json");
+        conn.setUseCaches(false);
+        InputStream ps = conn.getInputStream();
         try {
             BufferedReader bfrd = new BufferedReader(
                     new InputStreamReader(ps, Charset.forName("UTF-8")));
