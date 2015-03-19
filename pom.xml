@@ -59,6 +59,7 @@
 					<excludes>
 						<exclude>**/org/jdom/xpath/JaxenXPath.java</exclude>
 						<exclude>**/gov/noaa/pfel/coastwatch/sgt/LandMask.java</exclude>
+						<exclude>**/gov/noaa/pfel/coastwatch/sgt/GSHHSNewOnHold.java</exclude>
 						<exclude>**/gov/noaa/pfel/coastwatch/griddata/Grd.java</exclude>
 						<exclude>**/gov/noaa/pfel/coastwatch/griddata/WriteShapefile.java</exclude>
 						<exclude>**/gov/noaa/pfel/coastwatch/pointdata/TwoTable.java</exclude>
