@@ -79,7 +79,7 @@ public class Grid  {
     //ensure org.jdom.Content is compiled -- 
     //GeotiffWriter needs it, but it isn't called directly so
     //it isn't automatically compiled.
-    private org.jdom.Content content;
+    private org.jdom2.Content content;
 
 
     /** A 1D array, column by column, from the lower left (the way SGT wants it). 
