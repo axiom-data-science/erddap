@@ -117,7 +117,7 @@ public class OpendapDump {
                     String2.log("End enumeration to get variables...");
 
                 } catch (Exception e) {
-                    String2.log(e.getMessage());
+                    String2.log(e);
                     e.printStackTrace();
                     System.exit(1);
                 }

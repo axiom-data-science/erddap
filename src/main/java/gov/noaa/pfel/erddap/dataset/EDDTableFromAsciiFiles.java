@@ -6,6 +6,7 @@ package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
+import com.cohort.array.CharArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.PrimitiveArray;
@@ -16,6 +17,7 @@ import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
+import com.cohort.util.XML;
 
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.RegexFilenameFilter;
@@ -54,25 +56,28 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
-        int tReloadEveryNMinutes,
-        String tFileDir, boolean tRecursive, String tFileNameRegex, String tMetadataFrom,
+        int tReloadEveryNMinutes, int tUpdateEveryNMillis,
+        String tFileDir, boolean tRecursive, String tFileNameRegex,
+        String tMetadataFrom,
         String tCharset, int tColumnNamesRow, int tFirstDataRow,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
-        boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory) 
+        boolean tSourceNeedsExpandedFP_EQ, 
+        boolean tFileTableInMemory, boolean tAccessibleViaFiles) 
         throws Throwable {
 
         super("EDDTableFromAsciiFiles", true, tDatasetID, tAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix, 
             tDefaultDataQuery, tDefaultGraphQuery,
             tAddGlobalAttributes, 
-            tDataVariables, tReloadEveryNMinutes,
+            tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tRecursive, tFileNameRegex, tMetadataFrom,
             tCharset, tColumnNamesRow, tFirstDataRow,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
-            tSourceNeedsExpandedFP_EQ, tFileTableInMemory);
+            tSourceNeedsExpandedFP_EQ, 
+            tFileTableInMemory, tAccessibleViaFiles);
     }
 
     /** The constructor for subclasses. */
@@ -81,25 +86,29 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
-        int tReloadEveryNMinutes,
-        String tFileDir, boolean tRecursive, String tFileNameRegex, String tMetadataFrom,
+        int tReloadEveryNMinutes, int tUpdateEveryNMillis,
+        String tFileDir, boolean tRecursive, String tFileNameRegex, 
+        String tMetadataFrom,
         String tCharset, int tColumnNamesRow, int tFirstDataRow,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
-        boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory) 
+        boolean tSourceNeedsExpandedFP_EQ, 
+        boolean tFileTableInMemory, boolean tAccessibleViaFiles) 
         throws Throwable {
 
         super(tClassName, true, tDatasetID, tAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery,
             tAddGlobalAttributes, 
-            tDataVariables, tReloadEveryNMinutes,
-            tFileDir, tRecursive, tFileNameRegex, tMetadataFrom,
+            tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
+            tFileDir, tRecursive, tFileNameRegex, 
+            tMetadataFrom,
             tCharset, tColumnNamesRow, tFirstDataRow,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
-            tSourceNeedsExpandedFP_EQ, tFileTableInMemory);
+            tSourceNeedsExpandedFP_EQ, 
+            tFileTableInMemory, tAccessibleViaFiles);
 
     }
 
@@ -117,10 +126,17 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
         boolean getMetadata, boolean mustGetData) 
         throws Throwable {
 
+        if (!mustGetData) 
+            //Just return an empty table. There is never any metadata.
+            return Table.makeEmptyTable(sourceDataNames.toArray(), sourceDataTypes);
+
         Table table = new Table();
+        table.allowRaggedRightInReadASCII = true;
         table.readASCII(fileDir + fileName, 
-            "ISO-8859-1", columnNamesRow - 1, firstDataRow - 1,
-            null, null, null, null, true); //testColumns, testMin, testMax, loadColumns, simplify);
+            charset, columnNamesRow - 1, firstDataRow - 1,
+            null, null, null, //testColumns, testMin, testMax,
+            sourceDataNames.toArray(), //loadColumns, 
+            false); //don't simplify; just get the strings
 
         //convert to desired sourceDataTypes
         int nCols = table.nColumns();
@@ -128,10 +144,23 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
             int sd = sourceDataNames.indexOf(table.getColumnName(tc));
             if (sd >= 0) {
                 PrimitiveArray pa = table.getColumn(tc);
-                if (!sourceDataTypes[sd].equals(pa.elementClassString())) {
-                    PrimitiveArray newPa = PrimitiveArray.factory(
-                        PrimitiveArray.elementStringToClass(sourceDataTypes[sd]), 1, false);
-                    newPa.append(pa);
+                String tType = sourceDataTypes[sd];
+                if (tType.equals("String")) { //do nothing
+                } else if (tType.equals("boolean")) {
+                    table.setColumn(tc, ByteArray.toBooleanToByte(pa));
+                } else { 
+                    PrimitiveArray newPa;
+                    if (tType.equals("char")) {
+                        CharArray ca = new CharArray();
+                        int n = pa.size();
+                        for (int i = 0; i < n; i++)
+                            ca.add(CharArray.firstChar(pa.getString(i)));
+                        newPa = ca;
+                    } else {
+                        newPa = PrimitiveArray.factory(
+                            PrimitiveArray.elementStringToClass(sourceDataTypes[sd]), 1, false);
+                        newPa.append(pa);
+                    }
                     table.setColumn(tc, newPa);
                 }
             }
@@ -172,7 +201,8 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
      */
     public static String generateDatasetsXml(String tFileDir, String tFileNameRegex, 
         String sampleFileName, 
-        String charset, int columnNamesRow, int firstDataRow, int tReloadEveryNMinutes,
+        String charset, int columnNamesRow, int firstDataRow, 
+        int tReloadEveryNMinutes, 
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex,
         String tColumnNameForExtract, String tSortedColumnSourceName,
         String tSortFilesBySourceNames, 
@@ -182,6 +212,8 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
         String2.log("EDDTableFromAsciiFiles.generateDatasetsXml" +
             "\n  sampleFileName=" + sampleFileName);
         tFileDir = File2.addSlash(tFileDir); //ensure it has trailing slash
+        if (tReloadEveryNMinutes <= 0 || tReloadEveryNMinutes == Integer.MAX_VALUE)
+            tReloadEveryNMinutes = 1440; //1440 works well with suggestedUpdateEveryNMillis
 
         //*** basically, make a table to hold the sourceAttributes 
         //and a parallel table to hold the addAttributes
@@ -247,7 +279,7 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
             makeReadyToUseAddGlobalAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), 
                 //another cdm_data_type could be better; this is ok
-                probablyHasLonLatTime(dataSourceTable)? "Point" : "Other",
+                probablyHasLonLatTime(dataSourceTable, dataAddTable)? "Point" : "Other",
                 tFileDir, externalAddGlobalAttributes, 
                 suggestKeywords(dataSourceTable, dataAddTable)));
 
@@ -265,20 +297,22 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
                 suggestDatasetID(tFileDir + tFileNameRegex) + 
                 "\" active=\"true\">\n" +
             "    <reloadEveryNMinutes>" + tReloadEveryNMinutes + "</reloadEveryNMinutes>\n" +  
+            "    <updateEveryNMillis>" + suggestedUpdateEveryNMillis + "</updateEveryNMillis>\n" +  
             "    <fileDir>" + tFileDir + "</fileDir>\n" +
             "    <recursive>true</recursive>\n" +
-            "    <fileNameRegex>" + tFileNameRegex + "</fileNameRegex>\n" +
+            "    <fileNameRegex>" + XML.encodeAsXML(tFileNameRegex) + "</fileNameRegex>\n" +
             "    <metadataFrom>last</metadataFrom>\n" +
             "    <charset>" + charset + "</charset>\n" +
             "    <columnNamesRow>" + columnNamesRow + "</columnNamesRow>\n" +
             "    <firstDataRow>" + firstDataRow + "</firstDataRow>\n" +
-            "    <preExtractRegex>" + tPreExtractRegex + "</preExtractRegex>\n" +
-            "    <postExtractRegex>" + tPostExtractRegex + "</postExtractRegex>\n" +
-            "    <extractRegex>" + tExtractRegex + "</extractRegex>\n" +
+            "    <preExtractRegex>" + XML.encodeAsXML(tPreExtractRegex) + "</preExtractRegex>\n" +
+            "    <postExtractRegex>" + XML.encodeAsXML(tPostExtractRegex) + "</postExtractRegex>\n" +
+            "    <extractRegex>" + XML.encodeAsXML(tExtractRegex) + "</extractRegex>\n" +
             "    <columnNameForExtract>" + tColumnNameForExtract + "</columnNameForExtract>\n" +
             "    <sortedColumnSourceName>" + tSortedColumnSourceName + "</sortedColumnSourceName>\n" +
             "    <sortFilesBySourceNames>" + tSortFilesBySourceNames + "</sortFilesBySourceNames>\n" +
-            "    <fileTableInMemory>false</fileTableInMemory>\n");
+            "    <fileTableInMemory>false</fileTableInMemory>\n" +
+            "    <accessibleViaFiles>false</accessibleViaFiles>\n");
         sb.append(writeAttsForDatasetsXml(false, dataSourceTable.globalAttributes(), "    "));
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
@@ -304,9 +338,11 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
         try {
             Attributes externalAddAttributes = new Attributes();
             externalAddAttributes.add("title", "New Title!");
+            String suggDatasetID = suggestDatasetID(
+                EDStatic.unitTestDataDir + "asciiNdbc/.*\\.csv");
             String results = generateDatasetsXml(
-                "c:/u00/cwatch/testData/asciiNdbc/",  ".*\\.csv",
-                "c:/u00/cwatch/testData/asciiNdbc/31201_2009.csv", 
+                EDStatic.unitTestDataDir + "asciiNdbc/",  ".*\\.csv",
+                EDStatic.unitTestDataDir + "asciiNdbc/31201_2009.csv", 
                 "ISO-8859-1", 1, 3, 1440,
                 "", "_.*$", ".*", "stationID",  //just for test purposes; station is already a column in the file
                 "time", "station time", 
@@ -316,8 +352,8 @@ public class EDDTableFromAsciiFiles extends EDDTableFromFiles {
             //GenerateDatasetsXml
             String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
                 "EDDTableFromAsciiFiles",
-                "c:/u00/cwatch/testData/asciiNdbc/",  ".*\\.csv",
-                "c:/u00/cwatch/testData/asciiNdbc/31201_2009.csv", 
+                EDStatic.unitTestDataDir + "asciiNdbc/",  ".*\\.csv",
+                EDStatic.unitTestDataDir + "asciiNdbc/31201_2009.csv", 
                 "ISO-8859-1", "1", "3", "1440",
                 "", "_.*$", ".*", "stationID",  //just for test purposes; station is already a column in the file
                 "time", "station time", 
@@ -331,9 +367,10 @@ directionsForGenerateDatasetsXml() +
 "   below, notably 'units' for each of the dataVariables.\n" +
 "-->\n" +
 "\n" +
-"<dataset type=\"EDDTableFromAsciiFiles\" datasetID=\"asciiNdbc_8443_4c8b_d0e1\" active=\"true\">\n" +
+"<dataset type=\"EDDTableFromAsciiFiles\" datasetID=\"" + suggDatasetID + "\" active=\"true\">\n" +
 "    <reloadEveryNMinutes>1440</reloadEveryNMinutes>\n" +
-"    <fileDir>c:/u00/cwatch/testData/asciiNdbc/</fileDir>\n" +
+"    <updateEveryNMillis>10000</updateEveryNMillis>\n" +
+"    <fileDir>" + EDStatic.unitTestDataDir + "asciiNdbc/</fileDir>\n" +
 "    <recursive>true</recursive>\n" +
 "    <fileNameRegex>.*\\.csv</fileNameRegex>\n" +
 "    <metadataFrom>last</metadataFrom>\n" +
@@ -347,6 +384,7 @@ directionsForGenerateDatasetsXml() +
 "    <sortedColumnSourceName>time</sortedColumnSourceName>\n" +
 "    <sortFilesBySourceNames>station time</sortFilesBySourceNames>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
+"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "    </sourceAttributes -->\n" +
 "    <!-- Please specify the actual cdm_data_type (TimeSeries?) and related info below, for example...\n" +
@@ -363,7 +401,7 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"keywords\">altitude, atmosphere,\n" +
 "Atmosphere &gt; Altitude &gt; Station Height,\n" +
 "Atmosphere &gt; Atmospheric Winds &gt; Surface Winds,\n" +
-"atmospheric, atmp, direction, height, identifier, ndbc, newer, noaa, speed, station, surface, temperature, time, title, wind, wind_from_direction, wind_speed, winds, wtmp</att>\n" +
+"atmospheric, atmp, direction, height, ndbc, newer, noaa, speed, station, surface, temperature, time, title, wind, wind_from_direction, wind_speed, winds, wtmp</att>\n" +
 "        <att name=\"keywords_vocabulary\">GCMD Science Keywords</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"Metadata_Conventions\">COARDS, CF-1.6, Unidata Dataset Discovery v1.0</att>\n" +
@@ -423,6 +461,7 @@ directionsForGenerateDatasetsXml() +
 "            <att name=\"ioos_category\">Location</att>\n" +
 "            <att name=\"long_name\">Altitude</att>\n" +
 "            <att name=\"standard_name\">altitude</att>\n" +
+"            <att name=\"units\">m</att>\n" +
 "        </addAttributes>\n" +
 "    </dataVariable>\n" +
 "    <dataVariable>\n" +
@@ -507,24 +546,24 @@ directionsForGenerateDatasetsXml() +
             //    expected, "");
 
             //ensure it is ready-to-use by making a dataset from it
-            //!!! actually this will fail with a specific error which is caught below
+            //2014-12-24 no longer: this will fail with a specific error which is caught below
             EDD edd = oneFromXmlFragment(results);
-            //these won't actually be tested...
-            Test.ensureEqual(edd.datasetID(), "asciiNdbc_8443_4c8b_d0e1", "");
+            Test.ensureEqual(edd.datasetID(), suggDatasetID, "");
             Test.ensureEqual(edd.title(), "The Newer Title!", "");
-            //If it does get here, this will fail on purpose...
             Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
-                "zztop???", "");
+                "stationID, longitude, latitude, altitude, time, station, wd, wspd, atmp, wtmp",
+                "");
 
         } catch (Throwable t) {
             String msg = MustBe.throwableToString(t);
-            if (msg.indexOf(
-"When a variable's destinationName is \"altitude\", the sourceAttributes or addAttributes " +
-"\"units\" MUST be \"m\" (not \"null\").\n" +
-"If needed, use \"scale_factor\" to convert the source values to meters (positive=up),\n" +
-"use a different destinationName for this variable.") >= 0) {
-                String2.log("EXPECTED ERROR while creating the edd: altitude's units haven't been set.\n");
-            } else 
+//2014-12-24 no longer occurs
+//            if (msg.indexOf(
+//"When a variable's destinationName is \"altitude\", the sourceAttributes or addAttributes " +
+//"\"units\" MUST be \"m\" (not \"null\").\n" +
+//"If needed, use \"scale_factor\" to convert the source values to meters (positive=up),\n" +
+//"use a different destinationName for this variable.") >= 0) {
+//                String2.log("EXPECTED ERROR while creating the edd: altitude's units haven't been set.\n");
+//            } else 
                 String2.getStringFromSystemIn(msg + 
                     "\nUnexpected error using generateDatasetsXml." + 
                     "\nPress ^C to stop or Enter to continue..."); 
@@ -928,10 +967,207 @@ expected =
      *
      * @throws Throwable if trouble
      */
+    public static void testBasic2() throws Throwable {
+        String2.log("\n*** EDDTableFromAsciiFiles.testBasic2() \n");
+        testVerboseOn();
+        String name, tName, results, tResults, expected, userDapQuery, tQuery;
+        String error = "";
+        EDV edv;
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 14); //14 is enough to check hour. Hard to check min:sec.
+        String testDir = EDStatic.fullTestCacheDirectory;
+
+        String id = "testTableAscii2";
+        deleteCachedDatasetInfo(id);
+        EDDTable eddTable = (EDDTable)oneFromDatasetXml(id); 
+
+        //does aBoolean know it's a boolean?
+        Test.ensureTrue(eddTable.findVariableByDestinationName("aBoolean").isBoolean(), 
+            "Is aBoolean edv.isBoolean() true?");
+
+        //.csv    for all
+        userDapQuery = "";
+        tName = eddTable.makeNewFileForDapQuery(null, null, userDapQuery, testDir, 
+            eddTable.className() + "_all", ".csv"); 
+        results = new String((new ByteArray(testDir + tName)).toArray());
+        //String2.log(results);
+        expected = 
+"fileName,five,aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
+",,,,,,,,,,\n" +
+"csvAscii,5.0,\"b,d\",65,1,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"csvAscii,5.0,short:,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN\n" +
+"csvAscii,5.0,fg,70,1,11,12001,1200000,12000000000,1.21,1.0E200\n" +
+"csvAscii,5.0,h,72,1,12,12002,120000,1200000000,1.22,2.0E200\n" +
+"csvAscii,5.0,i,73,1,13,12003,12000,120000000,1.23,3.0E200\n" +
+"csvAscii,5.0,j,74,0,14,12004,1200,12000000,1.24,4.0E200\n" +
+"csvAscii,5.0,k,75,0,15,12005,120,1200000,1.25,5.0E200\n" +
+"csvAscii,5.0,l,76,0,16,12006,12,120000,1.26,6.0E200\n" +
+"csvAscii,5.0,m,77,0,17,12007,121,12000,1.27,7.0E200\n" +
+"csvAscii,5.0,n,78,1,18,12008,122,1200,1.28,8.0E200\n";
+        Test.ensureEqual(results, expected, "\nresults=\n" + results);
+
+
+        //*** test getting das for entire dataset
+        String2.log("\nEDDTableFromAsciiFiles test das and dds for entire dataset\n");
+        tName = eddTable.makeNewFileForDapQuery(null, null, "", testDir, 
+            eddTable.className() + "_Entire", ".das"); 
+        results = new String((new ByteArray(testDir + tName)).toArray());
+        //String2.log(results);
+        expected = 
+"Attributes {\n" +
+" s {\n" +
+"  fileName {\n" +
+"    String ioos_category \"Identifier\";\n" +
+"    String long_name \"File Name\";\n" +
+"  }\n" +
+"  five {\n" +
+"    Float32 actual_range 5.0, 5.0;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"Five\";\n" +
+"  }\n" +
+"  aString {\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A String\";\n" +
+"  }\n" +
+"  aChar {\n" +
+"    Int16 actual_range 65, 78;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Char\";\n" +
+"  }\n" +
+"  aBoolean {\n" +
+"    Byte actual_range 0, 1;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Boolean\";\n" +
+"  }\n" +
+"  aByte {\n" +
+"    Byte actual_range 11, 24;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Byte\";\n" +
+"  }\n" +
+"  aShort {\n" +
+"    Int16 actual_range 12001, 24000;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Short\";\n" +
+"  }\n" +
+"  anInt {\n" +
+"    Int32 actual_range 12, 24000000;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"An Int\";\n" +
+"  }\n" +
+"  aLong {\n" +
+"    Float64 actual_range 1200, 240000000000;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Long\";\n" +
+"  }\n" +
+"  aFloat {\n" +
+"    Float32 actual_range 1.21, 2.4;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Float\";\n" +
+"  }\n" +
+"  aDouble {\n" +
+"    Float64 actual_range 2.412345678987654, 8.0e+200;\n" +
+"    String ioos_category \"Unknown\";\n" +
+"    String long_name \"A Double\";\n" +
+"  }\n" +
+" }\n" +
+"  NC_GLOBAL {\n" +
+"    String cdm_data_type \"Other\";\n" +
+"    String Conventions \"COARDS, CF-1.6, Unidata Dataset Discovery v1.0\";\n" +
+"    String creator_name \"NOAA NDBC\";\n" +
+"    String creator_url \"http://www.ndbc.noaa.gov/\";\n" +
+"    String history \"" + today;
+        tResults = results.substring(0, Math.min(results.length(), expected.length()));
+        Test.ensureEqual(tResults, expected, "\nresults=\n" + results);
+        
+//"2014-12-04T19:15:21Z (local files)
+//2014-12-04T19:15:21Z http://127.0.0.1:8080/cwexperimental/tabledap/testTableAscii.das";
+expected =
+"    String infoUrl \"http://www.ndbc.noaa.gov/\";\n" +
+"    String institution \"NOAA NDBC\";\n" +
+"    String keywords \"boolean, byte, char, double, float, int, long, ndbc, newer, noaa, short, string, title\";\n" +
+"    String license \"The data may be used and redistributed for free but is not intended\n" +
+"for legal use, since it may contain inaccuracies. Neither the data\n" +
+"Contributor, ERD, NOAA, nor the United States Government, nor any\n" +
+"of their employees or contractors, makes any warranty, express or\n" +
+"implied, including warranties of merchantability and fitness for a\n" +
+"particular purpose, or assumes any legal liability for the accuracy,\n" +
+"completeness, or usefulness, of this information.\";\n" +
+"    String Metadata_Conventions \"COARDS, CF-1.6, Unidata Dataset Discovery v1.0\";\n" +
+"    String sourceUrl \"(local files)\";\n" +
+"    String standard_name_vocabulary \"CF-12\";\n" +
+"    String subsetVariables \"five, fileName\";\n" +
+"    String summary \"The new summary!\";\n" +
+"    String title \"The Newer Title!\";\n" +
+"  }\n" +
+"}\n";
+        int tPo = results.indexOf(expected.substring(0, 20));
+        Test.ensureTrue(tPo >= 0, "tPo=-1 results=\n" + results);
+        Test.ensureEqual(
+            results.substring(tPo, Math.min(results.length(), tPo + expected.length())),
+            expected, "results=\n" + results);
+        
+        //*** test getting dds for entire dataset
+        tName = eddTable.makeNewFileForDapQuery(null, null, "", testDir, 
+            eddTable.className() + "_Entire", ".dds"); 
+        results = new String((new ByteArray(testDir + tName)).toArray());
+        //String2.log(results);
+        expected = 
+"Dataset {\n" +
+"  Sequence {\n" +
+"    String fileName;\n" +
+"    Float32 five;\n" +
+"    String aString;\n" +
+"    Int16 aChar;\n" +
+"    Byte aBoolean;\n" +
+"    Byte aByte;\n" +
+"    Int16 aShort;\n" +
+"    Int32 anInt;\n" +
+"    Float64 aLong;\n" +
+"    Float32 aFloat;\n" +
+"    Float64 aDouble;\n" +
+"  } s;\n" +
+"} s;\n";
+        Test.ensureEqual(results, expected, "\nresults=\n" + results);
+
+        //only subsetVars
+        userDapQuery = "fileName,five";
+        tName = eddTable.makeNewFileForDapQuery(null, null, userDapQuery, testDir, 
+            eddTable.className() + "_sv", ".csv"); 
+        results = new String((new ByteArray(testDir + tName)).toArray());
+        expected = 
+"fileName,five\n" +
+",\n" +
+"csvAscii,5.0\n";
+        Test.ensureEqual(results, expected, "\nresults=\n" + results);
+
+        //subset of variables, constrain boolean and five
+        userDapQuery = "anInt,fileName,five,aBoolean&aBoolean=1&five=5";
+        tName = eddTable.makeNewFileForDapQuery(null, null, userDapQuery, testDir, 
+            eddTable.className() + "_conbool", ".csv"); 
+        results = new String((new ByteArray(testDir + tName)).toArray());
+        expected = 
+"anInt,fileName,five,aBoolean\n" +
+",,,\n" +
+"24000000,csvAscii,5.0,1\n" +
+"1200000,csvAscii,5.0,1\n" +
+"120000,csvAscii,5.0,1\n" +
+"12000,csvAscii,5.0,1\n" +
+"122,csvAscii,5.0,1\n";
+        Test.ensureEqual(results, expected, "\nresults=\n" + results);
+
+        String2.log("\n*** EDDTableFromAsciiFiles.testBasic2() finished successfully\n");
+    }
+
+
+    /**
+     * This tests the methods in this class.
+     *
+     * @throws Throwable if trouble
+     */
     public static void test(boolean deleteCachedDatasetInfo) throws Throwable {
         testBasic(deleteCachedDatasetInfo);
         testGenerateDatasetsXml();
         testFixedValue();
+        testBasic2();
 
         //not usually run
     }

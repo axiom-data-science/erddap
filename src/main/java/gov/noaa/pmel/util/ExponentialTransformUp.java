@@ -13,7 +13,6 @@
 package gov.noaa.pmel.util;
 
 import java.beans.PropertyChangeListener;
-
 import gov.noaa.pmel.util.Range2D;
 import gov.noaa.pmel.sgt.Transform;
  
@@ -175,8 +174,5 @@ public class ExponentialTransformUp implements Transform {
 	public void removePropertyChangeListener(PropertyChangeListener listener) {
 
 	}
-
-	@Override
-	public void releaseResources() throws Exception {}
 }
 

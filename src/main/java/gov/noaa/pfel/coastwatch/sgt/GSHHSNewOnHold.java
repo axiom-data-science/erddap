@@ -21,11 +21,11 @@ import java.io.*;
 import java.util.Collections;
 import java.util.Map;
 
+
+2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
+When it is time to resucitate this, merge changes from this into GSHHS.java.
+
 /**
- *   2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
- *   When it is time to resucitate this, merge changes from this into GSHHS.java.
- *
- *
  *
  * <p>This class has methods related to GSHHS -
  * A Global Self-consistent, Hierarchical, High-resolution Shoreline Database
@@ -34,7 +34,7 @@ import java.util.Map;
  * bob's c:/programs/gshhs/2009v7/readme.txt).
  * GPL License http://www.soest.hawaii.edu/pwessel/gshhs/README.TXT
  */
-public class GSHHSNewOnHold  {
+public class GSHHS  {
 
     /** The characters of the RESOLUTIONS string represent the 5 resolutions
      * in order of decreasing accuracy: "fhilc": 'f'ull, 'h'igh, 'i'ntermediate, 'l'ow, 'c'rude.
@@ -61,7 +61,9 @@ public class GSHHSNewOnHold  {
      *    (http://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html).
      *    landMaskDir should have slash at end.
      */
-    public static String gshhsDirectory = SSR.getContextDirectory() + "WEB-INF/ref/";
+    public static String gshhsDirectory = 
+        SSR.getContextDirectory() + //with / separator and / at the end
+        "WEB-INF/ref/";
 
     /**
      * Since GeneralPaths are time-consuming to contruct,
@@ -374,7 +376,7 @@ public class GSHHSNewOnHold  {
                  (resolution == 'l' && n < lakeMinN / 2));
             
             //can I use the object?   
-if (true) { //(useStandard || useShiftedLeft || useShiftedRight) && !skip) {
+            if ((useStandard || useShiftedLeft || useShiftedRight) && !skip) {
                 int cShift = 0;
                 if (useShiftedLeft) cShift = -intShift;
                 else if (useShiftedRight) cShift = intShift;
@@ -545,6 +547,7 @@ if (true) { //(useStandard || useShiftedLeft || useShiftedRight) && !skip) {
             }
 
         }
+        dis.close();
         if (reallyVerbose) String2.log("  GSHHS.getPathInfo done. res=" + resolution +
             " level=" + (desiredLevel==1? "land" : desiredLevel==2? "lake" : "" + desiredLevel) + 
             " TIME=" + (System.currentTimeMillis() - time));

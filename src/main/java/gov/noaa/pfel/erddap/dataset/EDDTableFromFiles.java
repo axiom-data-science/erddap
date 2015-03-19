@@ -22,9 +22,11 @@ import com.cohort.util.Test;
 
 import gov.noaa.pfel.coastwatch.griddata.NcHelper;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
+import gov.noaa.pfel.coastwatch.util.FileVisitorDNLS;
 import gov.noaa.pfel.coastwatch.util.RegexFilenameFilter;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.coastwatch.util.SSR;
+import gov.noaa.pfel.coastwatch.util.WatchDirectory;
 
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.util.EDUnits;
@@ -32,6 +34,7 @@ import gov.noaa.pfel.erddap.variable.*;
 
 import java.io.FileWriter;
 import java.io.StringWriter;
+import java.nio.file.WatchEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -55,6 +58,7 @@ import java.util.regex.*;
 public abstract class EDDTableFromFiles extends EDDTable{ 
 
     public final static String MF_FIRST = "first", MF_LAST = "last";
+    public static int suggestedUpdateEveryNMillis = 10000;
 
     //set by constructor
     protected String fileDir;
@@ -63,14 +67,47 @@ public abstract class EDDTableFromFiles extends EDDTable{
     protected String metadataFrom;       
     protected String preExtractRegex, postExtractRegex, extractRegex, 
         columnNameForExtract;  // will be "" if not in use
+    protected Pattern preExtractPattern, postExtractPattern,
+        extractPattern; //will be null if not in use
     protected String sortedColumnSourceName; //may be "", won't be null
     protected boolean filesAreLocal;
     protected String charset;  //may be null or ""
-    protected int columnNamesRow = 1, firstDataRow = 2;
+    protected int columnNamesRow = 1, firstDataRow = 2; 
+    //for ColumnarAscii only: the startColumn and stopColumn of each 
+    //  dataVariable on each line of the file (0..)
+    protected int startColumn[], stopColumn[]; 
 
-    protected final static int dv0 = 4;
-    protected StringArray sourceDataNamesNEC;
+    //source info
+    protected StringArray sourceDataNames;
+    protected StringArray safeSourceDataNames;
     protected String sourceDataTypes[];
+
+    //arrays to hold expected source add_offset, fillValue, missingValue, scale_factor, units
+    //for NEC (No Extract Column and no fixed value columns) dv columns
+    protected StringArray sourceDataNamesNEC;
+    protected String      sourceDataTypesNEC[];
+    protected double expectedAddOffsetNEC[]; 
+    protected double expectedFillValueNEC[]; 
+    protected double expectedMissingValueNEC[];
+    protected double expectedScaleFactorNEC[]; 
+    protected String expectedUnitsNEC[];
+    //arrays to hold addAttributes mv info for NEC dv columns
+    //  so source min max can be determined (skipping missing values)
+    protected double addAttFillValueNEC[];
+    protected double addAttMissingValueNEC[];
+
+    /** Columns in the File Table */
+    protected final static int dv0 = 4;
+    protected final static int 
+        FT_DIR_INDEX_COL=0, //useful that it is #0   (tFileTable uses same positions)
+        FT_FILE_LIST_COL=1, //useful that it is #1
+        FT_LAST_MOD_COL=2, 
+        FT_SORTED_SPACING_COL=3;
+    //then 3 cols for each dataVariable: sourceName + _min_|_max_|_hasNaN
+    int     fileTableSortColumns[];   //null if not active
+    boolean fileTableSortAscending[]; //size matches fileTableSortcolumns, all true
+
+
     /** minMaxTable has a col for each dv; row0=min for all files, row1=max for all files.
         The values are straight from the source; scale_factor and add_offset haven't been applied. 
         Even time is stored as raw source values; see "//EEEK!!!" below.  */
@@ -82,6 +119,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
 
     protected long cumNNotRead = 0;  //either don't have matching data or do ('distinct' and 1 value matches)
     protected long cumNReadHaveMatch = 0, cumNReadNoMatch = 0; //read the data file to look for matching data
+    protected WatchDirectory watchDirectory;
 
     //dirTable and fileTable inMemory (default=false)
     protected boolean fileTableInMemory = false;
@@ -107,6 +145,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
         Attributes tGlobalAttributes = null;
         ArrayList tDataVariables = new ArrayList();
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
+        int tUpdateEveryNMillis = 0;
         String tAccessibleTo = null;
         StringArray tOnChange = new StringArray();
         boolean tFileTableInMemory = false;
@@ -116,6 +155,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
         String tFileDir = null;
         boolean tRecursive = false;
         String tFileNameRegex = ".*";
+        boolean tAccessibleViaFiles = false;
         String tMetadataFrom = MF_LAST;       
         String tPreExtractRegex = "", tPostExtractRegex = "", tExtractRegex = "";
         String tColumnNameForExtract = "";
@@ -153,12 +193,16 @@ public abstract class EDDTableFromFiles extends EDDTable{
             else if (localTags.equals("</accessibleTo>")) tAccessibleTo = content;
             else if (localTags.equals( "<reloadEveryNMinutes>")) {}
             else if (localTags.equals("</reloadEveryNMinutes>")) tReloadEveryNMinutes = String2.parseInt(content); 
+            else if (localTags.equals( "<updateEveryNMillis>")) {}
+            else if (localTags.equals("</updateEveryNMillis>")) tUpdateEveryNMillis = String2.parseInt(content); 
             else if (localTags.equals( "<fileDir>")) {} 
             else if (localTags.equals("</fileDir>")) tFileDir = content; 
             else if (localTags.equals( "<recursive>")) {}
             else if (localTags.equals("</recursive>")) tRecursive = String2.parseBoolean(content); 
             else if (localTags.equals( "<fileNameRegex>")) {}
             else if (localTags.equals("</fileNameRegex>")) tFileNameRegex = content; 
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals( "<metadataFrom>")) {}
             else if (localTags.equals("</metadataFrom>")) tMetadataFrom = content; 
             else if (localTags.equals( "<nDimensions>")) {}
@@ -215,12 +259,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ,
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
         } else if (tType.equals("EDDTableFromAwsXmlFiles")) {
             return new EDDTableFromAwsXmlFiles(tDatasetID, tAccessibleTo,
@@ -228,12 +273,27 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ, 
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames,
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
+
+        } else if (tType.equals("EDDTableFromColumnarAsciiFiles")) {
+            return new EDDTableFromColumnarAsciiFiles(tDatasetID, tAccessibleTo,
+                tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
+                tDefaultDataQuery, tDefaultGraphQuery,  
+                tGlobalAttributes,
+                ttDataVariables,
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
+                tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
+                tCharset, tColumnNamesRow, tFirstDataRow,
+                tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
         } else if (tType.equals("EDDTableFromNcFiles")) { 
             return new EDDTableFromNcFiles(tDatasetID, tAccessibleTo,
@@ -241,12 +301,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ,
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
         } else if (tType.equals("EDDTableFromNcCFFiles")) {
             return new EDDTableFromNcCFFiles(tDatasetID, tAccessibleTo,
@@ -254,12 +315,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ, 
-                tFileTableInMemory); 
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles); 
 
         } else if (tType.equals("EDDTableFromPostNcFiles")) {
             return new EDDTableFromNcFiles(tDatasetID, tAccessibleTo,
@@ -267,12 +329,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ, 
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
         } else if (tType.equals("EDDTableFromHyraxFiles")) {
 
@@ -315,12 +378,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ, 
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
             tEDDTable.creationTimeMillis = tCreationTime;
             return tEDDTable;
@@ -359,12 +423,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
                 tCharset, tColumnNamesRow, tFirstDataRow,
                 tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ, 
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
             tEDDTable.creationTimeMillis = tCreationTime;
             return tEDDTable;
@@ -401,7 +466,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 tDefaultDataQuery, tDefaultGraphQuery,  
                 tGlobalAttributes,
                 ttDataVariables,
-                tReloadEveryNMinutes, 
+                tReloadEveryNMinutes, tUpdateEveryNMillis, 
                 fileDir,    //force fileDir
                 false,      //force !recursive, 
                 ".*\\.tsv", //force fileNameRegex
@@ -410,8 +475,9 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 1,          //force columnNamesRow, 
                 3,          //force firstDataRow,
                 "","","","",//force tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-                tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ, 
-                tFileTableInMemory);
+                tSortedColumnSourceName, tSortFilesBySourceNames, 
+                tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+                tAccessibleViaFiles);
 
         //} else if (tType.equals("EDDTableFrom???Files")) {
         //    return new EDDTableFromFiles(tDatasetID, tAccessibleTo,
@@ -419,11 +485,13 @@ public abstract class EDDTableFromFiles extends EDDTable{
         //        tDefaultDataQuery, tDefaultGraphQuery, 
         //        tGlobalAttributes,
         //        ttDataVariables,
-        //        tReloadEveryNMinutes, 
+        //        tReloadEveryNMinutes, tUpdateEveryNMillis, 
         //        tFileDir, tRecursive, tFileNameRegex, tMetadataFrom, 
         //        tCharset, tColumnNamesRow, tFirstDataRow,
         //        tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
-        //        tSortedColumnSourceName, tSourceNeedsExpandedFP_EQ);
+        //        tSortedColumnSourceName, tSortFilesBySourceNames,
+        //        tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+        //        tAccessibleViaFiles);
         } else {
             throw new Exception("type=\"" + tType + 
                 "\" needs to be added to EDDTableFromFiles.fromXml at end.");
@@ -550,13 +618,14 @@ public abstract class EDDTableFromFiles extends EDDTable{
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
-        int tReloadEveryNMinutes,
+        int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, boolean tRecursive, String tFileNameRegex, String tMetadataFrom,
         String tCharset, int tColumnNamesRow, int tFirstDataRow,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
-        boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory) 
+        boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
+        boolean tAccessibleViaFiles) 
         throws Throwable {
 
         if (verbose) String2.log(
@@ -587,6 +656,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
             tAddGlobalAttributes = new Attributes();
         addGlobalAttributes = tAddGlobalAttributes;
         setReloadEveryNMinutes(tReloadEveryNMinutes);
+        setUpdateEveryNMillis(tUpdateEveryNMillis);
         fileTableInMemory = tFileTableInMemory;
         fileDir = tFileDir;
         recursive = tRecursive;
@@ -636,15 +706,23 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 "extractRegex=" + extractRegex + 
                 " but columnNameForExtract=\"\".  It should be something.");
 
-        Pattern preExtractPattern  = preExtractRegex.length()  == 0? null : Pattern.compile(preExtractRegex);
-        Pattern postExtractPattern = postExtractRegex.length() == 0? null : Pattern.compile(postExtractRegex);
-        Pattern extractPattern     = extractRegex.length()     == 0? null : Pattern.compile(extractRegex);
+        preExtractPattern  = preExtractRegex.length()  == 0? null : Pattern.compile(preExtractRegex);
+        postExtractPattern = postExtractRegex.length() == 0? null : Pattern.compile(postExtractRegex);
+        extractPattern     = extractRegex.length()     == 0? null : Pattern.compile(extractRegex);
         if (sortedColumnSourceName == null) sortedColumnSourceName = "";
 
         //note sourceDataNames, sourceDataTypes
-        StringArray sourceDataNames = new StringArray();
-        StringArray safeSourceDataNames = new StringArray();
+        sourceDataNames = new StringArray();
+        safeSourceDataNames = new StringArray();
         sourceDataTypes = new String[ndv];
+        boolean isColumnarAscii = className.equals("EDDTableFromColumnarAsciiFiles");
+        if (isColumnarAscii) {
+            startColumn = new int[ndv];  //all 0's
+            stopColumn = new int[ndv];   //all 0's
+        }
+        //make the No Extract Column (and no fixed value column) versions
+        sourceDataNamesNEC = new StringArray();
+        StringArray tSourceDataTypesNEC = new StringArray();
         for (int dv = 0; dv < ndv; dv++) {
             String tSourceName = (String)tDataVariables[dv][0];
             sourceDataNames.add(tSourceName);
@@ -659,7 +737,40 @@ public abstract class EDDTableFromFiles extends EDDTable{
                ((tDestName == null || tDestName.trim().length() == 0) && 
                 EDV.TIME_NAME.equals(tSourceName))) 
                 timeIndex = dv;
+
+            Attributes atts = (Attributes)tDataVariables[dv][2];
+            if (tSourceName.startsWith("=") ||
+                tSourceName.equals(columnNameForExtract)) {
+            } else {
+                sourceDataNamesNEC.add(tSourceName);
+                tSourceDataTypesNEC.add(sourceDataTypes[dv]);
+                if (isColumnarAscii) {
+                    //required
+                    startColumn[dv] = atts.getInt("startColumn");
+                    stopColumn[dv]  = atts.getInt("stopColumn");
+                    Test.ensureBetween(startColumn[dv], 0, 1000000,  
+                        "Invalid startColumn attribute for destinationName=" + tDestName);
+                    Test.ensureBetween(stopColumn[dv], startColumn[dv] + 1, 1000000, 
+                        "Invalid stopColumn attribute for destinationName=" + tDestName);
+                }
+            }
+            if (isColumnarAscii) {
+                atts.remove("startColumn");
+                atts.remove("stopColumn");
+            }
         }
+        if (sourceDataNamesNEC.size() == sourceDataNames.size()) {
+            sourceDataNamesNEC = sourceDataNames;
+            sourceDataTypesNEC = sourceDataTypes;
+        } else {
+            sourceDataTypesNEC = tSourceDataTypesNEC.toArray();
+        }
+        tSourceDataTypesNEC = null;
+
+
+        //EDDTableFromColumnarAscii needs this
+        dataVariableSourceNames = sourceDataNames.toArray();
+
         if (reallyVerbose) String2.log("sourceDataNames=" + sourceDataNames +
             "\nsourceDataTypes=" + String2.toCSSVString(sourceDataTypes));
 
@@ -683,17 +794,6 @@ public abstract class EDDTableFromFiles extends EDDTable{
             throw new IllegalArgumentException("columnNameForExtract=" + columnNameForExtract + 
                 " but extractRegex wasn't specified.");
 
-        //make the No Extract Column versions
-        sourceDataNamesNEC = sourceDataNames;
-        String sourceDataTypesNEC[] = sourceDataTypes;
-        if (extractedColNameIndex >= 0) {
-            sourceDataNamesNEC = (StringArray)sourceDataNames.clone();
-            sourceDataNamesNEC.remove(extractedColNameIndex);
-            StringArray tsa = new StringArray(); //don't construct from sourceDataTypes
-            tsa.add(sourceDataTypes); 
-            tsa.remove(extractedColNameIndex);
-            sourceDataTypesNEC = tsa.toArray();
-        }
         //if (reallyVerbose) String2.log(
         //    "columnNameForExtract=" + columnNameForExtract + " extractedColNameIndex=" + extractedColNameIndex +
         //    "sourceDataNamesNEC=" + sourceDataNamesNEC);
@@ -729,20 +829,23 @@ public abstract class EDDTableFromFiles extends EDDTable{
         //ensure fileTable has correct columns and data types
         if (fileTable != null) {
             boolean ok = true;
-            if      (fileTable.findColumnNumber("dirIndex")      != 0) ok = false; 
-            else if (fileTable.findColumnNumber("fileName")      != 1) ok = false; 
-            else if (fileTable.findColumnNumber("lastMod")       != 2) ok = false;
-            else if (fileTable.findColumnNumber("sortedSpacing") != 3) ok = false;
-            else if (!(fileTable.getColumn(0) instanceof ShortArray))  ok = false;
-            else if (!(fileTable.getColumn(1) instanceof StringArray)) ok = false;
-            else if (!(fileTable.getColumn(2) instanceof DoubleArray)) ok = false;
-            else if (!(fileTable.getColumn(3) instanceof DoubleArray)) ok = false;
+            if      (fileTable.findColumnNumber("dirIndex")      != FT_DIR_INDEX_COL)      ok = false; 
+            else if (fileTable.findColumnNumber("fileName")      != FT_FILE_LIST_COL)      ok = false; 
+            else if (fileTable.findColumnNumber("lastMod")       != FT_LAST_MOD_COL)       ok = false;
+            else if (fileTable.findColumnNumber("sortedSpacing") != FT_SORTED_SPACING_COL) ok = false;
+            else if (!(fileTable.getColumn(FT_DIR_INDEX_COL)      instanceof ShortArray))  ok = false;
+            else if (!(fileTable.getColumn(FT_FILE_LIST_COL)      instanceof StringArray)) ok = false;
+            else if (!(fileTable.getColumn(FT_LAST_MOD_COL)       instanceof DoubleArray)) ok = false;
+            else if (!(fileTable.getColumn(FT_SORTED_SPACING_COL) instanceof DoubleArray)) ok = false;
             else for (int dv = 0; dv < ndv; dv++) {
+                String sdt = sourceDataTypes[dv];
+                if (sdt.equals("boolean"))
+                    sdt = "byte";
                 if (fileTable.findColumnNumber(safeSourceDataNames.get(dv) + "_min_")    != dv0 + dv*3 + 0 ||
                     fileTable.findColumnNumber(safeSourceDataNames.get(dv) + "_max_")    != dv0 + dv*3 + 1 ||
                     fileTable.findColumnNumber(safeSourceDataNames.get(dv) + "_hasNaN_") != dv0 + dv*3 + 2 ||
-                    !fileTable.getColumn(dv0 + dv*3 + 0).elementClassString().equals(sourceDataTypes[dv]) ||
-                    !fileTable.getColumn(dv0 + dv*3 + 1).elementClassString().equals(sourceDataTypes[dv]) ||
+                    !fileTable.getColumn(dv0 + dv*3 + 0).elementClassString().equals(sdt) ||
+                    !fileTable.getColumn(dv0 + dv*3 + 1).elementClassString().equals(sdt) ||
                     !fileTable.getColumn(dv0 + dv*3 + 2).elementClassString().equals("byte")) {
                     ok = false;
                     break;
@@ -768,15 +871,16 @@ public abstract class EDDTableFromFiles extends EDDTable{
             dirTable.addColumn("dirName", new StringArray());
 
             fileTable = new Table();
-            fileTable.addColumn("dirIndex",      new ShortArray());  //col 0
-            fileTable.addColumn("fileName",      new StringArray()); //col 1
-            fileTable.addColumn("lastMod",       new DoubleArray()); //col 2
-            fileTable.addColumn("sortedSpacing", new DoubleArray()); //col 3
+            fileTable.addColumn("dirIndex",      new ShortArray());  //col 0=FT_DIR_INDEX_COL
+            fileTable.addColumn("fileName",      new StringArray()); //col 1=FT_FILE_NAME_COL
+            fileTable.addColumn("lastMod",       new DoubleArray()); //col 2=FT_LAST_MOD_COL
+            fileTable.addColumn("sortedSpacing", new DoubleArray()); //col 3=FT_SORTED_SPACING_COL
             for (int dv = 0; dv < ndv; dv++) {
+                String sdt = sourceDataTypes[dv]; //booleans handled correctly below
                 fileTable.addColumn(safeSourceDataNames.get(dv) + "_min_", 
-                    PrimitiveArray.factory(PrimitiveArray.elementStringToClass(sourceDataTypes[dv]), 8, false));
+                    PrimitiveArray.factory(PrimitiveArray.elementStringToClass(sdt), 8, false));
                 fileTable.addColumn(safeSourceDataNames.get(dv) + "_max_", 
-                    PrimitiveArray.factory(PrimitiveArray.elementStringToClass(sourceDataTypes[dv]), 8, false));
+                    PrimitiveArray.factory(PrimitiveArray.elementStringToClass(sdt), 8, false));
                 fileTable.addColumn(safeSourceDataNames.get(dv) + "_hasNaN_", 
                     PrimitiveArray.factory(byte.class, 8, false));
             }
@@ -798,20 +902,26 @@ public abstract class EDDTableFromFiles extends EDDTable{
 
         //get the PrimitiveArrays from fileTable
         StringArray dirList         = (StringArray)dirTable.getColumn(0);
-        ShortArray  ftDirIndex      = (ShortArray)fileTable.getColumn(0);
-        StringArray ftFileList      = (StringArray)fileTable.getColumn(1);        
-        DoubleArray ftLastMod       = (DoubleArray)fileTable.getColumn(2);
-        DoubleArray ftSortedSpacing = (DoubleArray)fileTable.getColumn(3);
+        ShortArray  ftDirIndex      = (ShortArray)fileTable.getColumn( FT_DIR_INDEX_COL); //0
+        StringArray ftFileList      = (StringArray)fileTable.getColumn(FT_FILE_LIST_COL); //1
+        DoubleArray ftLastMod       = (DoubleArray)fileTable.getColumn(FT_LAST_MOD_COL); //2
+        DoubleArray ftSortedSpacing = (DoubleArray)fileTable.getColumn(FT_SORTED_SPACING_COL); //3
 
         //get tFileList of available data files
         long elapsedTime = System.currentTimeMillis();
-        String tFileNames[] = getFileNames(fileDir, fileNameRegex, recursive);
-        if (tFileNames == null) 
-            tFileNames = new String[0];
-        String msg = tFileNames.length + " files found in " + fileDir + 
+        //was tFileNames with dir+name
+        Table tFileTable = getFileInfo(fileDir, fileNameRegex, recursive);
+        if (updateEveryNMillis > 0)
+            watchDirectory = WatchDirectory.watchDirectoryAll(fileDir, recursive) ;
+        StringArray tFileDirPA     = (StringArray)(tFileTable.getColumn(FileVisitorDNLS.DIRECTORY));
+        StringArray tFileNamePA    = (StringArray)(tFileTable.getColumn(FileVisitorDNLS.NAME));
+        LongArray   tFileLastModPA = (LongArray)  (tFileTable.getColumn(FileVisitorDNLS.LASTMODIFIED));
+        tFileTable.removeColumn(FileVisitorDNLS.SIZE);
+        int ntft = tFileNamePA.size();
+        String msg = ntft + " files found in " + fileDir + 
             "\nregex=" + fileNameRegex + " recursive=" + recursive + 
             " time=" + (System.currentTimeMillis() - elapsedTime) + "ms";
-        if (tFileNames.length == 0)
+        if (ntft == 0)
             //Just exit. Don't delete the dirTable and fileTable files!
             //The problem may be that a drive isn't mounted.
             throw new RuntimeException(msg);
@@ -820,9 +930,9 @@ public abstract class EDDTableFromFiles extends EDDTable{
         //remove "badFiles" if they no longer exist (in tFileNames)
         {
             //make hashset with all tFileNames
-            HashSet tFileSet = new HashSet(Math2.roundToInt(1.4 * tFileNames.length));
-            for (int i = 0; i < tFileNames.length; i++)
-                tFileSet.add(tFileNames[i]);
+            HashSet tFileSet = new HashSet(Math2.roundToInt(1.4 * ntft));
+            for (int i = 0; i < ntft; i++)
+                tFileSet.add(tFileDirPA.get(i) + tFileNamePA.get(i));
 
             Object badFileNames[] = badFileMap.keySet().toArray();
             int nMissing = 0;
@@ -840,24 +950,28 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 "old nBadFiles size=" + nbfn + "   nMissing=" + nMissing);  
         } 
 
-        //make tFileTable from tFileNames
-        Table tFileTable = new Table();
-        ShortArray tDirIndex = new ShortArray();
-        StringArray tFileList = new StringArray();
-        tFileTable.addColumn("dirIndex", tDirIndex); //col 0, matches fileTable
-        tFileTable.addColumn("fileName", tFileList); //col 1, matches fileTable
-        for (int i = 0; i < tFileNames.length; i++) {
-
-            String tDir = File2.getDirectory(tFileNames[i]);
-            int po = dirList.indexOf(tDir); //linear search, but should be short list
-            if (po < 0) {
-                po = dirList.size();
-                dirList.add(tDir);
+        //switch to dir indexes
+        ShortArray tFileDirIndexPA = new ShortArray(ntft, false);  
+        tFileTable.removeColumn(0);  //tFileDirPA col
+        tFileTable.addColumn(0, "dirIndex", tFileDirIndexPA); //col 0, matches fileTable
+        tFileTable.setColumnName(1, "fileList"); //col 1, matches fileTable
+        String lastDir = "\u0000";
+        int lastPo = -1;
+        for (int i = 0; i < ntft; i++) {
+            String tDir = tFileDirPA.get(i);
+            int po = lastPo;
+            if (!tDir.equals(lastDir)) {    //rare
+                po = dirList.indexOf(tDir); //linear search, but should be short list
+                if (po < 0) {
+                    po = dirList.size();
+                    dirList.add(tDir);
+                }
+                lastDir = tDir;
+                lastPo = po;
             }
-            tDirIndex.addInt(po);
-            tFileList.add(tFileNames[i].substring(tDir.length()));
+            tFileDirIndexPA.addInt(po);
         }
-        tFileNames = null; //allow gc
+        tFileDirPA = null; //allow gc
 
         //sort fileTable and tFileTable by dirIndex and fileName
         elapsedTime = System.currentTimeMillis();
@@ -868,7 +982,6 @@ public abstract class EDDTableFromFiles extends EDDTable{
         //remove any files in fileTable not in tFileTable  (i.e., the file was deleted)
         //I can step through fileTable and tFileTable since both sorted same way
         {
-            int nt  = tFileList.size();
             int nft = ftFileList.size();
             BitSet keepFTRow = new BitSet(nft);  //all false
             int nFilesMissing = 0;
@@ -878,17 +991,17 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 String fileS   = ftFileList.get(ftPo);
 
                 //skip through tDir until it is >= ftDir
-                while (tPo < nt && tDirIndex.get(tPo) < dirI)
+                while (tPo < ntft && tFileDirIndexPA.get(tPo) < dirI)
                     tPo++;
 
                 //if dirs match, skip through tFile until it is >= ftFile
                 boolean keep;
-                if (tPo < nt && tDirIndex.get(tPo) == dirI) {               
-                    while (tPo < nt && tDirIndex.get(tPo) == dirI && 
-                        tFileList.get(tPo).compareTo(fileS) < 0)
+                if (tPo < ntft && tFileDirIndexPA.get(tPo) == dirI) {               
+                    while (tPo < ntft && tFileDirIndexPA.get(tPo) == dirI && 
+                        tFileNamePA.get(tPo).compareTo(fileS) < 0)
                         tPo++;
-                    keep = tPo < nt && tDirIndex.get(tPo) == dirI &&
-                        tFileList.get(tPo).equals(fileS);
+                    keep = tPo < ntft && tFileDirIndexPA.get(tPo) == dirI &&
+                        tFileNamePA.get(tPo).equals(fileS);
                 } else {
                     keep = false;
                 }
@@ -909,11 +1022,11 @@ public abstract class EDDTableFromFiles extends EDDTable{
         }
 
         //make arrays to hold expected source add_offset, fillValue, missingValue, scale_factor, units
-        double expectedAddOffsetNEC[]    = new double[sourceDataNamesNEC.size()]; 
-        double expectedFillValueNEC[]    = new double[sourceDataNamesNEC.size()]; 
-        double expectedMissingValueNEC[] = new double[sourceDataNamesNEC.size()];
-        double expectedScaleFactorNEC[]  = new double[sourceDataNamesNEC.size()]; 
-        String expectedUnitsNEC[]        = new String[sourceDataNamesNEC.size()];
+        expectedAddOffsetNEC    = new double[sourceDataNamesNEC.size()]; 
+        expectedFillValueNEC    = new double[sourceDataNamesNEC.size()]; 
+        expectedMissingValueNEC = new double[sourceDataNamesNEC.size()];
+        expectedScaleFactorNEC  = new double[sourceDataNamesNEC.size()]; 
+        expectedUnitsNEC        = new String[sourceDataNamesNEC.size()];
         //initially filled with NaNs
         Arrays.fill(expectedAddOffsetNEC,    Double.NaN);
         Arrays.fill(expectedFillValueNEC,    Double.NaN);
@@ -927,7 +1040,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
             //find a file that exists
             String dir = dirList.get(ftDirIndex.get(f));
             String name = ftFileList.get(f);
-            long lastMod = getFileLastModified(dir, name);
+            long lastMod = getLastModified(dir, name);
             if (lastMod == 0 || ftLastMod.get(f) != lastMod) //unavailable or changed
                 continue;
 
@@ -936,7 +1049,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 Table table = getSourceDataFromFile(dir, name,
                     sourceDataNamesNEC, sourceDataTypesNEC, 
                     -1, Double.NaN, Double.NaN, 
-                    null, null, null, true, false);
+                    null, null, null, true, false); //getMetadata=true, getData=false
 
                 //get the expected attributes;     ok if NaN or null
                 for (int dvNec = 0; dvNec < sourceDataNamesNEC.size(); dvNec++) {
@@ -966,10 +1079,11 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 "  or none of the previously valid files were unchanged!");
 
         //make arrays to hold addAttributes fillValue, missingValue 
-        // (so fake mv can be converted to NaN, so source min and max can be determined exclusive of missingValue)
+        // (so fake mv can be converted to NaN, so source min and max can be 
+        //  determined exclusive of missingValue)
         //may be NaN
-        double addAttFillValueNEC[]    = new double[sourceDataNamesNEC.size()]; //filled with 0's!
-        double addAttMissingValueNEC[] = new double[sourceDataNamesNEC.size()];
+        addAttFillValueNEC    = new double[sourceDataNamesNEC.size()]; //filled with 0's!
+        addAttMissingValueNEC = new double[sourceDataNamesNEC.size()];
         Arrays.fill(addAttFillValueNEC, Double.NaN); //2014-07-21 now filled with NaN's  
         Arrays.fill(addAttMissingValueNEC, Double.NaN);
         for (int dvNec = 0; dvNec < sourceDataNamesNEC.size(); dvNec++) {
@@ -983,7 +1097,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
             }
         }
 
-        //update fileTable  by processing tFileList
+        //update fileTable  by processing tFileNamePA
         int fileListPo = 0;  //next one to look at
         int tFileListPo = 0; //next one to look at
         long lastModCumTime = 0;
@@ -992,9 +1106,9 @@ public abstract class EDDTableFromFiles extends EDDTable{
         long removeCumTime = 0;
         int nUnchanged = 0, nRemoved = 0, nDifferentModTime = 0, nNew = 0;
         elapsedTime = System.currentTimeMillis();
-        while (tFileListPo < tFileList.size()) {
-            int tDirI      = tDirIndex.get(tFileListPo);
-            String tFileS  = tFileList.get(tFileListPo);
+        while (tFileListPo < tFileNamePA.size()) {
+            int tDirI      = tFileDirIndexPA.get(tFileListPo);
+            String tFileS  = tFileNamePA.get(tFileListPo);
             int dirI       = fileListPo < ftFileList.size()? ftDirIndex.get(fileListPo) : Integer.MAX_VALUE;
             String fileS   = fileListPo < ftFileList.size()? ftFileList.get(fileListPo) : "\uFFFF";
             double lastMod = fileListPo < ftFileList.size()? ftLastMod.get(fileListPo)  : Double.MAX_VALUE;
@@ -1007,7 +1121,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
 
             //is tLastMod available for tFile?
             long lmcTime = System.currentTimeMillis();
-            long tLastMod = getFileLastModified(dirList.get(tDirI), tFileS);
+            long tLastMod = tFileLastModPA.get(tFileListPo);
             lastModCumTime += System.currentTimeMillis() - lmcTime;
             if (tLastMod == 0) { //0=trouble
                 nNoLastMod++;
@@ -1031,7 +1145,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
                         //remove it from cached info   (Yes, a file may be marked bad (recently) and so still be in cache)
                         nRemoved++;
                         removeCumTime -= System.currentTimeMillis();
-                        fileTable.removeRows(fileListPo, fileListPo + 1);
+                        fileTable.removeRow(fileListPo);
                         removeCumTime += System.currentTimeMillis();
                     }
                     //go on to next tFile
@@ -1063,7 +1177,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
                         dirList.get(dirI) + fileS);
                 nRemoved++;
                 removeCumTime -= System.currentTimeMillis();
-                fileTable.removeRows(fileListPo, fileListPo + 1);  //may be slow
+                fileTable.removeRow(fileListPo);  //may be slow
                 removeCumTime += System.currentTimeMillis();
                 //tFileListPo isn't incremented, so it will be considered again in next iteration
                 continue;
@@ -1085,153 +1199,18 @@ public abstract class EDDTableFromFiles extends EDDTable{
 
             //gather file's info
             try {
-                ftDirIndex.setInt(fileListPo, tDirI);
-                ftFileList.set(fileListPo, tFileS);
-                ftLastMod.set(fileListPo, tLastMod);
-                ftSortedSpacing.set(fileListPo, -1); //default
-
                 //read all of the data and metadata in the file
                 nReadFile++;
                 long rfcTime = System.currentTimeMillis();
                 Table tTable = getSourceDataFromFile(dirList.get(tDirI), tFileS, 
                     sourceDataNamesNEC, sourceDataTypesNEC, 
                     -1, Double.NaN, Double.NaN, 
-                    null, null, null, true, false);
+                    null, null, null, true, true); //getMetadata, getData
                 readFileCumTime += System.currentTimeMillis() - rfcTime;
 
-                //get min,max for dataVariables
-                int tTableNCols = tTable.nColumns();
-                for (int dv = 0; dv < ndv; dv++) {
-                    fileTable.setStringData(dv0 + dv*3 + 0, fileListPo, ""); //numeric will be NaN
-                    fileTable.setStringData(dv0 + dv*3 + 1, fileListPo, "");
-                    fileTable.setStringData(dv0 + dv*3 + 2, fileListPo, "");
-
-                    //columnNameForExtract  (isn't in sourceFile)
-                    if (dv == extractedColNameIndex) {
-                        String eName = tFileS;
-                        Matcher m;
-                        if (preExtractPattern != null) {
-                            m = preExtractPattern.matcher(eName);
-                            if (m.find()) {
-                                eName = eName.substring(0, m.start()) + eName.substring(m.end());
-                                if (debugMode) String2.log(">  found preExtract, result=" + eName);
-                            }
-                        }
-                        if (postExtractPattern != null) {
-                            m = postExtractPattern.matcher(eName);
-                            if (m.find()) {
-                                eName = eName.substring(0, m.start()) + eName.substring(m.end());
-                                if (debugMode) String2.log(">  found postExtract, result=" + eName);
-                            }
-                        }
-                        m = extractPattern.matcher(eName);
-                        if (m.find()) {
-                            eName = eName.substring(m.start(), m.end());
-                            if (debugMode) String2.log(">  found extract, result=" + eName);
-                        }
-                        if (debugMode) String2.log(">final result=" + eName);
-
-                        fileTable.setStringData(dv0 + dv*3 + 0, fileListPo, eName);
-                        fileTable.setStringData(dv0 + dv*3 + 1, fileListPo, eName);
-                        fileTable.setIntData(   dv0 + dv*3 + 2, fileListPo, eName.length() == 0? 1 : 0);  //hasNaN
-                        continue;
-                    }
-
-                    //the column isn't in this source file
-                    String dvName = sourceDataNames.get(dv);
-                    int c = tTable.findColumnNumber(dvName);
-                    if (c < 0) {
-                        //String2.log("  " + dvName + " not in source file");
-                        continue;
-                    }
-
-                    //attributes are as expected???
-                    int dvNEC = sourceDataNamesNEC.indexOf(dvName);
-                    Attributes dvSourceAtts = tTable.columnAttributes(c);
-                    double tAddOffset    = dvSourceAtts.getDouble("add_offset");
-                    double tFillValue    = dvSourceAtts.getDouble("_FillValue");
-                    double tMissingValue = dvSourceAtts.getDouble("missing_value");
-                    double tScaleFactor  = dvSourceAtts.getDouble("scale_factor");
-                    String tUnits        = dvSourceAtts.getString("units");
-                    if (Double.isNaN(expectedAddOffsetNEC[   dvNEC])) expectedAddOffsetNEC[   dvNEC] = tAddOffset;
-                    if (Double.isNaN(expectedFillValueNEC[   dvNEC])) expectedFillValueNEC[   dvNEC] = tFillValue;
-                    if (Double.isNaN(expectedMissingValueNEC[dvNEC])) expectedMissingValueNEC[dvNEC] = tMissingValue;
-                    if (Double.isNaN(expectedScaleFactorNEC[ dvNEC])) expectedScaleFactorNEC[ dvNEC] = tScaleFactor;
-                    if (expectedUnitsNEC[dvNEC] == null) expectedUnitsNEC[dvNEC] = tUnits;
-                    String oNEe = " sourceAttribute value observed!=expected for sourceName=" + dvName + ".";
-                    //if null, skip test,   since a given file may not have some variable
-                    //unfortunate: it is also possible that this file has the variable, but not this attribute
-                    //   but in that case, reasonable to pretend it should have the expected attribute value.
-                    Test.ensureEqual(tAddOffset,        expectedAddOffsetNEC[   dvNEC], "add_offset" + oNEe);
-                    if (!Double.isNaN(tFillValue))
-                        Test.ensureEqual(tFillValue,    expectedFillValueNEC[   dvNEC], "_FillValue" + oNEe);
-                    if (!Double.isNaN(tMissingValue))
-                        Test.ensureEqual(tMissingValue, expectedMissingValueNEC[dvNEC], "missing_value" + oNEe);
-                    Test.ensureEqual(tScaleFactor,      expectedScaleFactorNEC[ dvNEC], "scale_factor" + oNEe);
-                    if (!EDUnits.udunitsAreEquivalent(tUnits, expectedUnitsNEC[dvNEC]))
-                                     Test.ensureEqual(tUnits, expectedUnitsNEC[dvNEC], "units" + oNEe);
-
-                    //convert missing_value and _FillValue to NaN
-                    //doubles? type not important here, tTable is temporary
-                    //others attributes (e.g., scale, add_offset, units) not needed for calculation of min max below
-                    //(if data is packed, missing_value and _FillValue are packed, too)
-                    if (!Double.isNaN(addAttFillValueNEC[   dvNEC])) dvSourceAtts.set("_FillValue",    addAttFillValueNEC[   dvNEC]);
-                    if (!Double.isNaN(addAttMissingValueNEC[dvNEC])) dvSourceAtts.set("missing_value", addAttMissingValueNEC[dvNEC]);
-                    tTable.convertToStandardMissingValues(c);
-
-                    //process source min and max for this column's data
-                    PrimitiveArray pa = tTable.getColumn(c);
-                    if (pa instanceof StringArray) {
-                        //get [0]=n,[1]=min,[2]=max (of non-null and non-"") Strings
-                        String nMinMax[] = ((StringArray)pa).getNMinMax(); 
-                        int tn = String2.parseInt(nMinMax[0]);
-                        if (tn > 0) {
-                            fileTable.setStringData(dv0 + dv*3 + 0, fileListPo, nMinMax[1]);  
-                            fileTable.setStringData(dv0 + dv*3 + 1, fileListPo, nMinMax[2]);
-                        }
-                        fileTable.setIntData(dv0 + dv*3 + 2, fileListPo, tn < pa.size()? 1 : 0); //hasNaN
-                    } else {
-                        double stats[] = pa.calculateStats();
-                        int tn = Math2.roundToInt(stats[PrimitiveArray.STATS_N]);
-                        //if (dvName.equals("bucket_sal")) String2.log("  " + dvName + "  stats=" + String2.toCSSVString(stats));
-                        fileTable.setIntData(dv0 + dv*3 + 2, fileListPo, tn < pa.size()? 1 : 0); //hasNaN
-                        if (tn > 0) {
-                            fileTable.setDoubleData(dv0 + dv*3 + 0, fileListPo, stats[PrimitiveArray.STATS_MIN]);
-                            fileTable.setDoubleData(dv0 + dv*3 + 1, fileListPo, stats[PrimitiveArray.STATS_MAX]);
-                            if (dv == sortedDVI) {
-                                String ts = pa.isAscending();
-                                double tSortedSpacing;
-                                if (tn > 1 && ts.length() == 0) {
-                                    ts = pa.isEvenlySpaced();
-                                    if (ts.length() == 0) {
-                                        tSortedSpacing = 
-                                            (stats[PrimitiveArray.STATS_MAX] -
-                                             stats[PrimitiveArray.STATS_MIN]) / (tn - 1);
-                                        if (logThis)
-                                            String2.log(tFileListPo + " " + sortedColumnSourceName + 
-                                                " is evenly spaced=" + tSortedSpacing);
-                                    } else { 
-                                        if (logThis)
-                                            String2.log(tFileListPo + " " + sortedColumnSourceName + 
-                                                " isAscending but " + ts);
-                                        tSortedSpacing = 0;
-                                    }
-                                } else {
-                                    if (logThis) 
-                                        String2.log(tFileListPo + " " + 
-                                            sortedColumnSourceName + " " + ts);
-                                    tSortedSpacing = -1;
-                                }
-                                ftSortedSpacing.set(fileListPo, tSortedSpacing);
-                            }
-                        }
-                    }
-                    //if (logThis)
-                    //    String2.log(dvName + 
-                    //        " min="    + fileTable.getStringData(dv0 + dv*3 + 0, fileListPo) + 
-                    //        " max="    + fileTable.getStringData(dv0 + dv*3 + 1, fileListPo)); 
-                    //        " hasNaN=" + fileTable.getIntData(   dv0 + dv*3 + 2, fileListPo)); 
-                }
+                //set the values on the fileTable row     throws throwable
+                setFileTableRow(fileTable, fileListPo, tDirI, tFileS, tLastMod, 
+                    tTable, logThis? tFileListPo : -1);
                 tFileListPo++;
                 fileListPo++;
 
@@ -1243,7 +1222,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
                 String2.log(msg);
                 nRemoved++;
                 removeCumTime -= System.currentTimeMillis();
-                fileTable.removeRows(fileListPo, fileListPo + 1);
+                fileTable.removeRow(fileListPo);
                 removeCumTime += System.currentTimeMillis();
                 tFileListPo++;
                 if (System.currentTimeMillis() - tLastMod > 30 * Calendar2.MILLIS_PER_MINUTE) 
@@ -1253,6 +1232,8 @@ public abstract class EDDTableFromFiles extends EDDTable{
         }
         if (verbose) String2.log("fileTable updated; time=" + 
             (System.currentTimeMillis() - elapsedTime) + "ms");
+        Test.ensureTrue(fileTable.nRows() > 0, 
+            "No valid data files were found. See log.txt for details."); 
 
         //sort fileTable by sortFilesBySourceNames
         if (tSortFilesBySourceNames != null &&
@@ -1264,7 +1245,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
                     continue;
                 int dv = sourceDataNames.indexOf(sortBy[i]);
                 if (dv < 0) 
-                    throw new RuntimeException("Unknown sortFilesBySourceNames name#" + 
+                    throw new RuntimeException("Unknown <sortFilesBySourceNames> name#" + 
                         i + "=\"" + sortBy[i] +
                         "\"\nsourceDataNames=" + sourceDataNames.toString());
                 sortColumns.add(dv0 + dv*3 + 0); //the dataVariable's min value
@@ -1272,131 +1253,31 @@ public abstract class EDDTableFromFiles extends EDDTable{
             if (sortColumns.size() > 0) {
                 //String2.log("first 10 rows of fileTable before sortFilesBySourceNames:\n" +
                 //    fileTable.toString("row", 10));
-                boolean sortAscending[] = new boolean[sortColumns.size()];
-                Arrays.fill(sortAscending, true);
+                fileTableSortColumns = sortColumns.toArray();
+                fileTableSortAscending = new boolean[sortColumns.size()];
+                Arrays.fill(fileTableSortAscending, true);
                 elapsedTime = System.currentTimeMillis();
-                fileTable.sort(sortColumns.toArray(), sortAscending); 
+                fileTable.sort(fileTableSortColumns, fileTableSortAscending); 
                 if (debugMode) 
-                    String2.log("time to sort fileTable by sortFilesBySourceNames = " + 
+                    String2.log("time to sort fileTable by <sortFilesBySourceNames> = " + 
                         (System.currentTimeMillis() - elapsedTime) + "ms");  
             }
         }
-        if (reallyVerbose) String2.log("first rows of fileTable:\n" + fileTable.toString("row", debugMode? 100 : 10));
+        if (reallyVerbose) String2.log("fileTable.nRows=" + fileTable.nRows() + 
+            ".  The first few rows are:\n" + fileTable.toString("row", debugMode? 100 : 10));
 
         //make combined minMaxTable    one col per dv; row0=min, row1=max, row2=hasNaN
         //it holds raw source values -- scale_factor and add_offset haven't been applied
-        minMaxTable = new Table();
-        for (int dv = 0; dv < ndv; dv++) {
-            //String2.log("dv=" + dv + " " + sourceDataTypes[dv]);
-            PrimitiveArray minMaxPa = 
-                PrimitiveArray.factory(PrimitiveArray.elementStringToClass(sourceDataTypes[dv]), 3, false);
-            minMaxPa.addString(""); //min    initially "" or NaN
-            minMaxPa.addString(""); //max    initially "" or NaN
-            minMaxPa.addString(""); //hasNaN initially NaN
-            minMaxTable.addColumn(safeSourceDataNames.get(dv), minMaxPa);
-
-            //calculate min of the min values
-            PrimitiveArray pa = fileTable.getColumn(dv0 + dv*3 + 0);
-            //String2.log(sourceDataNames.get(dv) + " minCol=" + pa.toString());
-            String mm = null;
-            if (sourceDataTypes[dv].equals("String")) {
-                //for non="" strings
-                String nMinMax[] = ((StringArray)pa).getNMinMax(); //[0]=n, [1]=min, [2]=max
-                int tn = String2.parseInt(nMinMax[0]);
-                if (tn > 0) 
-                    minMaxPa.setString(0, mm = nMinMax[1]);
-                //else leave min as "" (mv)
-            } else {
-                double stats[] = pa.calculateStats();
-                if (stats[PrimitiveArray.STATS_N] > 0) {
-                    double tMin = stats[PrimitiveArray.STATS_MIN];
-                    minMaxPa.setDouble(0, tMin);
-                    mm = "" + tMin;
-                }
-            }
-            if (reallyVerbose && mm != null) {
-                int row = pa.indexOf(mm);
-                if (row >= 0) 
-                    String2.log(sourceDataNames.get(dv) + " minMin=" + mm + 
-                        " file=" + dirList.get(ftDirIndex.get(row)) + ftFileList.get(row));
-            }
-
-            //calculate max of the max values
-            pa = fileTable.getColumn(dv0 + dv*3 + 1);
-            //String2.log(sourceDataNames.get(dv) + " maxCol=" + pa.toString());
-            mm = null;
-            if (sourceDataTypes[dv].equals("String")) {
-                String nMinMax[] = ((StringArray)pa).getNMinMax();
-                int tn = String2.parseInt(nMinMax[0]);
-                if (tn > 0) 
-                    minMaxPa.setString(1, mm = nMinMax[2]);
-                //else leave max as "" (mv)
-            } else {
-                double stats[] = pa.calculateStats();
-                if (stats[PrimitiveArray.STATS_N] > 0) {
-                    double tMax = stats[PrimitiveArray.STATS_MAX];
-                    minMaxPa.setDouble(1, tMax);
-                    mm = "" + tMax;
-                }
-            }
-            if (reallyVerbose && mm != null) {
-                int row = pa.indexOf(mm);
-                if (row >= 0) 
-                    String2.log(sourceDataNames.get(dv) + " maxMax=" + mm + 
-                        " file=" + dirList.get(ftDirIndex.get(row)) + ftFileList.get(row));
-            }
-
-            //calculate hasNaN
-            pa = fileTable.getColumn(dv0 + dv*3 + 2);
-            minMaxPa.setInt(2, pa.indexOf("1") >= 0? 1 : 0); //does any file hasNaN?
-        }
-        if (verbose) String2.log("minMaxTable=\n" + minMaxTable.toString()); //it's always small
-
-        //prepare email with badFile info
-        StringBuilder emailSB = new StringBuilder();
-        emailSB.append(badFileMapToString(badFileMap, dirList));
+        Table tMinMaxTable = makeMinMaxTable(dirList, fileTable);
 
         //store dirTable, fileTable, badFileMap
-        //*** It is important that the 3 files are swapped into place as atomically as possible
-        //So save all first, then rename all.
-        int random = Math2.random(Integer.MAX_VALUE);
-        String badFilesFileName = badFileMapFileName();
-        dirTable.saveAsFlatNc(  dirTableFileName + random, "row"); //exception stops constructor
-        fileTable.saveAsFlatNc(fileTableFileName + random, "row");
-        if (!badFileMap.isEmpty()) //only create badMapFile if there are some bad files
-            writeBadFileMap(    badFilesFileName + random, badFileMap);
-        try {
-            //if Windows, give OS file system time to settle
-            if (String2.OSIsWindows) {
-                if (verbose) String2.log("  Since OSIsWindows, give OS time to settle");
-                Math2.gc(2000); //in constructor, give Windows time to settle
-            }
+        //and make related changes as quickly/atomically as possible
+        saveDirTableFileTableBadFiles(dirTable, fileTable, badFileMap); //throws Throwable
+        minMaxTable = tMinMaxTable;
 
-            //Integrity of these files is important. Rename is less likely to have error.
-            if (badFileMap.isEmpty())
-                File2.delete(badFilesFileName);
-            else File2.rename(badFilesFileName + random,  badFilesFileName);
-            File2.rename(     dirTableFileName + random,  dirTableFileName);
-            //do fileTable last: more changes, more important
-            File2.rename(    fileTableFileName + random, fileTableFileName); 
-            if (reallyVerbose) String2.log("fileTable(first 5 rows)=\n" + fileTable.toString("rows", 5));
-        } catch (Throwable t) {
-            msg = "Exception while saving dirTable, fileTable, or badFiles:\n" + 
-                MustBe.throwableToString(t);
-            String2.log(msg);
-            emailSB.append(msg + "\n\n");
-            EDStatic.email(EDStatic.emailEverythingToCsv, errorInMethod, emailSB.toString());
-
-            File2.delete( dirTableFileName + random);
-            File2.delete(fileTableFileName + random);
-            File2.delete( badFilesFileName + random);
-
-            throw t;
-        }
-
-        msg = "\n  tFileList.size()=" + tFileList.size() + 
+        msg = "\n  tFileNamePA.size()=" + tFileNamePA.size() + 
                  " lastModCumTime=" + Calendar2.elapsedTimeString(lastModCumTime) + 
-                 " avg=" + (lastModCumTime / Math.max(1, tFileList.size())) + "ms" +
+                 " avg=" + (lastModCumTime / Math.max(1, tFileNamePA.size())) + "ms" +
             "\n  dirTable.nRows()=" + dirTable.nRows() +
             "\n  fileTable.nRows()=" + fileTable.nRows() + 
             "\n    fileTableInMemory=" + fileTableInMemory + 
@@ -1408,23 +1289,21 @@ public abstract class EDDTableFromFiles extends EDDTable{
                    " readFileCumTime=" + Calendar2.elapsedTimeString(readFileCumTime) +
                    " avg=" + (readFileCumTime / Math.max(1,nReadFile)) + "ms";
         if (verbose) String2.log(msg);
-        if (emailSB.length() > 0)
-            emailSB.append(msg + "\n\n");
+
         if (nReadFile > 0 || nRemoved > 0) 
             filesChanged = 
                 "The list of aggregated files changed:\n" +
                 "  The number of new or changed data files that were read: " + nReadFile + ".\n" +
                 "  The number of files that were removed from the file list: " + nRemoved + ".\n" +
-                "  The total number of good files is now " + tFileList.size() + ".\n";
+                "  The total number of good files is now " + tFileNamePA.size() + ".\n";
 
         //send email with bad file info
-        if (emailSB.length() > 0) 
+        if (!badFileMap.isEmpty()) {
+            StringBuilder emailSB = new StringBuilder();
+            emailSB.append(badFileMapToString(badFileMap, dirList));
+            emailSB.append(msg + "\n\n");
             EDStatic.email(EDStatic.emailEverythingToCsv, errorInMethod, emailSB.toString());
-        emailSB = null; //allow gc
-
-        //no valid files?
-        if (fileTable.nRows() == 0) 
-            throw new Exception("No valid files were found.");
+        }
 
         //try to open metadataFrom FIRST|LAST file (based on lastModifiedTime) to get source metadata
         int nMinMaxIndex[] = ftLastMod.getNMinMaxIndex();
@@ -1529,14 +1408,6 @@ public abstract class EDDTableFromFiles extends EDDTable{
                         tSourceType); //this constructor gets source / sets destination actual_range
                     timeIndex = dv;
 
-                    //if time max is in last 24hrs, set to NaN  (i.e. Now)
-                    double maxTime = dataVariables[dv].destinationMax();
-                    if (!Double.isNaN(maxTime) && 
-                        System.currentTimeMillis() / 1000 - maxTime < 2 * Calendar2.SECONDS_PER_DAY) {
-                        if (verbose) 
-                            String2.log("maxTime is within last 48hrs, so setting maxTime to NaN (i.e., Now).");
-                        dataVariables[dv].setDestinationMax(Double.NaN);
-                    }
                 } else {              
                     //it's a timeStamp variable 
                     dataVariables[dv] = new EDVTimeStamp(tSourceName, tDestName, 
@@ -1658,6 +1529,12 @@ public abstract class EDDTableFromFiles extends EDDTable{
             }
         } //end gathering sosOfferings info
 
+        //accessibleViaFiles
+        if (EDStatic.filesActive && tAccessibleViaFiles) {
+            accessibleViaFilesDir = fileDir;
+            accessibleViaFilesRegex = fileNameRegex;
+            accessibleViaFilesRecursive = recursive;
+        }
 
         //ensure the setup is valid
         ensureValid();
@@ -1677,7 +1554,602 @@ public abstract class EDDTableFromFiles extends EDDTable{
             (reallyVerbose? "\n" + toString() : "") +
             "\n*** EDDTableFromFiles " + datasetID + " constructor finished. TIME=" + 
             (System.currentTimeMillis() - constructionStartMillis) + "\n"); 
+    }
 
+    /**
+     * This extracts data from the fileName.
+     * 
+     * @param fileName
+     * @return the extracted String 
+     */
+    protected String extractFromFileName(String fileName) {
+
+        String eName = fileName;
+        Matcher m;
+        if (preExtractPattern != null) {
+            m = preExtractPattern.matcher(eName);
+            if (m.find()) {
+                eName = eName.substring(0, m.start()) + eName.substring(m.end());
+                if (debugMode) String2.log(">  extractFromFileName found preExtract, result=" + eName);
+            }
+        }
+        if (postExtractPattern != null) {
+            m = postExtractPattern.matcher(eName);
+            if (m.find()) {
+                eName = eName.substring(0, m.start()) + eName.substring(m.end());
+                if (debugMode) String2.log(">  extractFromFileName postExtract, result=" + eName);
+            }
+        }
+        m = extractPattern.matcher(eName);
+        if (m.find()) {
+            eName = eName.substring(m.start(), m.end());
+            if (debugMode) String2.log(">  extractFromFileName found extract, result=" + eName);
+        }
+        if (debugMode) String2.log(">  extractFromFileName converted " + fileName + " -> " + eName);
+        return eName;
+    }
+
+    /** 
+     * This is used by the constructor and lowUpdate to ensure that a new 
+     * file's attributes are compatible with the expected attributes.
+     *
+     * @param dvName dataVariable sourceName
+     * @param dvNEC number
+     * @param dvSourceAtts for the variable in the new file
+     * @throws RuntimeException if not compatible
+     */
+    protected void testIfNewFileAttsAreCompatible(String dvName, int dvNEC, 
+        Attributes dvSourceAtts) {
+
+        double tAddOffset    = dvSourceAtts.getDouble("add_offset");
+        double tFillValue    = dvSourceAtts.getDouble("_FillValue");
+        double tMissingValue = dvSourceAtts.getDouble("missing_value");
+        double tScaleFactor  = dvSourceAtts.getDouble("scale_factor");
+        String tUnits        = dvSourceAtts.getString("units");
+        if (Double.isNaN(expectedAddOffsetNEC[   dvNEC])) 
+                         expectedAddOffsetNEC[   dvNEC] = tAddOffset;
+        if (Double.isNaN(expectedFillValueNEC[   dvNEC])) 
+                         expectedFillValueNEC[   dvNEC] = tFillValue;
+        if (Double.isNaN(expectedMissingValueNEC[dvNEC])) 
+                         expectedMissingValueNEC[dvNEC] = tMissingValue;
+        if (Double.isNaN(expectedScaleFactorNEC[ dvNEC])) 
+                         expectedScaleFactorNEC[ dvNEC] = tScaleFactor;
+        if (expectedUnitsNEC[dvNEC] == null) expectedUnitsNEC[dvNEC] = tUnits;
+        String oNEe = " sourceAttribute value observed!=expected for sourceName=" + dvName + ".";
+        //if null, skip test,   since a given file may not have some variable
+        //unfortunate: it is also possible that this file has the variable, but not this attribute
+        //   but in that case, reasonable to pretend it should have the expected attribute value.
+        Test.ensureEqual(tAddOffset,        expectedAddOffsetNEC[   dvNEC], "add_offset" + oNEe);
+        if (!Double.isNaN(tFillValue))
+            Test.ensureEqual(tFillValue,    expectedFillValueNEC[   dvNEC], "_FillValue" + oNEe);
+        if (!Double.isNaN(tMissingValue))
+            Test.ensureEqual(tMissingValue, expectedMissingValueNEC[dvNEC], "missing_value" + oNEe);
+        Test.ensureEqual(tScaleFactor,      expectedScaleFactorNEC[ dvNEC], "scale_factor" + oNEe);
+        if (!EDUnits.udunitsAreEquivalent(tUnits, expectedUnitsNEC[dvNEC]))
+                         Test.ensureEqual(tUnits, expectedUnitsNEC[dvNEC], "units" + oNEe);
+    }
+
+
+    /**
+     * This sets the values on a local fileTable row.
+     * 
+     * @param tTable table (with source atts and data) from a data file
+     * @param logAsRowNumber the fileTable row number to be printed in log messages,
+     *    or -1 for no log messages
+     * @throws throwable if trouble
+     */
+    protected void setFileTableRow(Table fileTable, int fileListPo,
+        int tDirI, String tFileS, double tLastMod, Table tTable, int logAsRowNumber) {
+
+        ShortArray  ftDirIndex      =  (ShortArray)fileTable.getColumn(FT_DIR_INDEX_COL);      //0
+        StringArray ftFileList      = (StringArray)fileTable.getColumn(FT_FILE_LIST_COL);      //1
+        DoubleArray ftLastMod       = (DoubleArray)fileTable.getColumn(FT_LAST_MOD_COL);       //2
+        DoubleArray ftSortedSpacing = (DoubleArray)fileTable.getColumn(FT_SORTED_SPACING_COL); //3
+
+        ftDirIndex.setInt(fileListPo, tDirI);
+        ftFileList.set(fileListPo, tFileS);
+        ftLastMod.set(fileListPo, tLastMod);
+        ftSortedSpacing.set(fileListPo, -1); //default, usually set below
+
+        //get min,max for dataVariables
+        int tTableNCols = tTable.nColumns();
+        int ndv = sourceDataTypes.length;
+        for (int dv = 0; dv < ndv; dv++) {
+            fileTable.setStringData(dv0 + dv*3 + 0, fileListPo, ""); //numeric will be NaN
+            fileTable.setStringData(dv0 + dv*3 + 1, fileListPo, "");
+            fileTable.setStringData(dv0 + dv*3 + 2, fileListPo, ""); //hasNaN unspecified
+
+            //columnNameForExtract  (isn't in sourceFile)
+            if (dv == extractedColNameIndex) {
+                String eName = extractFromFileName(tFileS);
+                fileTable.setStringData(dv0 + dv*3 + 0, fileListPo, eName);
+                fileTable.setStringData(dv0 + dv*3 + 1, fileListPo, eName);
+                fileTable.setIntData(   dv0 + dv*3 + 2, fileListPo, eName.length() == 0? 1 : 0);  //hasNaN
+                continue;
+            }
+
+            //skip this variable if not in this source file 
+            //(this skips if fixed value col, too)
+            String dvName = sourceDataNames.get(dv);
+            int dvNEC = sourceDataNamesNEC.indexOf(dvName);
+            int c = tTable.findColumnNumber(dvName);
+            if (dvNEC < 0 || c < 0) {
+                //String2.log("  " + dvName + " not in source file");
+                continue;
+            }
+
+            //attributes are as expected???
+            Attributes dvSourceAtts = tTable.columnAttributes(c);
+            testIfNewFileAttsAreCompatible( //throws exception if trouble
+                dvName, dvNEC, dvSourceAtts);
+
+            //convert missing_value and _FillValue to NaN
+            //doubles? type not important here, tTable is temporary
+            //others attributes (e.g., scale, add_offset, units) not needed for calculation of min max below
+            //(if data is packed, missing_value and _FillValue are packed, too)
+            if (!Double.isNaN(addAttFillValueNEC[   dvNEC])) dvSourceAtts.set("_FillValue",    addAttFillValueNEC[   dvNEC]);
+            if (!Double.isNaN(addAttMissingValueNEC[dvNEC])) dvSourceAtts.set("missing_value", addAttMissingValueNEC[dvNEC]);
+            tTable.convertToStandardMissingValues(c);
+
+            //process source min and max for this column's data
+            PrimitiveArray pa = tTable.getColumn(c);
+            if (pa instanceof StringArray) {
+                //get [0]=n,[1]=min,[2]=max (of non-null and non-"") Strings
+                String nMinMax[] = ((StringArray)pa).getNMinMax(); 
+                int tn = String2.parseInt(nMinMax[0]);
+                if (tn > 0) {
+                    fileTable.setStringData(dv0 + dv*3 + 0, fileListPo, nMinMax[1]);  
+                    fileTable.setStringData(dv0 + dv*3 + 1, fileListPo, nMinMax[2]);
+                }
+                fileTable.setIntData(dv0 + dv*3 + 2, fileListPo, tn < pa.size()? 1 : 0); //hasNaN
+            } else {
+                double stats[] = pa.calculateStats();
+                int tn = Math2.roundToInt(stats[PrimitiveArray.STATS_N]);
+                //if (dvName.equals("bucket_sal")) String2.log("  " + dvName + "  stats=" + String2.toCSSVString(stats));
+                fileTable.setIntData(dv0 + dv*3 + 2, fileListPo, tn < pa.size()? 1 : 0); //hasNaN
+                if (tn > 0) {
+                    fileTable.setDoubleData(dv0 + dv*3 + 0, fileListPo, stats[PrimitiveArray.STATS_MIN]);
+                    fileTable.setDoubleData(dv0 + dv*3 + 1, fileListPo, stats[PrimitiveArray.STATS_MAX]);
+                    if (dv == sortedDVI) {
+                        String ts = pa.isAscending();
+                        double tSortedSpacing;
+                        if (tn > 1 && ts.length() == 0) {
+                            ts = pa.isEvenlySpaced();
+                            if (ts.length() == 0) {
+                                tSortedSpacing = 
+                                    (stats[PrimitiveArray.STATS_MAX] -
+                                     stats[PrimitiveArray.STATS_MIN]) / (tn - 1);
+                                if (logAsRowNumber >= 0)
+                                    String2.log(logAsRowNumber + " " + sortedColumnSourceName + 
+                                        " is evenly spaced=" + tSortedSpacing);
+                            } else { 
+                                if (logAsRowNumber >= 0)
+                                    String2.log(logAsRowNumber + " " + sortedColumnSourceName + 
+                                        " isAscending but " + ts);
+                                tSortedSpacing = 0;
+                            }
+                        } else {
+                            if (logAsRowNumber >= 0) 
+                                String2.log(logAsRowNumber + " " + 
+                                    sortedColumnSourceName + " " + ts);
+                            tSortedSpacing = -1;
+                        }
+                        ftSortedSpacing.set(fileListPo, tSortedSpacing);
+                    }
+                }
+            }
+            //if (logThis)
+            //    String2.log(dvName + 
+            //        " min="    + fileTable.getStringData(dv0 + dv*3 + 0, fileListPo) + 
+            //        " max="    + fileTable.getStringData(dv0 + dv*3 + 1, fileListPo)); 
+            //        " hasNaN=" + fileTable.getIntData(   dv0 + dv*3 + 2, fileListPo)); 
+        }
+    }
+
+    /** 
+     * This is used to make a new minMaxTable just before saving a changed fileTable.
+     *
+     * @param dirList the up-to-date dirList
+     * @param fileTable the new fileTable
+     * @return the new minMaxTable
+     */     
+    protected Table makeMinMaxTable(StringArray dirList, Table fileTable) {
+
+        ShortArray  ftDirIndex =  (ShortArray)fileTable.getColumn(FT_DIR_INDEX_COL); //0
+        StringArray ftFileList = (StringArray)fileTable.getColumn(FT_FILE_LIST_COL); //1
+
+        Table minMaxTable = new Table();
+        int ndv = sourceDataTypes.length;
+        for (int dv = 0; dv < ndv; dv++) {
+            //String2.log("dv=" + dv + " " + sourceDataTypes[dv]);
+            PrimitiveArray minMaxPa = 
+                PrimitiveArray.factory(PrimitiveArray.elementStringToClass(sourceDataTypes[dv]), 3, false);
+            minMaxPa.addString(""); //min    initially "" or NaN
+            minMaxPa.addString(""); //max    initially "" or NaN
+            minMaxPa.addString(""); //hasNaN initially NaN
+            minMaxTable.addColumn(safeSourceDataNames.get(dv), minMaxPa);
+
+            //calculate min of the min values
+            PrimitiveArray pa = fileTable.getColumn(dv0 + dv*3 + 0);
+            //String2.log(sourceDataNames.get(dv) + " minCol=" + pa.toString());
+            String mm = null;
+            if (sourceDataTypes[dv].equals("String")) {
+                //for non="" strings
+                String nMinMax[] = ((StringArray)pa).getNMinMax(); //[0]=n, [1]=min, [2]=max
+                int tn = String2.parseInt(nMinMax[0]);
+                if (tn > 0) 
+                    minMaxPa.setString(0, mm = nMinMax[1]);
+                //else leave min as "" (mv)
+            } else {
+                double stats[] = pa.calculateStats();
+                if (stats[PrimitiveArray.STATS_N] > 0) {
+                    double tMin = stats[PrimitiveArray.STATS_MIN];
+                    minMaxPa.setDouble(0, tMin);
+                    mm = "" + tMin;
+                }
+            }
+            if (reallyVerbose && mm != null) {
+                int row = pa.indexOf(mm);
+                if (row >= 0) 
+                    String2.log(sourceDataNames.get(dv) + " minMin=" + mm + 
+                        " file=" + dirList.get(ftDirIndex.get(row)) + ftFileList.get(row));
+            }
+
+            //calculate max of the max values
+            pa = fileTable.getColumn(dv0 + dv*3 + 1);
+            //String2.log(sourceDataNames.get(dv) + " maxCol=" + pa.toString());
+            mm = null;
+            if (sourceDataTypes[dv].equals("String")) {
+                String nMinMax[] = ((StringArray)pa).getNMinMax();
+                int tn = String2.parseInt(nMinMax[0]);
+                if (tn > 0) 
+                    minMaxPa.setString(1, mm = nMinMax[2]);
+                //else leave max as "" (mv)
+            } else {
+                double stats[] = pa.calculateStats();
+                if (stats[PrimitiveArray.STATS_N] > 0) {
+                    double tMax = stats[PrimitiveArray.STATS_MAX];
+                    minMaxPa.setDouble(1, tMax);
+                    mm = "" + tMax;
+                }
+            }
+            if (reallyVerbose && mm != null) {
+                int row = pa.indexOf(mm);
+                if (row >= 0) 
+                    String2.log(sourceDataNames.get(dv) + " maxMax=" + mm + 
+                        " file=" + dirList.get(ftDirIndex.get(row)) + ftFileList.get(row));
+            }
+
+            //calculate hasNaN
+            pa = fileTable.getColumn(dv0 + dv*3 + 2);
+            minMaxPa.setInt(2, pa.indexOf("1") >= 0? 1 : 0); //does any file hasNaN?
+        }
+        if (verbose) String2.log("minMaxTable=\n" + minMaxTable.toString()); //it's always small
+        return minMaxTable;
+    }
+
+    /**
+     * This does the actual incremental update of this dataset 
+     * (i.e., for real time datasets).
+     * 
+     * <p>Concurrency issue: The changes here are first prepared and 
+     * then applied as quickly as possible (but not atomically!).
+     * There is a chance that another thread will get inconsistent information
+     * (from some things updated and some things not yet updated).
+     * But I don't want to synchronize all activities of this class.
+     *
+     * @param msg the start of a log message, e.g., "update(thisDatasetID): ".
+     * @param startUpdateMillis the currentTimeMillis at the start of this update.
+     * @return true if a change was made
+     * @throws Throwable if serious trouble. 
+     *   For simple failures, this writes info to log.txt but doesn't throw an exception.
+     *   If the dataset has changed in a serious / incompatible way and needs a full
+     *     reload, this throws WaitThenTryAgainException 
+     *     (usually, catcher calls LoadDatasets.tryToUnload(...) and EDD.requestReloadASAP(tDatasetID))..
+     *   If the changes needed are probably fine but are too extensive to deal with here, 
+     *     this calls EDD.requestReloadASAP(tDatasetID) and returns without doing anything.
+     */
+    public boolean lowUpdate(String msg, long startUpdateMillis) throws Throwable {
+
+        //Most of this lowUpdate code is identical in EDDGridFromFiles and EDDTableFromFiles
+
+        //get the file events
+        ArrayList<WatchEvent.Kind> eventKinds = new ArrayList();
+        StringArray contexts  = new StringArray();
+        int nEvents = watchDirectory.getEvents(eventKinds, contexts);
+        if (nEvents == 0) {
+            if (verbose) String2.log(msg + "found 0 events.");
+            return false; //no changes
+        }
+
+        //if any OVERFLOW, reload this dataset
+        for (int evi = 0; evi < nEvents; evi++) {
+            if (eventKinds.get(evi) == WatchDirectory.OVERFLOW) {
+                if (verbose) String2.log(msg +  
+                    "caught OVERFLOW event in " + contexts.get(evi) + 
+                    ", so I called requestReloadASAP() instead of making changes here."); 
+                requestReloadASAP();
+                return false; 
+            }
+        }
+
+        //Don't try to sort out multiple events or event order, just note which files changed.
+        long startLowUpdate = System.currentTimeMillis();
+        eventKinds = null;
+        contexts.sort();
+        contexts.removeDuplicates();
+        nEvents = contexts.size();
+
+        //remove events for files that don't match fileNameRegex
+        BitSet keep = new BitSet(nEvents); //initially all false
+        for (int evi = 0; evi < nEvents; evi++) {
+            String fullName = contexts.get(evi);
+            String dirName = File2.getDirectory(fullName);
+            String fileName = File2.getNameAndExtension(fullName);
+
+            //if not a directory and fileName matches fileNameRegex, keep it
+            if (fileName.length() > 0 && fileName.matches(fileNameRegex))
+                keep.set(evi);
+        }
+        contexts.justKeep(keep);        
+        nEvents = contexts.size();
+        if (nEvents == 0) {
+            if (verbose) String2.log(msg + "found 0 events related to files matching fileNameRegex.");
+            return false; //no changes
+        }
+
+        //If too many events, call for reload.
+        //This method isn't as nearly as efficient as full reload.
+        if (nEvents > 10) {
+            if (verbose) String2.log(msg + nEvents + 
+                ">10 file events, so I called requestReloadASAP() instead of making changes here."); 
+            requestReloadASAP();
+            return false;
+        }
+
+        //get BadFile and FileTable info and make local copies
+        ConcurrentHashMap badFileMap = readBadFileMap(); //already a copy of what's in file
+        Table tDirTable; 
+        Table tFileTable;
+        if (fileTableInMemory) {
+            tDirTable  = (Table)dirTable.clone();
+            tFileTable = (Table)fileTable.clone(); 
+        } else {
+            tDirTable  = tryToLoadDirFileTable(datasetDir() +  DIR_TABLE_FILENAME); //shouldn't be null
+            tFileTable = tryToLoadDirFileTable(datasetDir() + FILE_TABLE_FILENAME); //shouldn't be null
+            Test.ensureNotNull(tDirTable, "dirTable");
+            Test.ensureNotNull(tFileTable, "fileTable");
+        }
+        if (debugMode) String2.log(msg + "\n" +
+            tDirTable.nRows() + " rows in old dirTable.  first 5 rows=\n" + 
+                tDirTable.dataToCSVString(5) + 
+            tFileTable.nRows() + " rows in old fileTable.  first 5 rows=\n" + 
+                tFileTable.dataToCSVString(5));
+
+        StringArray dirList = (StringArray)tDirTable.getColumn(0);
+        ShortArray  ftDirIndex      = (ShortArray) tFileTable.getColumn(FT_DIR_INDEX_COL);      //0
+        StringArray ftFileList      = (StringArray)tFileTable.getColumn(FT_FILE_LIST_COL);      //1
+        DoubleArray ftLastMod       = (DoubleArray)tFileTable.getColumn(FT_LAST_MOD_COL);       //2
+        DoubleArray ftSortedSpacing = (DoubleArray)tFileTable.getColumn(FT_SORTED_SPACING_COL); //3
+
+        //for each changed file
+        int nChanges = 0; //BadFiles or FileTable
+        for (int evi = 0; evi < nEvents; evi++) {
+            String fullName = contexts.get(evi);
+            String dirName = File2.getDirectory(fullName);
+            String fileName = File2.getNameAndExtension(fullName);  //matched to fileNameRegex above
+
+            //dirIndex   (dirName may not be in dirList!)
+            int dirIndex = dirList.indexOf(dirName); //linear search, but should be short list
+
+            //if it is an existing file, see if it is valid
+            if (File2.isFile(fullName)) {
+                //test that dataVariable units/etc are identical
+                Table tTable = null;
+                String reasonBad = null;                
+                try {
+                    //check the NEC columns for compatible metadata
+                    //(No Extract Column and no fixed value columns)
+                    tTable = getSourceDataFromFile(dirName, fileName, 
+                        sourceDataNamesNEC, sourceDataTypesNEC, 
+                        -1, Double.NaN, Double.NaN, 
+                        null, null, null, true, true); //getMetadata, getData
+                    for (int dvNEC = 0; dvNEC < sourceDataNamesNEC.size(); dvNEC++) {
+
+                        //skip this variable if not in this source file
+                        String dvName = sourceDataNamesNEC.get(dvNEC);
+                        int c = tTable.findColumnNumber(dvName);
+                        if (c < 0) {
+                            //String2.log("  " + dvName + " not in source file");
+                            continue;
+                        }
+
+                        //attributes are as expected???
+                        testIfNewFileAttsAreCompatible( //throws exception if trouble
+                            dvName, dvNEC, tTable.columnAttributes(c));
+                    }
+
+                } catch (Exception e) {
+                    reasonBad = e.getMessage(); 
+                }
+                
+                if (reasonBad == null) { 
+                    //File exists and is good/compatible.
+                    nChanges++;
+
+                    //ensure dirIndex is valid
+                    int fileListPo = -1;
+                    if (dirIndex < 0) {
+                        //dir isn't in dirList, so file can't be in BadFileMap or tFileTable.
+                        //But I do need to add dir to dirList.
+                        dirIndex = dirList.size();
+                        dirList.add(dirName);
+                        if (verbose)
+                            String2.log(msg + 
+                                "added a new dir to dirList (" + dirName + ") and ..."); 
+                                //another msg is always for this file printed below
+                    } else {
+                        //Remove from BadFileMap if it is present
+                        if (badFileMap.remove(dirIndex + "/" + fileName) != null) {
+                            //It was in badFileMap
+                            if (verbose)
+                                String2.log(msg + 
+                                    "removed from badFileMap a file that now exists and is valid, and ..."); 
+                                    //another msg is always for this file printed below
+                        }
+
+                        //If file name already in tFileTable, find it.
+                        //Don't take shortcut, e.g., binary search with tMin.
+                        //It is possible file had wrong name/wrong value before.
+                        fileListPo = findInFileTable(dirIndex, fileName, 
+                            tFileTable, ftDirIndex, ftFileList);
+                    }
+
+                    //set info in tFileTable for this valid file
+                    //Searching for appropriate row is very hard here 
+                    //(and keeping it up-to-date leads to lots of row movement)
+                    //so just reuse same row as before or add row at and of fileTable
+                    //and (if any changes) sort fileTable below.
+                    if (verbose)
+                        String2.log(msg + 
+                            (fileListPo >= 0? "updated a file in" : "added a file to") + 
+                            " fileTable:\n  " + 
+                            fullName);
+                    if (fileListPo < 0) {
+                        //insert row at end of fileTable  (sort below)
+                        fileListPo = ftFileList.size(); 
+                        tFileTable.insertBlankRow(fileListPo);
+                    } //else use same row it was on before (can be inappropriate, but will sort below)
+                    setFileTableRow(tFileTable, fileListPo, dirIndex, fileName,
+                        File2.getLastModified(fullName), tTable, 
+                        debugMode? evi : -1);
+
+                } else {
+                    //File exists and is bad.
+
+                    //Remove from tFileTable if it is there.
+                    if (dirIndex >= 0) { //it might be in tFileTable
+                        if (removeFromFileTable(dirIndex, fileName, 
+                                tFileTable, ftDirIndex, ftFileList)) {
+                            nChanges++;
+                            if (verbose)
+                                String2.log(msg + 
+                                    "removed from fileTable a file that is now bad/incompatible:\n  " + 
+                                    fullName + "\n  " + reasonBad);
+                        } else {
+                            if (verbose)
+                                String2.log(msg + 
+                                    "found a bad file (but it wasn't in fileTable):\n  " + 
+                                    fullName + "\n  " + reasonBad);
+                        }
+                    }
+
+                    //add to badFileMap 
+                    //No don't. Perhaps file is half written.
+                    //Let main reload be the system to addBadFile
+                }
+            } else if (dirIndex >= 0) { 
+                //File now doesn't exist, but it might be in badFile or tFileTable.
+
+                //Remove from badFileMap if it's there.
+                if (badFileMap.remove(dirIndex + "/" + fileName) != null) {
+                    //Yes, it was in badFileMap
+                    nChanges++;
+                    if (verbose)
+                        String2.log(msg + "removed from badFileMap a now non-existent file:\n  " + 
+                            fullName);
+                } else {
+                    //If it wasn't in badFileMap, it might be in tFileTable.
+                    //Remove it from tFileTable if it's there.
+                    //Don't take shortcut, e.g., by searching with tMin.
+                    //It is possible file had wrong name/wrong value before.
+                    if (removeFromFileTable(dirIndex, fileName, 
+                            tFileTable, ftDirIndex, ftFileList)) {
+                        nChanges++;
+                        if (verbose)
+                            String2.log(msg + 
+                                "removed from fileTable a file that now doesn't exist:\n  " + 
+                                fullName);
+                    } else {
+                        if (verbose)
+                            String2.log(msg + 
+                                "a file that now doesn't exist wasn't in badFileMap or fileTable(!):\n  " + 
+                                fullName);
+                    }
+                }
+
+            } //else file doesn't exist and dir is not in dirList
+              //so file can't be in badFileMap or tFileTable
+              //so nothing needs to be done.
+        }
+
+        //if changes observed, make the changes to the dataset (as fast/atomically as possible)
+        if (nChanges > 0) {
+
+            //first, change local info only
+            if (fileTableSortColumns != null) {
+                //sort the tFileTable
+                long sortTime = System.currentTimeMillis();
+                tFileTable.sort(fileTableSortColumns, fileTableSortAscending); 
+                if (reallyVerbose) 
+                    String2.log(msg + "sorted tFileTable, time=" + 
+                        (System.currentTimeMillis() - sortTime) + "ms");  
+            }
+            //make the new minMaxTable
+            Table tMinMaxTable = makeMinMaxTable(dirList, tFileTable);
+
+            //then, change secondary parts of instance variables
+            //update all variable destinationMinMax
+            int ndv = sourceDataTypes.length;
+            for (int dv = 0; dv < ndv; dv++) {
+                PrimitiveArray minMaxPa = tMinMaxTable.getColumn(dv);
+                EDV edv = dataVariables[dv];
+                if (edv.isFixedValue()) // min/max won't change
+                    continue; 
+                if (minMaxPa instanceof StringArray) {
+                    if (edv instanceof EDVTimeStamp) {
+                        EDVTimeStamp edvts = (EDVTimeStamp)edv;
+                        edvts.setDestinationMinMax(
+                            edvts.sourceTimeToEpochSeconds(minMaxPa.getString(0)),
+                            edvts.sourceTimeToEpochSeconds(minMaxPa.getString(1)));
+                        edvts.setActualRangeFromDestinationMinMax();
+                    }
+                } else { //minMaxPa is numeric 
+                    edv.setDestinationMinMaxFromSource(
+                        minMaxPa.getDouble(0), minMaxPa.getDouble(1));
+                    edv.setActualRangeFromDestinationMinMax();
+                }
+                if (dv == timeIndex) {
+                    combinedGlobalAttributes().set("time_coverage_start", edv.destinationMinString());
+                    combinedGlobalAttributes().set("time_coverage_end",   edv.destinationMaxString());
+                }
+            }
+
+            //finally: make the important instance changes that use the changes above 
+            //as quickly/atomically as possible
+            saveDirTableFileTableBadFiles(tDirTable, tFileTable, badFileMap); //throws Throwable
+            minMaxTable = tMinMaxTable;
+            if (fileTableInMemory) {
+                //quickly swap into place
+                dirTable  = tDirTable;
+                fileTable = tFileTable; 
+            }
+
+            //after changes all in place
+//Currently, update() doesn't trigger these changes.
+//The problem is that some datasets might update every second, others every day.
+//Even if they are done, perhaps do them in ERDDAP ((low)update return changes?)
+//?update rss?
+//?subscription and onchange actions?
+
+        }      
+
+        if (verbose)
+            String2.log(msg + "succeeded. " + Calendar2.getCurrentISODateTimeStringLocal() +
+                " nFileEvents=" + nEvents + 
+                " nChangesMade=" + nChanges + 
+                " time=" + (System.currentTimeMillis() - startLowUpdate) + "ms");
+        return nChanges > 0;
     }
 
 
@@ -1724,20 +2196,20 @@ public abstract class EDDTableFromFiles extends EDDTable{
     }
 
     /**
-     * This is the default implementation of getFileNames, which
-     * gets file names from a local directory.
+     * This is the default implementation of getFileInfo, which
+     * gets file info from a locally accessible directory.
      * This is called in the middle of the constructor.
      * Some subclasses override this.
      *
      * @param recursive true if the file search should also search subdirectories
-     * @returns an array with a list of full file names 
+     * @return a table with columns with DIRECTORY, NAME, LASTMODIFIED, and SIZE columns;
      * @throws Throwable if trouble
      */
-    public String[] getFileNames(String fileDir, String fileNameRegex, boolean recursive) throws Throwable {
-        //String2.log("EDDTableFromFiles getFileNames");
-        if (recursive)
-            return RegexFilenameFilter.recursiveFullNameList(fileDir, fileNameRegex, false);
-        return     RegexFilenameFilter.fullNameList(fileDir, fileNameRegex);
+    public Table getFileInfo(String fileDir, String fileNameRegex, boolean recursive) 
+        throws Throwable {
+        //String2.log("EDDTableFromFiles getFileInfo");
+        return FileVisitorDNLS.oneStep(fileDir, fileNameRegex, recursive, 
+            false); //dirsToo
     }
 
     /**
@@ -1749,7 +2221,7 @@ public abstract class EDDTableFromFiles extends EDDTable{
      *    the file was last modified 
      *    (or 0 if trouble)
      */
-    public long getFileLastModified(String tDir, String tName) {
+    public long getLastModified(String tDir, String tName) {
         return File2.getLastModified(tDir + tName);
     }
 
@@ -1772,7 +2244,8 @@ public abstract class EDDTableFromFiles extends EDDTable{
      *    All constraintVariables (except columnNameForExtract) will be included in this list.
      *    !!!This will not include columnNameForExtract.
      * @param sourceDataTypes the data types of the desired source columns 
-     *    (e.g., "String" or "float") 
+     *    (e.g., "String" or "float").  "boolean" indicates data should be
+     *    interpreted as boolan, but stored in the response table as bytes.
      * @param sortedSpacing 
      *    -1: this method will assume nothing about sorted-ness of sortColumn.
      *    0: this method will assume sortColumn is sorted ascending
@@ -1823,6 +2296,8 @@ public abstract class EDDTableFromFiles extends EDDTable{
      * a file's global metadata to be a data column).
      * See lowGetSourceDataFromFile params.
      * 
+     * @param sourceDataTypes  e.g., "float", "String". "boolean"
+     *   indicates the data should be interpreted as a boolean, but stored as a byte.
      * @throws an exception if too much data.
      *  This won't (shouldn't) throw an exception if no data.
      */
@@ -2047,7 +2522,8 @@ public abstract class EDDTableFromFiles extends EDDTable{
         for (int rv = 0; rv < resultsVariablesNEC.size(); rv++) {
             String sourceName = resultsVariablesNEC.get(rv);
             dvi[rv] = String2.indexOf(dataVariableSourceNames(), sourceName);
-            resultsTypes[rv] = dataVariables[dvi[rv]].sourceDataType();
+            EDV edv = dataVariables[dvi[rv]];
+            resultsTypes[rv] = edv.isBoolean()? "boolean" : edv.sourceDataType();
             //String2.log("rv=" + rv + ": " + sourceName + " dv=" + dvi[rv] + " " + resultsTypes[rv]);
         }
 

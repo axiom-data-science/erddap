@@ -367,7 +367,4 @@ public class SimpleTuple implements Cloneable, SGTTuple, Cartesian, Serializable
       return new Range2D(start, end);
     }
   }
-
-  @Override
-  public void releaseResources() throws Exception {}
 }

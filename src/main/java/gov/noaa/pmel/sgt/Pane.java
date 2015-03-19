@@ -21,6 +21,7 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Graphics;
 import java.awt.AWTEvent;
+
 import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeListener;
 
@@ -504,7 +505,4 @@ public class Pane extends Container implements AbstractPane {
   public void removePropertyChangeListener(PropertyChangeListener l) {
     proxy_.removePropertyChangeListener(l);
   }
-
-  @Override
-  public void releaseResources() throws Exception {}
 }

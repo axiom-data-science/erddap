@@ -12,8 +12,6 @@
 
 package gov.noaa.pmel.sgt.swing;
 
-import gov.noaa.pmel.sgt.JPane;
-
 import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 
@@ -75,7 +73,7 @@ public class UserIcon extends ImageIcon implements LayerChild, Draggable {
             layer_ = null;                    
             if (JPane.debug) String2.log("sgt.swing.UserIcon.releaseResources() finished");
         } catch (Throwable t) {
-            String2.log(MustBe.throwableToString(t));
+            String2.log(MustBe.throwableToString(t);
             if (JPane.debug) 
                 String2.getStringFromSystemIn("Press ^C to stop or Enter to continue..."); 
         }

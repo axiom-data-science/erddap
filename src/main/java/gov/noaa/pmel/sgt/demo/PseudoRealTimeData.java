@@ -19,7 +19,6 @@ import gov.noaa.pmel.util.GeoDate;
 import gov.noaa.pmel.util.GeoDateArray;
 import gov.noaa.pmel.util.SoTRange;
 import gov.noaa.pmel.util.IllegalTimeValue;
-
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.awt.event.ActionEvent;
@@ -238,6 +237,4 @@ public class PseudoRealTimeData implements SGTLine, ActionListener {
   private double tSeries(int val) {
     return A0_*Math.sin(omega0_*val)+A1_*Math.sin(omega1_*val)+A2_*Math.random();
   }
-  @Override
-  public void releaseResources() throws Exception {}
 }

@@ -28,7 +28,8 @@ import javax.imageio.ImageIO;
  */
 public class Test {
 
-    public static String utilDir = String2.getClassPath() + "com/cohort/util/";
+    public static String utilDir = String2.getClassPath() + //with / separator and / at the end
+        "com/cohort/util/";
 
     /** 
      * This throws a runtime exception with the specified error message. 
@@ -305,11 +306,12 @@ public class Test {
         String lineString = "line=" + line + ": ";
         return "\n" + String2.ERROR + " in Test.ensureEqual(Strings) line=" + 
             line + " col=" + (po - lastNewlinePo) + " '" + c1 + "'!='" + c2+ "':\n" + 
-            message + "\nSpecifically:\n" +                 
+            message + "\n" +
+            (line > 1? "\"" + annS1 + "\" != \n\"" + annS2 + "\""  : "") + 
+            "\n\nSpecifically:\n" +                 
             "s1 " + lineString + line1Sample + "\n" +
-            "s2 " + lineString + line2Sample + "\n" +
-            String2.makeString(' ', (3 + lineString.length() + po - lastNewlinePo - 1)) + "^" + "\n" +
-            (line > 1? "\"" + annS1 + "\" != \n\"" + annS2 + "\""  : "");
+            "s2 " + lineString + line2Sample+ "\n" +
+            String2.makeString(' ', (3 + lineString.length() + po - lastNewlinePo - 1)) + "^" + "\n";
     }  
 
     /** 

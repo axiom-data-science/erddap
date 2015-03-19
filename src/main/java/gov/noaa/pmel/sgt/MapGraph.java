@@ -57,6 +57,4 @@ public class MapGraph extends Graph implements Cloneable {
   public SGTData getDataAt(Point pt) {
     throw new MethodNotImplementedError();
   }
-  @Override
-  public void releaseResources() throws Exception {}
 }

@@ -131,18 +131,17 @@ public class Table  {
     public static boolean verbose = false;
 
     /**
-     * Set this to true (by calling debug=true in your program, not by changing the code here)
-     * if you want lots and lots of diagnostic messages sent to String2.log.
-     */
-    public static boolean debug = false;    
-
-
-    /**
      * Set this to true (by calling reallyVerbose=true in your program, 
      * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
     public static boolean reallyVerbose = false; 
+
+    /**
+     * Set this to true (by calling debug=true in your program, not by changing the code here)
+     * if you want lots and lots of diagnostic messages sent to String2.log.
+     */
+    public static boolean debug = false;    
 
     /**
      * If true, readASCII allows data lines to have varying numbers of 
@@ -208,10 +207,32 @@ public class Table  {
 
     /** testDir is used for tests. */
     public static String testDir = 
-        String2.getClassPath() + "gov/noaa/pfel/coastwatch/pointdata/";
+        String2.getClassPath() + //with / separator and / at the end
+        "gov/noaa/pfel/coastwatch/pointdata/";
 
     /** The one known valid url for readIobis. */
     public final static String IOBIS_URL = "http://www.iobis.org/OBISWEB/ObisControllerServlet"; 
+
+
+    /** 
+     * Makes a table with the specified columnNames and dataTypes.
+     *
+     * @param if dataType == null, the table will have all String columns
+     *   Otherwise, it should be the same length as colName
+     * @return a new table
+     */
+    public static Table makeEmptyTable(String colName[], String dataType[]) {
+        Table table = new Table();
+        int n = colName.length;
+        for (int i = 0; i < n; i++) {
+            table.addColumn(colName[i], 
+                PrimitiveArray.factory(
+                    PrimitiveArray.elementStringToClass(dataType == null? "String" : dataType[i]), 
+                    8, false));
+        }
+        return table;
+    }
+
 
     /**
      * This clears everything.
@@ -650,8 +671,8 @@ public class Table  {
      */
     /*public static void testMA() {
         String2.log("testMA");
-        Math2.incgc(200);
-        Math2.incgc(200);
+        Math2.incgc(200); //in a test
+        Math2.incgc(200); //in a test
         int n = 10000000;
         int j;
         double d;
@@ -722,6 +743,16 @@ public class Table  {
         int nCols = nColumns();
         for (int col = 0; col < nCols; col++) 
             getColumn(col).addString(index, "");
+    }
+
+    /**
+     * This removes 1 row.
+     *
+     * @param row, 0 ... size-1. 
+     * @throws Exception if trouble
+     */
+    public void removeRow(int row) {
+        removeRows(row, row + 1);
     }
 
     /**
@@ -1985,7 +2016,7 @@ public class Table  {
     /** This also reads from a file, but uses the ISO-8859-1 charset. */
     public void readASCII(String fullFileName, int columnNamesLine, int dataStartLine,
         String testColumns[], double testMin[], double testMax[], 
-        String loadColumns[], boolean simplify) {
+        String loadColumns[], boolean simplify) throws Exception {
 
         readASCII(fullFileName, "ISO-8859-1", columnNamesLine, dataStartLine,
             testColumns, testMin, testMax, loadColumns, simplify);
@@ -2015,13 +2046,10 @@ public class Table  {
      */
     public void readASCII(String fullFileName, String charset, int columnNamesLine, 
         int dataStartLine, String testColumns[], double testMin[], double testMax[], 
-        String loadColumns[], boolean simplify) {
+        String loadColumns[], boolean simplify) throws Exception {
 
-        String sar[] = String2.readFromFile(fullFileName, charset, 2);
-        if (sar[0].length() > 0) //check that there was no error
-            throw new SimpleException(sar[0]); 
-        //String2.log(String2.annotatedString(sar[1]));
-        readASCII(fullFileName, String2.splitNoTrim(sar[1], '\n'), columnNamesLine, dataStartLine,
+        readASCII(fullFileName, String2.readLinesFromFile(fullFileName, charset, 2), 
+            columnNamesLine, dataStartLine,
             testColumns, testMin, testMax, loadColumns, simplify); 
     }
  
@@ -2032,7 +2060,7 @@ public class Table  {
      */
     public void readASCII(String fullFileName, int columnNamesLine, int dataStartLine,
         String testColumns[], double testMin[], double testMax[], 
-        String loadColumns[]) {
+        String loadColumns[]) throws Exception {
 
         readASCII(fullFileName, columnNamesLine, dataStartLine,
             testColumns, testMin, testMax, loadColumns, true);
@@ -2043,7 +2071,8 @@ public class Table  {
      * 
      * @throws Exception if trouble
      */
-    public void readASCII(String fullFileName, int columnNamesLine, int dataStartLine) {
+    public void readASCII(String fullFileName, int columnNamesLine, int dataStartLine) 
+        throws Exception {
 
         readASCII(fullFileName, columnNamesLine, dataStartLine,
             null, null, null, null, true);
@@ -2055,7 +2084,7 @@ public class Table  {
      * 
      * @throws Exception if trouble
      */
-    public void readASCII(String fullFileName) {
+    public void readASCII(String fullFileName) throws Exception {
 
         readASCII(fullFileName, 0, 1, null, null, null, null, true);
     }
@@ -2064,7 +2093,7 @@ public class Table  {
      * This reads data from an array of tab, comma, or space-separated ASCII Strings.
      * <ul>
      * <li> If no exception is thrown, the file was successfully read.
-     * <li> The item separator on each line can be tab, comma, or 1 or more spaces.
+     * <li> The item separator in the file can be tab, comma, or 1 or more spaces.
      * <li> Missing values for tab- and comma-separated files can be "" or "." or "NaN".
      * <li> Missing values for space-separated files can be "." or "NaN".
      * <li> Normally, all data rows must have the same number of data items. 
@@ -2081,6 +2110,7 @@ public class Table  {
      * @param testColumns the names of the columns to be tested (null = no tests).
      *   All of the test columns must use the same, one, dimension that the
      *   loadColumns use.
+     *   The tests are done as if the testColumns were doubles.
      *   Ideally, the first tests will greatly restrict the range of valid rows.
      * @param testMin the minimum allowed value for each testColumn (null = no tests)
      * @param testMax the maximum allowed value for each testColumn (null = no tests)
@@ -2169,6 +2199,7 @@ public class Table  {
         int loadColumnNumbers[] = null;
         StringArray loadColumnSA[] = null;
         boolean missingItemNoted = false;
+        String canonicalEmptyString = String2.canonical("");
         int expectedNItems = -1;
         for (int row = 0; row < nRows; row++) {
             oneLine = lines[dataStartLine + row];
@@ -2180,7 +2211,7 @@ public class Table  {
             if (colSeparator == '\u0000')
                 items = new String[]{oneLine.trim()};
             else if (colSeparator == ' ')
-                items = oneLine.split("[ ]+"); //regex for one or more spaces  //!!!Doesn't handle "'d phrases
+                items = StringArray.wordsAndQuotedPhrases(oneLine).toArray();
             else if (colSeparator == ',')
                 items = StringArray.arrayFromCSV(oneLine);  //does handle "'d phrases
             else items = String2.split(oneLine, colSeparator);
@@ -2206,31 +2237,27 @@ public class Table  {
                     testColumnNumbers[col] = po;
                 }
 
-                //identify the loadColumnNumbers
+                //loadColumnNumbers[sourceColumn#] -> outputColumn# 
+                //  (-1 if a var not in this file)
                 if (loadColumns == null) {
                     //load all
                     loadColumnNumbers = new int[fileColumnNames.size()];
-                    for (int col = 0; col < fileColumnNames.size(); col++)
+                    loadColumnSA = new StringArray[fileColumnNames.size()];
+                    for (int col = 0; col < fileColumnNames.size(); col++) {
                         loadColumnNumbers[col] = col;
+                        loadColumnSA[col] = new StringArray(nRows, false); 
+                        addColumn(fileColumnNames.get(col), loadColumnSA[col]);                         
+                    }
                 } else {
                     loadColumnNumbers = new int[loadColumns.length];
+                    loadColumnSA = new StringArray[loadColumns.length];
                     for (int col = 0; col < loadColumns.length; col++) {
-                        int po = fileColumnNames.indexOf(loadColumns[col], 0);
-                        if (po < 0)
-                            throw new IllegalArgumentException(errorInMethod + 
-                               "loadColumn '" + loadColumns[col] + "' not found.");
-                        loadColumnNumbers[col] = po;
+                        loadColumnNumbers[col] = fileColumnNames.indexOf(loadColumns[col], 0);
+                        loadColumnSA[col] = new StringArray(nRows, false); 
+                        addColumn(loadColumns[col], loadColumnSA[col]); 
                     }
                 }
                 //if (verbose) String2.log("loadColumnNumbers=" + String2.toCSSVString(loadColumnNumbers));
-
-                //generate the Table's columnNames which will be loaded
-                //and create the primitiveArrays in data
-                loadColumnSA = new StringArray[loadColumnNumbers.length];
-                for (int col = 0; col < loadColumnNumbers.length; col++) {
-                    loadColumnSA[col] = new StringArray(nRows, false); //hard to know type 
-                    addColumn(fileColumnNames.get(loadColumnNumbers[col]), loadColumnSA[col]); 
-                }
             }
 
             //ensure nItems is correct
@@ -2244,7 +2271,10 @@ public class Table  {
             //do the tests
             boolean ok = true;
             for (int test = 0; test < testColumnNumbers.length; test++) {
-                double d = String2.parseDouble(items[testColumnNumbers[test]]);
+                int which = testColumnNumbers[test];
+                if (which < 0 || which >= nItems)  //value treated as NaN. NaN will fail any test.
+                    continue;
+                double d = String2.parseDouble(items[which]);
                 if (d >= testMin[test] && d <= testMax[test]) //NaN will fail this test
                     continue;
                 else {ok = false; break; }
@@ -2254,8 +2284,13 @@ public class Table  {
             //store the data items
             for (int col = 0; col < loadColumnNumbers.length; col++) {
                 int itemNumber = loadColumnNumbers[col];
-                if (itemNumber < nItems) {
-                    loadColumnSA[col].addNotCanonical(items[itemNumber]);
+                if (itemNumber < 0) {
+                    //request col is not in the file
+                    loadColumnSA[col].add(canonicalEmptyString); 
+                } else if (itemNumber < nItems) {
+                    if (simplify) 
+                         loadColumnSA[col].addNotCanonical(items[itemNumber]);
+                    else loadColumnSA[col].add(items[itemNumber]); //canonical
                 } else if (allowRaggedRightInReadASCII) {  
                     //it is a bad idea to allow this (who knows which value is missing?), 
                     //but some buoy files clearly lack the last value,
@@ -2269,7 +2304,7 @@ public class Table  {
                             "items=" + String2.toCSSVString(items));
                         missingItemNoted = true;
                     }
-                    loadColumnSA[col].addNotCanonical(""); //missing value
+                    loadColumnSA[col].add(canonicalEmptyString); //missing value
                 } else {
                     throw new IllegalArgumentException(
                         errorInMethod + "itemNumber " + 
@@ -2287,16 +2322,15 @@ public class Table  {
             throw new SimpleException(MustBe.THERE_IS_NO_DATA + " (loadColumns not found)");
 
         //simplify the columns
-        if (simplify) 
+        if (simplify) {
             simplify();
 
-        loadColumnSA = null; //get data PA's from getColumn from now on
-
-        //canonicalize the string columns
-        for (int col = 0; col < loadColumnNumbers.length; col++) {
-            PrimitiveArray pa = getColumn(col);
-            if (pa instanceof StringArray)
-                ((StringArray)pa).makeCanonical();
+            //canonicalize the string columns
+            for (int col = 0; col < loadColumnNumbers.length; col++) {
+                PrimitiveArray pa = getColumn(col);
+                if (pa instanceof StringArray)
+                    ((StringArray)pa).makeCanonical();
+            }
         }
 
         if (verbose) String2.log("  Table.readASCII done. nColumns=" + nColumns() +
@@ -2304,18 +2338,188 @@ public class Table  {
 
     }
 
+    /** 
+     * Test readASCII with csv file.
+     *
+     * @throws Exception if trouble
+     */
+    public static void testReadAsciiCsvFile() throws Exception {
+        
+        String2.log("\nTable.testReadAsciiCsvASCIIFile");
+        String results, expected;
+        StringArray sa = new StringArray();
+        String fileName = "/erddapTest/csvAscii.txt";
+        Table table;
+
+//    public void readASCII(String fullFileName, int columnNamesLine, int dataStartLine,
+//        String testColumns[], double testMin[], double testMax[], 
+//        String loadColumns[], boolean simplify) throws Exception {
+            
+        //read as Strings 
+        table = new Table();
+        table.allowRaggedRightInReadASCII = true;
+        table.readASCII(fileName, 0, 1, null, null, null, null, false);
+        results = table.dataToCSVString();
+        expected = 
+"aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
+"\"b,d\",Ab,t,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"short:,,,,,,,,\n" +
+"fg,F,true,11,12001,1200000,12000000000,1.21,1e200\n" +
+"h,H,1,12,12002,120000,1200000000,1.22,2e200\n" +
+"i,I,TRUE,13,12003,12000,120000000,1.23,3e200\n" +
+"j,J,f,14,12004,1200,12000000,1.24,4e200\n" +
+"k,K,false,15,12005,120,1200000,1.25,5e200\n" +
+"l,L,0,16,12006,12,120000,1.26,6e200\n" +
+"m,M,FALSE,17,12007,121,12000,1.27,7e200\n" +
+"n,N,8,18,12008,122,1200,1.28,8e200\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = "String, String, String, String, String, String, String, String, String";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+        //test simplify
+        table = new Table();
+        table.allowRaggedRightInReadASCII = true;
+        table.readASCII(fileName, 0, 1, null, null, null, null, true);
+        results = table.dataToCSVString();
+        expected = 
+"aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
+"\"b,d\",Ab,t,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"short:,,,,,,,,\n" +
+"fg,F,true,11,12001,1200000,12000000000,1.21,1.0E200\n" +
+"h,H,1,12,12002,120000,1200000000,1.22,2.0E200\n" +
+"i,I,TRUE,13,12003,12000,120000000,1.23,3.0E200\n" +
+"j,J,f,14,12004,1200,12000000,1.24,4.0E200\n" +
+"k,K,false,15,12005,120,1200000,1.25,5.0E200\n" +
+"l,L,0,16,12006,12,120000,1.26,6.0E200\n" +
+"m,M,FALSE,17,12007,121,12000,1.27,7.0E200\n" +
+"n,N,8,18,12008,122,1200,1.28,8.0E200\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = "String, String, String, byte, short, int, String, float, double";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+        //read subset 
+        table = new Table();
+        table.allowRaggedRightInReadASCII = true;
+        table.readASCII(fileName, 0, 1, 
+            new String[]{"aByte"}, new double[]{14}, new double[]{16}, 
+            new String[]{"aDouble","aString","aByte"}, true);  //load cols
+        results = table.dataToCSVString();
+        expected = 
+"aDouble,aString,aByte\n" +
+",short:,\n" +
+"4.0E200,j,14\n" +
+"5.0E200,k,15\n" +
+"6.0E200,l,16\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+    }
+
+    /** 
+     * Test readASCII with ssv file.
+     *
+     * @throws Exception if trouble
+     */
+    public static void testReadAsciiSsvFile() throws Exception {
+        
+        String2.log("\nTable.testReadAsciiSsvASCIIFile");
+        String results, expected;
+        StringArray sa = new StringArray();
+        String fileName = "/erddapTest/ssvAscii.txt";
+        Table table;
+
+//    public void readASCII(String fullFileName, int columnNamesLine, int dataStartLine,
+//        String testColumns[], double testMin[], double testMax[], 
+//        String loadColumns[], boolean simplify) throws Exception {
+            
+        //read as Strings 
+        table = new Table();
+        table.allowRaggedRightInReadASCII = true;
+        table.readASCII(fileName, 0, 1, null, null, null, null, false);
+        results = table.dataToCSVString();
+        expected = 
+"aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
+" b d ,Ab,t,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"short:,,,,,,,,\n" +
+"fg,F,true,11,12001,1200000,12000000000,1.21,1e200\n" +
+"h,H,1,12,12002,120000,1200000000,1.22,2e200\n" +
+"i,I,TRUE,13,12003,12000,120000000,1.23,3e200\n" +
+"j,J,f,14,12004,1200,12000000,1.24,4e200\n" +
+"k,K,false,15,12005,120,1200000,1.25,5e200\n" +
+"l,L,0,16,12006,12,120000,1.26,6e200\n" +
+"m,M,FALSE,17,12007,121,12000,1.27,7e200\n" +
+"n,N,8,18,12008,122,1200,1.28,8e200\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = "String, String, String, String, String, String, String, String, String";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+        //test simplify
+        table = new Table();
+        table.allowRaggedRightInReadASCII = true;
+        table.readASCII(fileName, 0, 1, null, null, null, null, true);
+        results = table.dataToCSVString();
+        expected = 
+"aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
+" b d ,Ab,t,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"short:,,,,,,,,\n" +
+"fg,F,true,11,12001,1200000,12000000000,1.21,1.0E200\n" +
+"h,H,1,12,12002,120000,1200000000,1.22,2.0E200\n" +
+"i,I,TRUE,13,12003,12000,120000000,1.23,3.0E200\n" +
+"j,J,f,14,12004,1200,12000000,1.24,4.0E200\n" +
+"k,K,false,15,12005,120,1200000,1.25,5.0E200\n" +
+"l,L,0,16,12006,12,120000,1.26,6.0E200\n" +
+"m,M,FALSE,17,12007,121,12000,1.27,7.0E200\n" +
+"n,N,8,18,12008,122,1200,1.28,8.0E200\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = "String, String, String, byte, short, int, String, float, double";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+        //read subset 
+        table = new Table();
+        table.allowRaggedRightInReadASCII = true;
+        table.readASCII(fileName, 0, 1, 
+            new String[]{"aByte"}, new double[]{14}, new double[]{16}, 
+            new String[]{"aDouble","aString","aByte"}, true);  //load cols
+        results = table.dataToCSVString();
+        expected = 
+"aDouble,aString,aByte\n" +
+",short:,\n" +
+"4.0E200,j,14\n" +
+"5.0E200,k,15\n" +
+"6.0E200,l,16\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+    }
+
+
     /**
      * This is like the other readStandardTabbedASCII, but this one actually reads the 
      * data from the file.
      *
      * @throws Exception if trouble
      */
-    public void readStandardTabbedASCII(String fullFileName, String loadColumns[], boolean simplify) {
+    public void readStandardTabbedASCII(String fullFileName, String loadColumns[], 
+        boolean simplify) throws Exception {
 
-        String sar[] = String2.readFromFile(fullFileName, null, 2);
-        Test.ensureEqual(sar[0].length(), 0, sar[0]); //check that there was no error
-        //String2.log(String2.annotatedString(sar[1]));
-        readStandardTabbedASCII(fullFileName, String2.splitNoTrim(sar[1], '\n'), 
+        readStandardTabbedASCII(fullFileName, 
+            String2.readLinesFromFile(fullFileName, null, 2), 
             loadColumns, simplify); 
     }
 
@@ -2412,6 +2616,7 @@ public class Table  {
         //get the data
         int row = 0;
         if (debug) String2.log("expectedNItems=" + expectedNItems);
+        String canonicalEmptyString = String2.canonical("");
         while (row < nRows) {
         if (debug) String2.log("row=" + row);
             items = null;
@@ -2450,7 +2655,9 @@ public class Table  {
           
             //store the data items
             for (int col = 0; col < loadColumnNumbers.length; col++) 
-                loadColumnSA[col].addNotCanonical(items[loadColumnNumbers[col]]);
+                loadColumnSA[col].addNotCanonical(
+                    loadColumnNumbers[col] < 0? canonicalEmptyString : 
+                      items[loadColumnNumbers[col]]);
         }
 
         //simplify the columns
@@ -2469,6 +2676,232 @@ public class Table  {
         if (verbose) String2.log("  Table.readStandardTabbedASCII done. nColumns=" + nColumns() +
             " nRows=" + nRows() + " TIME=" + (System.currentTimeMillis() - time));
 
+    }
+
+    /**
+     * This is like readColumnarASCII, but this one actually reads the 
+     * data from the file.
+     *
+     * @param charset ISO-8859-1 (used if charset is null or "") or UTF-8
+     * @throws Exception if trouble
+     */
+    public void readColumnarASCIIFile(String fullFileName, String charset, 
+        int dataStartLine,
+        String loadColumns[], int startPo[], int endPo[], Class columnClass[]) 
+        throws Exception {
+
+        String lines[] = String2.readLinesFromFile(fullFileName, charset, 2);
+        readColumnarASCII(fullFileName, lines, dataStartLine,
+            loadColumns, startPo, endPo, columnClass);
+    }
+
+    /**
+     * This reads data from fixed length ASCII Strings.
+     * I.e., each data variable is stored in a specific, fixed substring of each row.
+     * On a given line, if a variable's startPo is greater or equal to a line's length, 
+     *    that variable is set to NaN or "". 
+     * So blank lines and ragged right lines are acceptable.
+     * Lines at the end of the file with length=0 are ignored (e.g., a trailing line).
+     * If no exception is thrown, the file was successfully read.
+     * Any previous columns/conent in the table is thrown away.
+     *
+     * @param fileName for diagnostic messages only
+     * @param lines the lines with the info (from a file)
+     * @param dataStartLine (0..)
+     * @param loadColumns the names of the columns to be loaded 
+     *     (perhaps in different order than in the file).
+     *     The values won't be changed.
+     * @param startPo the substring startPo for each loadColumn (0..)
+     *     The values won't be changed.
+     * @param endPo the substring endPo (exclusive) for each loadColumn (0..)
+     *     The values won't be changed.
+     * @param columnClass the class (e.g., double.class, String.class)
+     *   for each column (or null to have ERDDAP auto simplify the columns).
+     *   String values are trim'd.
+     *   boolean.class is a special case: the string data will be parsed via 
+     *      String2.parseBoolean()? 1 : 0.
+     *   If already specified, the values won't be changed.
+     * @throws Exception if trouble  
+     */
+    public void readColumnarASCII(String fileName, String[] lines, 
+        int dataStartLine,
+        String loadColumns[], int startPo[], int endPo[], Class columnClass[]) {
+
+        //validate parameters
+        if (verbose) String2.log("Table.readColumnarASCII " + fileName); 
+        long time = System.currentTimeMillis();
+        String errorInMethod = String2.ERROR + " in Table.readColumnarASCII(" + fileName + "):\n";
+        dataStartLine = Math.max(0, dataStartLine);
+        int nCols = loadColumns.length;
+        int nRows = lines.length;
+        Test.ensureEqual(loadColumns.length, startPo.length, 
+            errorInMethod + "loadColumns.length != startPo.length.");
+        Test.ensureEqual(loadColumns.length, endPo.length, 
+            errorInMethod + "loadColumns.length != endPo.length.");
+        boolean simplify = columnClass == null;
+        if (simplify) {
+            columnClass = new Class[nCols];
+            Arrays.fill(columnClass, String.class);
+        }
+        Test.ensureEqual(loadColumns.length, columnClass.length, 
+            errorInMethod + "loadColumns.length != columnClass.length.");
+        for (int col = 0; col < nCols; col++) {
+            if (startPo[col] < 0)
+                throw new RuntimeException(errorInMethod + 
+                    "For sourceName=" + loadColumns[col] +
+                    ", startPo[" + col + "]=" + startPo[col] + ". It must be >=0.");
+            if (startPo[col] >= endPo[col])
+                throw new RuntimeException(errorInMethod + 
+                    "For sourceName=" + loadColumns[col] +
+                    ", startPo[" + col + "]=" + startPo[col] + " >= " + 
+                      "endPo[" + col + "]=" +   endPo[col] + ". startPo must be less than endPo.");
+        }
+
+        //clear everything
+        clear();
+
+        //remove rows at the end of the file that are length=0.
+        while (nRows > dataStartLine &&   //dataStartLine is at least 0
+            (lines[nRows-1].equals("")))
+            nRows--;
+
+        //create the columns
+        PrimitiveArray pa[] = new PrimitiveArray[nCols];
+        ByteArray arBool[] = new ByteArray[nCols]; //ByteArray (from boolean) if boolean, else null
+        CharArray arChar[] = new CharArray[nCols]; //CharArray if char, else null
+        for (int col = 0; col < nCols; col++) {
+            pa[col] = PrimitiveArray.factory(
+                columnClass[col] == boolean.class? byte.class : columnClass[col], 
+                Math.max(0, nRows - dataStartLine), false);
+            addColumn(loadColumns[col], pa[col]);
+            arBool[col] = columnClass[col] == boolean.class? (ByteArray)(pa[col]) : null;
+            arChar[col] = columnClass[col] == char.class?    (CharArray)(pa[col]) : null;
+        }
+
+        //get the data
+        for (int row = dataStartLine; row < nRows; row++) {
+            String tLine = lines[row];
+            int tLength = tLine.length();
+            for (int col = 0; col < nCols; col++) {
+                String s = tLength > startPo[col]? 
+                    tLine.substring(startPo[col], Math.min(tLength, endPo[col])).trim() : "";
+                if (columnClass[col] == boolean.class)                     
+                    arBool[col].add(String2.parseBooleanToByte(s));
+                else if (arChar[col] != null)
+                    arChar[col].add(s.length() > 0? s.charAt(0) : Character.MAX_VALUE);
+                else pa[col].addString(s);
+            }
+        }
+
+        //simplify
+        if (simplify)
+            simplify();
+
+        if (verbose) String2.log("  Table.readColumnarASCII done. nColumns=" + nColumns() +
+            " nRows=" + nRows() + " TIME=" + (System.currentTimeMillis() - time));
+    }
+
+    /** 
+     * Test readColumnarASCII.
+     *
+     * @throws Exception if trouble
+     */
+    public static void testReadColumnarASCIIFile() throws Exception {
+        
+        String2.log("\nTable.testReadColumnarASCIIFile");
+        String results, expected;
+        StringArray sa = new StringArray();
+        String fullFileName = "/erddapTest/columnarAscii.txt";
+        String colNames[] = {
+            "aDouble", "aString","aChar","aBoolean","aByte","aShort", "anInt","aLong","aFloat"};
+        int start[] = {       
+            66,         0,        9,      15,        24,     30,       37,     45,     57};
+        int end[]   = {
+            86,         9,        15,     24,        30,     37,       45,     57,     66};
+            
+//012345678911234567892123456789312345678941234567895123456789612345678971234567898123456
+//aString  aChar aBoolean aByte aShort anInt   aLong       aFloat   aDouble
+//abc      a     true     24    24000  240000002400000000002.4      2.412345678987654   
+
+        //read as Strings 
+        Class colClass[] = new Class[9];
+        Arrays.fill(colClass, String.class);
+        Table table = new Table();
+        table.readColumnarASCIIFile(fullFileName, "", 3, colNames, start, end, colClass);
+        results = table.dataToCSVString();
+        expected = 
+"aDouble,aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat\n" +
+"2.412345678987654,abcdef,Ab,t,24,24000,24000000,240000000000,2.4\n" +
+",short:,,,,,,,\n" +
+"1e200,fg,F,true,11,12001,1200000,12000000000,1.21\n" +
+"2e200,h,H,1,12,12002,120000,1200000000,1.22\n" +
+"3e200,i,I,TRUE,13,12003,12000,120000000,1.23\n" +
+"4e200,j,J,f,14,12004,1200,12000000,1.24\n" +
+"5e200,k,K,false,15,12005,120,1200000,1.25\n" +
+"6e200,l,L,0,16,12006,12,120000,1.26\n" +
+"7e200,m,M,FALSE,17,12007,121,12000,1.27\n" +
+"8e200,n,N,8,18,12008,122,1200,1.28\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = "String, String, String, String, String, String, String, String, String";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+
+        //simplify
+        table.readColumnarASCIIFile(fullFileName, "", 3, colNames, start, end, null);
+        results = table.dataToCSVString();
+        expected = 
+"aDouble,aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat\n" +
+"2.412345678987654,abcdef,Ab,t,24,24000,24000000,240000000000,2.4\n" +
+",short:,,,,,,,\n" +
+"1.0E200,fg,F,true,11,12001,1200000,12000000000,1.21\n" +
+"2.0E200,h,H,1,12,12002,120000,1200000000,1.22\n" +
+"3.0E200,i,I,TRUE,13,12003,12000,120000000,1.23\n" +
+"4.0E200,j,J,f,14,12004,1200,12000000,1.24\n" +
+"5.0E200,k,K,false,15,12005,120,1200000,1.25\n" +
+"6.0E200,l,L,0,16,12006,12,120000,1.26\n" +
+"7.0E200,m,M,FALSE,17,12007,121,12000,1.27\n" +
+"8.0E200,n,N,8,18,12008,122,1200,1.28\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = "double, String, String, String, byte, short, int, String, float";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+        //read as types 
+        colClass = new Class[] {
+            double.class, String.class, char.class, boolean.class, byte.class, 
+            short.class, int.class, long.class, float.class};
+        table.readColumnarASCIIFile(fullFileName, "", 3, colNames, start, end, colClass);
+        results = table.dataToCSVString();
+        expected = 
+"aDouble,aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat\n" +
+"2.412345678987654,abcdef,65,1,24,24000,24000000,240000000000,2.4\n" +
+",short:,,,,,,,\n" +
+"1.0E200,fg,70,1,11,12001,1200000,12000000000,1.21\n" +
+"2.0E200,h,72,1,12,12002,120000,1200000000,1.22\n" +
+"3.0E200,i,73,1,13,12003,12000,120000000,1.23\n" +
+"4.0E200,j,74,0,14,12004,1200,12000000,1.24\n" +
+"5.0E200,k,75,0,15,12005,120,1200000,1.25\n" +
+"6.0E200,l,76,0,16,12006,12,120000,1.26\n" +
+"7.0E200,m,77,0,17,12007,121,12000,1.27\n" +
+"8.0E200,n,78,1,18,12008,122,1200,1.28\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //test types
+        sa.clear();
+        for (int col = 0; col < table.nColumns(); col++) 
+            sa.add(table.getColumn(col).elementClassString());
+        results = sa.toString();
+        expected = 
+            "double, String, char, byte, byte, short, int, long, float";
+        Test.ensureEqual(results, expected, "results=\n" + results);
     }
 
     /**
@@ -4659,11 +5092,11 @@ Dataset {
                         PrimitiveArray cpa = axisPAs[constraintCol];
                         String asc = cpa.isAscending();
                         if (asc.length() == 0) {
-                            constraintFirst = cpa.binaryFindFirstGAE5(0, cpa.size() - 1, constraintMin);
+                            constraintFirst = cpa.binaryFindFirstGAE(0, cpa.size() - 1, constraintMin, 5);
                             if (constraintFirst >= cpa.size())
                                 constraintFirst = -1;
-                            else constraintLast  = cpa.binaryFindLastLAE5(constraintFirst, 
-                                cpa.size() - 1, constraintMax);
+                            else constraintLast  = cpa.binaryFindLastLAE(constraintFirst, 
+                                cpa.size() - 1, constraintMax, 5);
                             if (debug) String2.log("  constraintAxisVar=" + constraintAxisVarName + 
                                 " is ascending.  first=" + constraintFirst + 
                                 " last(inclusive)=" + constraintLast);
@@ -4792,11 +5225,11 @@ Dataset {
                         PrimitiveArray cpa = axisPAs[constraintCol];
                         String asc = cpa.isAscending();
                         if (asc.length() == 0) {
-                            constraintFirst = cpa.binaryFindFirstGAE5(0, cpa.size() - 1, constraintMin);
+                            constraintFirst = cpa.binaryFindFirstGAE(0, cpa.size() - 1, constraintMin, 5);
                             if (constraintFirst >= cpa.size())
                                 constraintFirst = -1;
-                            else constraintLast  = cpa.binaryFindLastLAE5(constraintFirst, 
-                                cpa.size() - 1, constraintMax);
+                            else constraintLast  = cpa.binaryFindLastLAE(constraintFirst, 
+                                cpa.size() - 1, constraintMax, 5);
                             if (debug) String2.log("  constraintAxisVar=" + constraintAxisVarName + 
                                 " is ascending.  first=" + constraintFirst + 
                                 " last(inclusive)=" + constraintLast);
@@ -7363,6 +7796,7 @@ String2.log(table.toCSVString());
         String2.log(NcHelper.dumpString(fileName, false));
         table.readNcCF(fileName, null, null, null, null);
         String2.log(table.toCSVString());
+        debug = oDebug;
     }
 
     /** This tests readNcCF nLevels=2. */
@@ -8347,7 +8781,7 @@ String2.log(table.dataToCSVString());
             "KYLE WILCOX'S DSG TEST FILE.",
             MustBe.throwableToString(e) + 
             "\nI reported this problem to Kyle 2012-10-03" +
-            "\n2013-10-30 Since Kyle is changing jobs, it is unlikely he will ever fix this.");
+            "\n2013-10-30 Since Kyle is changed jobs, it is unlikely he will ever fix this.");
     }
 
         //***************  trajectory single multidimensional --- 
@@ -14610,14 +15044,17 @@ touble: because table is JsonObject, info may not be in expected order
     /**
      * This mimics the a simple directory listing web page created by Apache.
      * <br>It mimics http://www.ngdc.noaa.gov/metadata/published/NOAA/NESDIS/NGDC/MGG/Hazard_Photos/fgdc/xml/
-     * stored on Bob's computer as f:/programs/apache/listing.html
-     * <br>The URL for this page MUST be a directoryURL ending in '/', or the links don't work!
+     * stored on Bob's computer as c:/programs/apache/listing.html
+     *  See also http://www.ndbc.noaa.gov/data/realtime2/?C=N;O=A
+     * <br>***WARNING*** The URL for that got the user to this page MUST be a 
+     *   directoryURL ending in '/', or the links don't work (since they are implied
+     *   to be relative to the current URL, not explicit)!
      * <br>This just writes the part inside the 'body' tag.
      * <br>If there is a parentDirectory, its link will be at the top of the list.
      * <br>The table need not be sorted initially. This method handles sorting.
      * <br>The table should have 4 columns: "Name" (String), "Last modified" (long), 
      *    "Size" (long), and "Description" (String)
-     * <br>The displayed Last Modified time will be some Zulu timezone.
+     * <br>The displayed Last Modified time will be Zulu timezone.
      * <br>The displayed size will be some number of bytes, or truncated to some
      *    number of K (1024), M (1024^2), G (1024^3), or T (1024^4), 
      *
@@ -14644,10 +15081,11 @@ touble: because table is JsonObject, info may not be in expected order
      * @param addParentDir if true, this shows a link to the parent directory
      * @param dirNames is the list of subdirectories in the directory (without trailing '/'). 
      *   It will be sorted within directoryListing.
+     * @param dirDescriptions may be null
      */
     public String directoryListing(String showUrlDir, String userQuery,
         String iconUrlDir, boolean addParentDir, 
-        StringArray dirNames) throws Exception {
+        StringArray dirNames, StringArray dirDescriptions) throws Exception {
 
         int nameSpaces = 51; //with " " after it to ensure separation
         int dateSpaces = 17; //with " " after it to ensure separation
@@ -14658,9 +15096,7 @@ touble: because table is JsonObject, info may not be in expected order
         //    "\n  iconUrlDir=" + iconUrlDir +
         //    "\n  nDirNames=" + dirNames.size() + " table.nRows=" + nRows());
 
-        String xmlShowUrlDir = XML.encodeAsXML(showUrlDir);
-
-        //ensure column names are as expected
+        //en/sure column names are as expected
         String ncssv = getColumnNamesCSSVString();
         String ncssvMust = "Name, Last modified, Size, Description";
         if (!ncssvMust.equals(ncssv))
@@ -14700,12 +15136,10 @@ touble: because table is JsonObject, info may not be in expected order
         //Order=A|D in column links will be 'A', 
         //  except currently selected column will offer !currentAscending
         char linkAD[] = {'A','A','A','A'};
-        linkAD[keyColumns[0]] = ascending[0]? 'D' : 'A'; // !currentAscending
-        
+        linkAD[keyColumns[0]] = ascending[0]? 'D' : 'A'; // !currentAscending        
 
         //and sort the table (while lastModified and size are still the raw values) 
         sortIgnoreCase(keyColumns, ascending);
-
 
         //convert LastModified to string  (after sorting)
         int tnRows = nRows();
@@ -14743,15 +15177,12 @@ touble: because table is JsonObject, info may not be in expected order
         }
         sizePA = newSizePA;
 
-
 //<pre>
 //<img src="/icons/blank.gif" alt="Icon "> <a href="?C=N;O=D">Name</a>                                                <a href="?C=M;O=A">Last modified</a>      <a href="?C=S;O=A">Size</a>  <a href="?C=D;O=A">Description</a><hr><img src="/icons/back.gif" alt="[DIR]"> <a href="/published/NOAA/NESDIS/NGDC/MGG/Hazard_Photos/fgdc/">Parent Directory</a>                                                         -   
 //<img src="/icons/text.gif" alt="[TXT]"> <a href="G01194.xml">G01194.xml</a>                                          05-Aug-2011 15:41   20K  
 
         //write showUrlDir
         StringBuilder sb = new StringBuilder();
-        sb.append(
-            "<h1>Index of " + XML.encodeAsXML(showUrlDir) + "</h1>\n");
 
         //write column names
         sb.append(
@@ -14765,16 +15196,30 @@ touble: because table is JsonObject, info may not be in expected order
 
 
         //display the directories
-        dirNames.sortIgnoreCase();
-        if (keyColumns[0] == 0 && !ascending[0])  //if sorted by Names, descending order
-            dirNames.reverse();
         //if shown, parentDir always at top
-        if (addParentDir && dirNames.indexOf("..") < 0) 
+        if (dirDescriptions == null) {
+            dirNames.sortIgnoreCase();
+        } else {
+            Table dirTable = new Table();
+            dirTable.addColumn("names", dirNames);
+            dirTable.addColumn("desc", dirDescriptions);
+            dirTable.leftToRightSortIgnoreCase(1);
+        }
+        if (keyColumns[0] == 0 && !ascending[0]) { //if sorted by Names, descending order
+            dirNames.reverse();
+            if (dirDescriptions != null)
+                dirDescriptions.reverse();
+        }
+        if (addParentDir && dirNames.indexOf("..") < 0) { //.. always at top
             dirNames.add(0, "..");
+            if (dirDescriptions != null)
+                dirDescriptions.add(0, "");
+        }
         int nDir = dirNames.size();
         for (int row = 0; row < nDir; row++) {
             try {
                 String dirName = dirNames.get(row); 
+                String dirDes = dirDescriptions == null? "" : dirDescriptions.get(row);
                 String showDirName = dirName;
                 String iconFile = "dir.gif"; //default
                 String iconAlt  = "DIR";  //always 3 characters
@@ -14790,7 +15235,8 @@ touble: because table is JsonObject, info may not be in expected order
                     "\">" + XML.encodeAsXML(showDirName) + "</a>" +
                     String2.makeString(' ',  nameSpaces - showDirName.length()) + " " +
                     String2.left("", dateSpaces) + " " +
-                    String2.right("- ", sizeSpaces) + "  \n"); 
+                    String2.right("- ", sizeSpaces) + "  " +
+                    XML.encodeAsXML(dirDes) +"\n"); 
             } catch (Throwable t) {
                 String2.log(String2.ERROR + " for directoryListing(" +
                     showUrlDir + ")\n" +
@@ -15654,7 +16100,7 @@ touble: because table is JsonObject, info may not be in expected order
         Test.ensureEqual(table2.getStringData(2, 0), "degrees_north", "");
 
         //remove units row
-        table2.removeRows(0, 1);
+        table2.removeRow(0);
         table2.simplify();
 
         //are they the same (but column types may be different)?
@@ -15700,7 +16146,6 @@ touble: because table is JsonObject, info may not be in expected order
         
         //** finally 
         File2.delete(fileName);
-
     }
 
     /**
@@ -16706,7 +17151,7 @@ touble: because table is JsonObject, info may not be in expected order
 
             for (int attempt = 0; attempt < 3; attempt++) {
                 String2.log("\n*** Table.testReadASCIISpeed attempt #" + attempt + "\n");
-                Math2.gcAndWait();
+                Math2.gcAndWait(); //in a test
                 //time it
                 long fileLength = File2.length(fileName); //was 1335204
                 Test.ensureTrue(fileLength > 1335000, "fileName=" + fileName + " length=" + fileLength); 
@@ -16746,12 +17191,12 @@ touble: because table is JsonObject, info may not be in expected order
 
         try {
             //warmup
-            String fileName = "c:/u00/cwatch/testData/cPostDet3.files.json"; 
+            String fileName = "/erddapTest/cPostDet3.files.json"; 
             long time = 0;
 
             for (int attempt = 0; attempt < 3; attempt++) {
                 String2.log("\n*** Table.testReadJsonSpeed attempt#" + attempt + "\n");
-                Math2.gcAndWait();
+                Math2.gcAndWait(); //in a test
 
                 //time it
                 time = System.currentTimeMillis();
@@ -16799,7 +17244,7 @@ touble: because table is JsonObject, info may not be in expected order
 
             for (int attempt = 0; attempt < 3; attempt++) {
                 String2.log("\n*** Table.testReadNDNcSpeed attempt+" + attempt + "\n");
-                Math2.gcAndWait();
+                Math2.gcAndWait(); //in a test
 
                 //time it
                 time = System.currentTimeMillis();
@@ -16845,7 +17290,7 @@ touble: because table is JsonObject, info may not be in expected order
 
             for (int attempt = 0; attempt < 3; attempt++) {
                 String2.log("\n*** Table.testReadOpendapSequenceSpeed\n");
-                Math2.gcAndWait();
+                Math2.gcAndWait(); //in a test
 
                 //time it
                 time = System.currentTimeMillis();
@@ -17631,16 +18076,16 @@ expected =
 "1463500.0,40.22166667,-74.7780556,2076.604166666628,5436.834624\n" +
 "1463500.0,40.22166667,-74.7780556,2076.6145833332557,5408.517777\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
+        debug = oDebug;
 
     }
 
     /**
-     * A main method -- used to test the methods in this class.
+     * This tests the methods in this class.
      *
-     * @param args is ignored  (use null)
      * @throws Exception if trouble
      */
-    public static void main(String args[]) throws Exception {
+    public static void test() throws Exception {
 
         verbose = true;
         reallyVerbose = true;
@@ -17654,6 +18099,8 @@ expected =
         
         //readWrite tests
         testASCII();
+        testReadAsciiCsvFile();
+        testReadAsciiSsvFile();
         testHtml();
         testJson();
         testFlatNc();
@@ -17683,6 +18130,7 @@ expected =
         testUpdate();
 
         try {
+// Needs work. Not active.
             //testConvert(); //2013-04-03 this test needs to be updated to test a new source DAP server
         } catch (Exception e) {
             String2.log(MustBe.throwableToString(e));
@@ -17690,29 +18138,31 @@ expected =
                 "\nRecover from failure? Press 'Enter' to continue or ^C to stop...");
         }
 
-        /* not active
         try {
-            testSql();
+// Needs work. Not active.
+           //testSql();
         } catch (Exception e) {
             String2.log(MustBe.throwableToString(e));
             String2.getStringFromSystemIn(
                 "\nRecover from testSql failure? Press 'Enter' to continue or ^C to stop...");
         }
-        */
+        
         testXml();
 
-        /*not active -- it needs work to deal with sessions
+        
         try {
-            testIobis();
+// Needs work. Not active. It needs work to deal with sessions
+            //testIobis();
         } catch (Exception e) {
             String2.log(MustBe.throwableToString(e));
             String2.getStringFromSystemIn(
                 "\nRecover from testIobis failure (1007-09-10: it needs work to deal with sessions)?\n" +
                 "Press 'Enter' to continue or ^C to stop...");
-        }*/
+        }
+        /* */
 
         //done
-        String2.log("\n***** Table.main finished successfully");
+        String2.log("\n***** Table.test finished successfully");
 
     }
 

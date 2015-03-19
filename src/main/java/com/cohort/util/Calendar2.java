@@ -77,23 +77,6 @@ public class Calendar2 {
     public final static int ZONE_OFFSET = Calendar.ZONE_OFFSET; //millis
     public final static int DST_OFFSET  = Calendar.DST_OFFSET;  //millis
 
-    /*
-    //for thread safety, always use:  synchronized(<itself>) {<use...>}
-    //do before defaultValue=  (below)
-    private static SimpleDateFormat isoDateTimeFormat = 
-        new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
-    private static SimpleDateFormat isoDateFormat = 
-        new SimpleDateFormat("yyyy-MM-dd");
-    private static SimpleDateFormat isoDateHMFormat = 
-        new SimpleDateFormat("yyyy-MM-dd HH:mm");
-    private static SimpleDateFormat compactDateTimeFormat = 
-        new SimpleDateFormat("yyyyMMddHHmmss");
-    private static SimpleDateFormat YYYYDDDFormat = 
-        new SimpleDateFormat("yyyyDDD");
-    private static SimpleDateFormat YYYYMMFormat = 
-        new SimpleDateFormat("yyyyMM");
-    */
-
     public final static int MINUTES_PER_DAY    = 1440;
     public final static int MINUTES_PER_7DAYS  =  7 * MINUTES_PER_DAY; //10080
     public final static int MINUTES_PER_30DAYS = 30 * MINUTES_PER_DAY; //43200
@@ -189,8 +172,8 @@ public class Calendar2 {
         int sincePo = tsUnits.toLowerCase().indexOf(" since ");
         if (sincePo <= 0)
             throw new SimpleException(errorInMethod + "units string doesn't contain \" since \".");
-        double factorToGetSeconds = factorToGetSeconds(tsUnits.substring(0, sincePo));
-        GregorianCalendar baseGC = parseISODateTimeZulu(tsUnits.substring(sincePo + 7));
+        double factorToGetSeconds = factorToGetSeconds(tsUnits.substring(0, sincePo)); //it is trimmed
+        GregorianCalendar baseGC = parseISODateTimeZulu(tsUnits.substring(sincePo + 7)); //it is trimmed
         double baseSeconds = baseGC.getTimeInMillis() / 1000.0;
         //String2.log("  time unitsString (" + tsUnits + 
         //    ") converted to factorToGetSeconds=" + factorToGetSeconds +
@@ -1011,7 +994,7 @@ public class Calendar2 {
      * @param time_precision can be "1970", "1970-01", "1970-01-01", "1970-01-01T00Z",
      *    "1970-01-01T00:00Z", "1970-01-01T00:00:00Z" (used if time_precision is null or not matched), 
      *    "1970-01-01T00:00:00.0Z", "1970-01-01T00:00:00.00Z", "1970-01-01T00:00:00.000Z".
-     *    Versions without 'Z' are allowed.
+     *    Versions without 'Z' are allowed here, but ERDDAP requires hours or finer to have 'Z'.
      */
     public static String limitedFormatAsISODateTimeT(String time_precision,
         GregorianCalendar gc) {
@@ -1027,16 +1010,22 @@ public class Calendar2 {
         //build it    
         //Warning: year may be 5 chars, e.g., -0003
         StringBuilder sb = new StringBuilder(formatAsISOYear(gc)); 
-        if (time_precision.equals("1970"))
+        if (time_precision.equals("1970")) {
+            sb.append(zString); 
             return sb.toString();
+        }
 
         sb.append("-" + String2.zeroPad("" + (gc.get(MONTH) + 1), 2));
-        if (time_precision.equals("1970-01"))
+        if (time_precision.equals("1970-01")) {
+            sb.append(zString);
             return sb.toString();
+        }
         
         sb.append("-" + String2.zeroPad("" + gc.get(DATE), 2));
-        if (time_precision.equals("1970-01-01"))
+        if (time_precision.equals("1970-01-01")) {
+            sb.append(zString);
             return sb.toString();
+        }
 
         sb.append("T" + String2.zeroPad("" + gc.get(HOUR_OF_DAY), 2));
         if (time_precision.equals("1970-01-01T00")) {
@@ -1436,6 +1425,7 @@ public class Calendar2 {
 
         if (s == null)
             s = "";
+        s = s.trim();
         boolean negative = s.startsWith("-");
         if (negative) 
             s = s.substring(1);

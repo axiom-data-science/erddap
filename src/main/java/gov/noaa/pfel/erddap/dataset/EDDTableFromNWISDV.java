@@ -497,8 +497,9 @@ public class EDDTableFromNWISDV extends EDDTable{
                 if (edv.sourceDataTypeClass() != String.class) {
                     double stats[] = stationPA.calculateStats();
                     if (stats[PrimitiveArray.STATS_N] > 0) {
-                        edv.setDestinationMin(stats[PrimitiveArray.STATS_MIN]);
-                        edv.setDestinationMax(stats[PrimitiveArray.STATS_MAX]); 
+                        edv.setDestinationMinMax(
+                            stats[PrimitiveArray.STATS_MIN],
+                            stats[PrimitiveArray.STATS_MAX]); 
                         edv.setActualRangeFromDestinationMinMax();
                     }
     
@@ -513,8 +514,9 @@ public class EDDTableFromNWISDV extends EDDTable{
                     String nMinMax[] = ((StringArray)stationPA).getNMinMax();
                     //tAddAtt.set("data_min", nMinMax[1]);
                     //tAddAtt.set("data_max", nMinMax[2]); 
-                    edv.setDestinationMin(Calendar2.safeIsoStringToEpochSeconds(nMinMax[1]));
-                    edv.setDestinationMax(Calendar2.safeIsoStringToEpochSeconds(nMinMax[2]));
+                    edv.setDestinationMinMax(
+                        Calendar2.safeIsoStringToEpochSeconds(nMinMax[1]),
+                        Calendar2.safeIsoStringToEpochSeconds(nMinMax[2]));
                     edv.setActualRangeFromDestinationMinMax();
                 }
             }
@@ -2451,7 +2453,7 @@ directionsForGenerateDatasetsXml() +
             StringArray getDataFailed = new StringArray();
         int nParamNotInParamList = 0;
         int nParamStatCombos = 0;
-        HashSet variablesSeen = new HashSet();
+        HashSet<String> variablesSeen = new HashSet();
 
         int briarStart = 0;   //use another number to restart in the middle
         for (int briarStation = briarStart; briarStation < nBriarStations; briarStation++) {
@@ -2670,8 +2672,7 @@ directionsForGenerateDatasetsXml() +
                 !stat.equals( briarStatPA.get( briarStation + 1))) {
 
                 //diagnostic info  
-                StringArray variablesSeenSA = new StringArray(
-                    String2.toStringArray(variablesSeen.toArray()));
+                StringArray variablesSeenSA = new StringArray(variablesSeen.toArray(new String[0]));
                 variablesSeenSA.sortIgnoreCase();
                 String2.log("\n*** End of param=" + param + " stat=" + stat + 
                         " nSites=" + dsAgency.size() +

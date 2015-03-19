@@ -32,6 +32,7 @@ import gov.noaa.pfel.coastwatch.griddata.OpendapHelper;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.RegexFilenameFilter;
 import gov.noaa.pfel.coastwatch.util.SSR;
+import gov.noaa.pfel.coastwatch.util.FileVisitorDNLS;
 import gov.noaa.pfel.coastwatch.sgt.CompoundColorMap;
 import gov.noaa.pfel.coastwatch.sgt.GraphDataLayer;
 import gov.noaa.pfel.coastwatch.sgt.SgtGraph;
@@ -588,8 +589,7 @@ public abstract class EDDTable extends EDD {
                 int nMinMax[] = pa.getNMinMaxIndex();
                 if (nMinMax[0] == 0)
                     continue;
-                edv.setDestinationMin(pa.getDouble(nMinMax[1]));
-                edv.setDestinationMax(pa.getDouble(nMinMax[2]));
+                edv.setDestinationMinMax(pa.getDouble(nMinMax[1]), pa.getDouble(nMinMax[2]));
                 edv.setActualRangeFromDestinationMinMax();
             }
         }
@@ -1004,23 +1004,24 @@ public abstract class EDDTable extends EDD {
                         if (reallyVerbose && constraintOp.indexOf('=') >= 0)
                             String2.log("    The constraint with '=' is being expanded because sourceNeedsExpandedFP_EQ=true.");
                         if (constraintOp.equals(">=")) {
-                            constraintValues.set(cv, String2.genEFormat10(constraintValueD - fudge));
+                            constraintValues.set(cv, "" + (constraintValueD - fudge));
                         } else if (constraintOp.equals("<=")) {
-                            constraintValues.set(cv, String2.genEFormat10(constraintValueD + fudge));
+                            constraintValues.set(cv, "" + (constraintValueD + fudge));
                         } else if (constraintOp.equals("=")) {
                             constraintValueD = Math2.roundTo(constraintValueD, 3); //fudge 0.001 -> 3
                             constraintVariables.add(cv + 1, constraintVariable);
                             constraintOps.set(cv,     ">=");
                             constraintOps.add(cv + 1, "<=");
-                            constraintValues.set(cv,     String2.genEFormat10(constraintValueD - fudge));
-                            constraintValues.add(cv + 1, String2.genEFormat10(constraintValueD + fudge)); 
-                        } else if (constraintOp.equals("!=")) {
-                            constraintValueD = Math2.roundTo(constraintValueD, 3); //fudge 0.001 -> 3
-                            constraintVariables.add(cv + 1, constraintVariable);
-                            constraintOps.set(cv,     "<=");
-                            constraintOps.add(cv + 1, ">=");
-                            constraintValues.set(cv,     String2.genEFormat10(constraintValueD - fudge));
-                            constraintValues.add(cv + 1, String2.genEFormat10(constraintValueD + fudge)); 
+                            constraintValues.set(cv,     "" + (constraintValueD - fudge));
+                            constraintValues.add(cv + 1, "" + (constraintValueD + fudge)); 
+                        //2014-11-05 != modifications commented out. Leave constaint as it is.
+                        //} else if (constraintOp.equals("!=")) {
+                        //    constraintValueD = Math2.roundTo(constraintValueD, 3); //fudge 0.001 -> 3
+                        //    constraintVariables.add(cv + 1, constraintVariable);
+                        //    constraintOps.set(cv,     "<=");
+                        //    constraintOps.add(cv + 1, ">=");
+                        //    constraintValues.set(cv,     constraintValueD - fudge);
+                        //    constraintValues.add(cv + 1, constraintValueD + fudge); 
                         }
                     }
                 }
@@ -1406,6 +1407,7 @@ public abstract class EDDTable extends EDD {
         for (int cv = 0; cv < constraintVariables.size(); cv++) { 
             String constraintVariable = constraintVariables.get(cv);
             String constraintOp       = constraintOps.get(cv);
+            String constraintValue    = constraintValues.get(cv);
             int dv = String2.indexOf(dataVariableDestinationNames(), constraintVariable);
             EDV edv = dataVariables[dv];
             Class sourceClass = edv.sourceDataTypeClass();
@@ -1434,9 +1436,14 @@ public abstract class EDDTable extends EDD {
 
                 //constraint source is numeric
                 } else {
+                    double constraintValueD = String2.parseDouble(constraintValue);
                     if (sourceCanConstrainNumericData == CONSTRAIN_NO ||
                         sourceCanConstrainNumericData == CONSTRAIN_PARTIAL ||
-                        constraintOp.equals(PrimitiveArray.REGEX_OP)) { //always do all regex tests here
+                        constraintOp.equals(PrimitiveArray.REGEX_OP) || //always do all regex tests here
+                        (sourceNeedsExpandedFP_EQ && //source did an expanded query. Check it here.
+                          (sourceClass == float.class || sourceClass == double.class) && 
+                          !Double.isNaN(constraintValueD) &&
+                          constraintValueD != Math2.roundToDouble(constraintValueD))) { //if not int
                         //fall through to test below
                     } else {
                         //source did the test
@@ -1446,9 +1453,8 @@ public abstract class EDDTable extends EDD {
             }
 
             //The constraint needs to be tested here. Test it now.
-            //Note that Time and Alt values have been converted to standardized units above.
+            //Note that Timestamp and Alt values have been converted to standardized units above.
             PrimitiveArray dataPa = table.findColumn(constraintVariable); //throws Throwable if not found
-            String constraintValue = constraintValues.get(cv);
             if (reallyVerbose) String2.log("  Handling constraint #" + cv + " here: " + 
                 constraintVariable + " " + constraintOp + " " + constraintValue);
             int nSwitched = 0;
@@ -2031,7 +2037,8 @@ public abstract class EDDTable extends EDD {
             //This presumes that destMin and Max are reliable values and 
             //  won't have changed before this data request.
             //For timestamp variables, all numeric tests here are epochSeconds.
-            //This presumes that timestamp's destMax is NaN for times close to NOW 
+            //This DOESN'T (changed 2015-02-24) presume that timestamp's destMax 
+            //  is NaN for times close to NOW 
             //  (since it changes often), e.g., cwwcNDBCMet data from (changing) files.
             //This presumes that other variables in near-real-time datasets 
             //  are unlikely to have just now exceeded the previous
@@ -2040,6 +2047,12 @@ public abstract class EDDTable extends EDD {
                 boolean tPassed = true;
                 double destMin = conEdv.destinationMin();
                 double destMax = conEdv.destinationMax();
+                //if edvTimeStamp and destMax is recent, treat destMax as NaN
+                if (conEdvIsTimeStamp && //destMax is epochSeconds
+                    destMax > System.currentTimeMillis()/1000.0 - 2.0 * Calendar2.SECONDS_PER_DAY) {
+                    //maxTime is within last 48hrs, so setting maxTime to NaN (i.e., Now).
+                    destMax = Double.NaN;
+                }
                 String constraintOp = OPERATORS[op];
                 //non-timestamp tests are troubled by float/double/slight differences                
                 if (tPassed && Math2.isFinite(destMin)) {
@@ -2352,7 +2365,7 @@ public abstract class EDDTable extends EDD {
             }
             return;
         }
-        
+
         if (fileTypeName.equals(".graph")) {
             respondToGraphQuery(request, loggedInAs, requestUrl, userDapQuery, outputStreamSource,
                 dir, fileName, fileTypeName);
@@ -2382,7 +2395,8 @@ public abstract class EDDTable extends EDD {
                     "<p>" + EDStatic.EDDTableDownloadDataHtml +
                     "</ol>\n" +
                     EDStatic.dafTableBypass));
-                writeHtmlDatasetInfo(loggedInAs, writer, true, false, true, userDapQuery, "");
+                writeHtmlDatasetInfo(loggedInAs, writer, true, false, true, true, 
+                    userDapQuery, "");
                 if (userDapQuery.length() == 0) 
                     userDapQuery = defaultDataQuery(); //after writeHtmlDatasetInfo and before writeDapHtmlForm
                 writeDapHtmlForm(loggedInAs, userDapQuery, writer);
@@ -4162,6 +4176,7 @@ public abstract class EDDTable extends EDD {
                     ncOffset += bufferSize;
                     //String2.log("col=" + col + " bufferSize=" + bufferSize + " isString?" + (colType == String.class));
                 }
+                dis.close();
             }
 
             //if close throws Throwable, it is trouble
@@ -5387,8 +5402,9 @@ public abstract class EDDTable extends EDD {
                     Double.isNaN(edv.destinationMin()) &&
                     Double.isNaN(edv.destinationMax())) {
 
-                    edv.setDestinationMin(twawm.columnMinValue[col] * edv.scaleFactor() + edv.addOffset());
-                    edv.setDestinationMax(twawm.columnMaxValue[col] * edv.scaleFactor() + edv.addOffset());
+                    edv.setDestinationMinMax(
+                        twawm.columnMinValue[col] * edv.scaleFactor() + edv.addOffset(),
+                        twawm.columnMaxValue[col] * edv.scaleFactor() + edv.addOffset());
                     edv.setActualRangeFromDestinationMinMax();
                 }
             }
@@ -5434,8 +5450,7 @@ public abstract class EDDTable extends EDD {
             (Double.isNaN(tMin)? "" : Calendar2.epochSecondsToIsoStringT(tMin)) + 
             " max=" + tMax + "=" +
             (Double.isNaN(tMax)? "" : Calendar2.epochSecondsToIsoStringT(tMax)));
-        if (!Double.isNaN(tMin)) dataVariables[timeIndex].setDestinationMin(tMin); //scaleFactor,addOffset not supported
-        if (!Double.isNaN(tMax)) dataVariables[timeIndex].setDestinationMax(tMax);
+        dataVariables[timeIndex].setDestinationMinMax(tMin, tMax); //scaleFactor,addOffset not supported
         dataVariables[timeIndex].setActualRangeFromDestinationMinMax();
     }
 
@@ -6448,7 +6463,7 @@ public abstract class EDDTable extends EDD {
             "<br>ERDDAP URL in your browser, sitting and waiting for each file to download. \n" +
             "<br>If you are comfortable writing computer programs (e.g., with C, Java, Python, Matlab, r)\n" +
             "<br>you can write a program with a loop that imports all of the desired data files.\n" +
-            "<br>Or, if are comfortable with command line programs (just running a program, or using bash or tcsh\n" +
+            "<br>Or, if you are comfortable with command line programs (just running a program, or using bash or tcsh\n" +
             "<br>scripts in Linux or Mac OS X, or batch files in Windows), you can use curl to save results files\n" +
             "<br>from ERDDAP into files on your hard drive, without using a browser or writing a computer program.\n" +
             "<br>ERDDAP+curl is amazingly powerful and allows you to use ERDDAP in many new ways.\n" +
@@ -6456,9 +6471,10 @@ public abstract class EDDTable extends EDD {
             "<br>On Windows, or if your computer doesn't have curl already, you need to \n" +
             "  <a rel=\"bookmark\" href=\"http://curl.haxx.se/download.html\">download curl" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>\n" +
-            "<br>and install it.  To get to a command line in Windows, use \"Start : Run\" and type in \"cmd\".\n" +
-            "<br>(\"Win32 - Generic, Win32, binary (without SSL)\" worked for me on Windows XP and Windows 7.)\n" +
-            "<br><b>Please be kind to other ERDDAP users: run just one script at a time.</b>\n" +
+            "<br>and install it.  To get to a command line in Windows, click on \"Start\" and type\n" + 
+            "<br>\"cmd\" into the search textfield.\n" +
+            "<br>(\"Win32 - Generic, Win32, binary (without SSL)\" worked for me in Windows 7.)\n" +
+            "<br><b>Please be kind to other ERDDAP users: run just one script or curl command at a time.</b>\n" +
             "<br>Instructions for using curl are on the \n" +
                 "<a rel=\"help\" href=\"http://curl.haxx.se/download.html\">curl man page" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a> and in this\n" +
@@ -6491,7 +6507,7 @@ public abstract class EDDTable extends EDD {
               "them in the erddapURL as &#37;5B, &#37;5D, &#37;7B, &#37;7D, respectively.\n" +
             "  <br>Fortunately, these are rare in tabledap URLs.\n" +
             "  <br>Then, in the erddapUrl, replace a zero-padded number (for example <tt>01</tt>) with a range\n" +
-            "  <br>of values (for example, <tt>[01-05]</tt> ),\n" +
+            "  <br>of values (for example, <tt>[01-15]</tt> ),\n" +
             "  <br>or replace a substring (for example <tt>TAML1</tt>) with a list of values (for example,\n" +
             "  <br><tt>{TAML1,41009,46088}</tt> ).\n" +
             "  <br>The <tt>#1</tt> within the output fileName causes the current value of the range or list\n" +
@@ -6586,7 +6602,7 @@ public abstract class EDDTable extends EDD {
             "          <br>floating point numbers. For example, a search for <tt>longitude=220.2</tt> may\n" +
             "          <br>fail if the value is stored as 220.20000000000001. This problem arises because\n" +
             "          <br>floating point numbers are " +
-            "            <a rel=\"help\" href=\"http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm\">not represented exactly within computers" +
+            "            <a rel=\"help\" href=\"http://randomascii.wordpress.com/2012/02/25/comparing-floating-point-numbers-2012-edition/\">not represented exactly within computers" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>.\n" +
             "          <br>When ERDDAP performs these tests, it allows for minor variations and tries\n" +
             "          <br>to avoid the problem. But it is possible that some datasets will still\n" +
@@ -6675,6 +6691,29 @@ public abstract class EDDTable extends EDD {
             "      <br>Here is an example of a query which includes ISO date/time values:\n" +
             "      <br><a href=\"" + EDStatic.phEncode(fullTimeExample) + "\"><tt>" + 
                                      XML.encodeAsHTML( fullTimeExample) + "</tt></a> .\n" +
+            "      <br><a name=\"lenient\">ERDDAP</a> is \"lenient\" when it parses date/time strings. That means that date/times\n" +
+            "      <br>with the correct format, but with month, date, hour, minute, and/or second values\n" +
+            "      <br>that are too large or too small will be rolled to the appropriate date/times.\n" +
+            "      <br>For example, ERDDAP interprets 2001-12-32 as 2002-01-01, and interprets\n" +
+            "      <br>2002-01-00 as 2001-12-31.\n" +
+            "      <br>(It's not a bug, it's a feature! We understand that you may object to this\n" +
+            "      <br>if you are not familiar with lenient parsing. We understand there are\n" +
+            "      <br>circumstances where some people would prefer strict parsing, but there are also\n" +
+            "      <br>circumstances where some people would prefer lenient parsing. ERDDAP can't\n" +
+            "      <br>have it both ways. This was a conscious choice. Lenient parsing is the default\n" +
+            "      <br>behavior in Java, the language that ERDDAP is written in and arguably the\n" +
+            "      <br>most-used computer language. Also, this behavior is consistent with ERDDAP's\n" +
+            "      <br>conversion of requested grid axis values to the nearest valid grid axis value.\n" +
+            "      <br>And this is consistent with some other places in ERDDAP that try to repair\n" +
+            "      <br>invalid input when the intention is clear, instead of just returning an error\n" +
+            "      <br>message.)\n" +
+            (EDStatic.convertersActive? 
+              "      <br>ERDDAP has a utility to\n" +
+              "        <a rel=\"bookmark\" href=\"" + tErddapUrl + "/convert/time.html\">Convert\n" +
+              "        a Numeric Time to/from a String Time</a>.\n" +
+              "      <br>See also:\n" +
+              "        <a rel=\"help\" href=\"" + tErddapUrl + "/convert/time.html#erddap\">How\n" +
+              "        ERDDAP Deals with Time</a>.\n" : "") +
             "    <li><a name=\"now\">tabledap</a> extends the OPeNDAP standard to allow you to specify constraints for\n" +
             "      <br>time and timestamp variables relative to <tt>now</tt>. The constraint can be simply,\n" +
             "      <br>for example, <tt>time&lt;now</tt>, but usually the constraint is in the form\n" +
@@ -7099,7 +7138,8 @@ public abstract class EDDTable extends EDD {
             writer.write(EDStatic.youAreHereWithHelp(loggedInAs, "tabledap", 
                 EDStatic.mag, 
                 EDStatic.magTableHtml));
-            writeHtmlDatasetInfo(loggedInAs, writer, true, true, false, userDapQuery, otherRows);
+            writeHtmlDatasetInfo(loggedInAs, writer, true, true, true, false, 
+                userDapQuery, otherRows);
             if (userDapQuery.length() == 0) 
                 userDapQuery = defaultGraphQuery(); //after writeHtmlDatasetInfo and before parseUserDapQuery
             writer.write(HtmlWidgets.ifJavaScriptDisabled + "\n");
@@ -9196,7 +9236,8 @@ public abstract class EDDTable extends EDD {
                     diQuery.append("&" + qp);
                 }
             }
-            writeHtmlDatasetInfo(loggedInAs, writer, false, true, true, diQuery.toString(), "");
+            writeHtmlDatasetInfo(loggedInAs, writer, false, true, true, 
+                true, diQuery.toString(), "");
             writer.write(HtmlWidgets.ifJavaScriptDisabled);
             
             //if noData/invalid request tell user and reset all
@@ -9997,6 +10038,9 @@ public abstract class EDDTable extends EDD {
     /** 
      * This returns the subsetVariables data table.
      *
+     * <p>Data from EDVTimeStamp variables are stored as epochSeconds
+     * in the subsetVariables .nc file and data table.
+     *
      * <p>This is thread-safe because the constructor (one thread) calls 
      *     distinctSubsetVariablesDataTable() which calls this and creates .nc file.
      *
@@ -10055,6 +10099,17 @@ public abstract class EDDTable extends EDD {
                         " wasn't found in " + adminSubsetFileName + ".json .");
                 if (tCol > col)
                     table.moveColumn(tCol, col);
+
+                //convert EDVTimeStamp ISO Strings to epochSeconds
+                EDV edv = findDataVariableByDestinationName(tSubsetVars[col]);
+                if (edv instanceof EDVTimeStamp) {
+                    PrimitiveArray oldPa = table.getColumn(col);
+                    int nRows = oldPa.size();
+                    DoubleArray newPa = new DoubleArray(nRows, false);
+                    for (int row = 0; row < nRows; row++)
+                        newPa.add(Calendar2.safeIsoStringToEpochSeconds(oldPa.getString(row)));
+                    table.setColumn(col, newPa);
+                }
             }
             //remove excess columns
             table.removeColumns(tSubsetVars.length, table.nColumns());
@@ -10670,13 +10725,13 @@ public abstract class EDDTable extends EDD {
      * all unique sosObservedProperties.
      */
     /*protected void gatherSosObservedProperties() {
-        HashSet set = new HashSet(Math2.roundToInt(1.4 * dataVariables.length));
+        HashSet<String> set = new HashSet(Math2.roundToInt(1.4 * dataVariables.length));
         for (int dv = 0; dv < dataVariables.length; dv++) {
             String s = dataVariables[dv].combinedAttributes().getString("observedProperty");
             if (s != null)
                set.add(s);
         }
-        sosObservedProperties = String2.toStringArray(set.toArray()); 
+        sosObservedProperties = set.toArray(new String[0]); 
         Arrays.sort(sosObservedProperties);
     }*/
 
@@ -13905,7 +13960,7 @@ public abstract class EDDTable extends EDD {
 
         //*** html body content
         writer.write(EDStatic.youAreHere(loggedInAs, "sos", datasetID)); //sos must be lowercase for link to work
-        writeHtmlDatasetInfo(loggedInAs, writer, true, true, true, "", "");
+        writeHtmlDatasetInfo(loggedInAs, writer, true, true, true, true, "", "");
 
         String makeAGraphRef = "<a href=\"" + tErddapUrl + "/tabledap/" + datasetID + ".graph\">" +
             EDStatic.mag + "</a>";
@@ -15849,9 +15904,15 @@ if (contributorName != null || contributorRole != null)
 (contributorEmail == null?
 "              <gmd:contactInfo gco:nilReason=\"missing\"/>\n" :
 "              <gmd:contactInfo>\n" +
-"                <gmd:electronicMailAddress>\n" +
-"                  <gco:CharacterString>" + XML.encodeAsXML(contributorEmail) + "</gco:CharacterString>\n" +
-"                </gmd:electronicMailAddress>\n" +
+"                <gmd:CI_Contact>\n" +
+"                  <gmd:address>\n" +
+"                    <gmd:CI_Address>\n" +
+"                      <gmd:electronicMailAddress>\n" +
+"                        <gco:CharacterString>" + XML.encodeAsXML(contributorEmail) + "</gco:CharacterString>\n" +
+"                      </gmd:electronicMailAddress>\n" +
+"                    </gmd:CI_Address>\n" +
+"                  </gmd:address>\n" +
+"                </gmd:CI_Contact>\n" +
 "              </gmd:contactInfo>\n") +
 
 "              <gmd:role>\n" +  

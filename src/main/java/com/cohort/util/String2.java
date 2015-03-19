@@ -279,6 +279,17 @@ public class String2 {
      *
      * @param s
      * @param find
+     * @return the first instance of 'find' at or after fromIndex (0..), ignoring case.
+     */
+    public static int indexOfIgnoreCase(String s, String find) {
+        return indexOfIgnoreCase(s, find, 0);
+    }
+
+    /**
+     * Finds the first instance of 'find' at or after fromIndex (0..), ignoring case.
+     *
+     * @param s
+     * @param find
      * @param fromIndex
      * @return the first instance of 'find' at or after fromIndex (0..), ignoring case.
      */
@@ -376,7 +387,7 @@ public class String2 {
      * @throws Exception if trouble
      */
     public static String[] extractAllRegexes(String s, String regex) {
-        ArrayList al = new ArrayList();
+        ArrayList<String> al = new ArrayList();
         Pattern p = Pattern.compile(regex);
         Matcher m = p.matcher(s);
         int fromIndex = 0;
@@ -384,7 +395,7 @@ public class String2 {
             al.add(s.substring(m.start(), m.end()));
             fromIndex = m.end();
         }
-        return toStringArray(al.toArray());
+        return al.toArray(new String[0]);
     }
 
     /**
@@ -531,7 +542,7 @@ public class String2 {
      *     Using a String array gets around Java's limitation of
      *         only returning one value from a method.
      *     String #0 is an error String (or "" if no error).
-     *     String #1 has the contents of the file
+     *     String #1 has the contents of the file as one big string
      *         (with any end-of-line characters converted to \n).
      *     If the error String is not "", String #1
      *         may not have all the contents of the file.
@@ -570,7 +581,7 @@ public class String2 {
                         log("WARNING #" + attempt + 
                             ": String2.readFromFile is having trouble. It will try again to read " + 
                             fileName);
-                        if (attempt == 1) Math2.gcAndWait(); //give OS/Java a time and gc to deal with trouble
+                        if (attempt == 1) Math2.gcAndWait(); //trouble! Give OS/Java a time and gc to deal with trouble
                         else Math2.sleep(1000);
                     }
                 }
@@ -615,6 +626,52 @@ public class String2 {
         //log("  String2.readFromFile " + fileName + " time=" + 
         //    (System.currentTimeMillis() - time));
         return results;
+    }
+
+    /**
+     * This is like the other readFromFile, but returns ArrayList of Strings
+     * and throws Exception is trouble.
+     * The strings in the ArrayList are not canonical! So this is useful
+     * for reading, processing, and throwing away.
+     * 
+     * <P>This method is generally appropriate for small and medium-sized
+     * files. For very large files or files that need additional processing,
+     * it may be more efficient to write a custom method to
+     * read the file line-by-line, processing as it goes.
+     *
+     * @param fileName is the (usually canonical) path (dir+name) for the file
+     * @param charset e.g., ISO-8859-1, UTF-8, or "" or null for the default (ISO-8859-1)
+     * @param maxAttempt e.g. 3   (the tries are 1 second apart)
+     * @return String[] with the lines from the file
+     * @throws IOException if trouble
+     */
+    public static String[] readLinesFromFile(String fileName, String charset,
+        int maxAttempt) throws Exception {
+
+        long time = System.currentTimeMillis();
+        InputStreamReader isr = null;
+        for (int i = 0; i < maxAttempt; i++) {
+            try {
+                isr = new InputStreamReader(new FileInputStream(fileName), 
+                    charset == null || charset.length() == 0? "ISO-8859-1" : charset);
+                break; //success
+            } catch (Exception e) {
+                if (i == maxAttempt - 1)
+                    throw e;
+                Math2.sleep(1);
+            }
+        }
+        BufferedReader bufferedReader = new BufferedReader(isr);
+        ArrayList<String> al = new ArrayList();                         
+        String s = bufferedReader.readLine();
+        while (s != null) { //null = end-of-file
+            al.add(s);
+            s = bufferedReader.readLine();
+        }
+
+        bufferedReader.close();
+        isr.close();
+        return al.toArray(new String[0]);
     }
 
     /*
@@ -1102,6 +1159,8 @@ public class String2 {
 
     /**
      * This indicates if s has just file-name-safe characters (0-9, A-Z, a-z, _, -, .).
+     * Note, this does not check for filenames that are too long
+     * (Windows has a path+fileName max length of 255 chars).
      *
      * @param s a string, usually a file name
      * @return true if s has just file-name-safe characters (0-9, A-Z, a-z, _, -, .).
@@ -1127,6 +1186,8 @@ public class String2 {
      * See javadocs for java.net.URLEncoder, which describes valid characters
      *  (but deals with encoding, whereas this method alters or removes).
      * The result may be shorter than s.
+     * Note, this does not check for filenames that are too long
+     * (Windows has a path+fileName max length of 255 chars).
      *
      * @param s  If s is null, this returns "_null".
      *    If s is "", this returns "_".
@@ -1207,12 +1268,12 @@ public class String2 {
         if (s.charAt(n - 1) == '.')
             return false;
 
-        ArrayList al = splitToArrayList(s, '.', false); //trim=false
+        ArrayList<String> al = splitToArrayList(s, '.', false); //trim=false
         int nal = al.size();
 
         //test each word
         for (int part = 0; part < nal; part++) {
-            String ts = (String)al.get(part);
+            String ts = al.get(part);
             int tn = ts.length();
             if (tn == 0)
                 return false;
@@ -1242,6 +1303,8 @@ public class String2 {
      * <ul>
      * Note that Java allows Unicode characters, but this does not.
      * See also the safer encodeVariableNameSafe(String s).
+     * Note, this does not check for names that are too long
+     * (many system have an 80 or 255 char limit).
      *
      * @param s
      * @return a safe variable name (but perhaps two s's lead to the same result)
@@ -1479,6 +1542,22 @@ public class String2 {
     }
 
     /**
+     * Returns the same StringBuilder, where all occurences of <TT>oldCh</TT> have
+     *   been replaced with <TT>newCh</TT>.
+     *
+     * @return the same StringBuilder, for convenience.
+     */
+    public static StringBuilder replaceAll(StringBuilder sb, char oldCh, char newCh) {
+        String oldS = "" + oldCh;
+        int po = sb.indexOf(oldS);
+        while (po >= 0) {
+            sb.setCharAt(po, newCh);
+            po = sb.indexOf(oldS, po + 1);
+        }
+        return sb;
+    }
+
+    /**
      * This adds 0's to the left of the string until there are <TT>nDigits</TT>
      *   to the left of the decimal point (or nDigits total if there isn't
      *   a decimal point).
@@ -1634,8 +1713,6 @@ public class String2 {
         sb.append(s.substring(start));
         return sb.toString();
     }
-
-
     
     /**
      * This takes a multi-line string (with \\r, \\n, \\r\\n line separators)
@@ -1648,12 +1725,12 @@ public class String2 {
      * </ul>
      *
      * @param s the string with internal line separators
-     * @return an arrayList of Strings (separate lines of text)
+     * @return an arrayList&lt;Strings&gt; (separate lines of text)
      */
-    public static ArrayList multiLineStringToArrayList(String s) {
+    public static ArrayList<String> multiLineStringToArrayList(String s) {
         char endOfLineChar = s.indexOf('\n') >= 0? '\n' : '\r';
         int sLength = s.length();
-        ArrayList arrayList = new ArrayList(); //this is local, so okay if not threadsafe
+        ArrayList<String> arrayList = new ArrayList(); //this is local, so okay if not threadsafe
         StringBuilder oneLine = new StringBuilder(512);
         char ch;
         int start = 0;
@@ -1665,6 +1742,8 @@ public class String2 {
                 oneLine.append(s.substring(start, po));
                 start = po + 1;
                 if (ch == endOfLineChar) {
+                    //so it catches *the* designated eol char (e.g., \r), 
+                    //and ignores any other (e.g., \n)
                     arrayList.add(oneLine.toString());                
                     oneLine.setLength(0);
                 } //else:  other characters are ignored
@@ -2910,7 +2989,7 @@ public class String2 {
      *   s=null returns null.
      *   s="" returns ArrayList with one value: "".
      */
-    public static ArrayList splitToArrayList(String s, char separator) {
+    public static ArrayList<String> splitToArrayList(String s, char separator) {
         return splitToArrayList(s, separator, true);
     }
 
@@ -2921,11 +3000,11 @@ public class String2 {
      * @param s a string with 0 or more separator chatacters
      * @param separator
      * @param trim  trim the substrings, or don't
-     * @return an ArrayList of strings.
+     * @return an ArrayList of strings (not canonical).
      *   s=null returns null.
      *   s="" returns ArrayList with one value: "".
      */
-    public static ArrayList splitToArrayList(String s, char separator, boolean trim) {
+    public static ArrayList<String> splitToArrayList(String s, char separator, boolean trim) {
         if (s == null) 
             return null;
 
@@ -2958,15 +3037,15 @@ public class String2 {
      * 
      * @param s a string with 0 or more separator chatacters
      * @param separator
-     * @return a String[] with the strings.
+     * @return a String[] with the strings (not canonical).
      *   s=null returns null.
      *   s="" returns String[1]{""}.
      */
     public static String[] split(String s, char separator) {
-        ArrayList al = splitToArrayList(s, separator, true);
+        ArrayList<String> al = splitToArrayList(s, separator, true);
         if (al == null)
             return null;
-        return toStringArray(al.toArray());
+        return al.toArray(new String[0]);
     }
 
     /**
@@ -2975,15 +3054,15 @@ public class String2 {
      * 
      * @param s a string with 0 or more separator chatacters
      * @param separator
-     * @return a String[] with the strings.
+     * @return a String[] with the strings (not canonical).
      *   s=null returns null.
      *   s="" returns String[1]{""}.
      */
     public static String[] splitNoTrim(String s, char separator) {
-        ArrayList al = splitToArrayList(s, separator, false);
+        ArrayList<String> al = splitToArrayList(s, separator, false);
         if (al == null)
             return null;
-        return toStringArray(al.toArray());
+        return al.toArray(new String[0]);
     }
 
     /**
@@ -3233,6 +3312,24 @@ public class String2 {
         return !(s.equals("false") || s.equals("f") || s.equals("0"));
     }
 
+    /**
+     * This converts a string to a boolean and then a byte.
+     * 
+     * @param s the string
+     * @return Byte.MAX_VALUE (i.e., missing value) if s is null or s is "". 
+     *   Return 0 if s is "false", "f", or "0".   
+     *   Return 1 if for all other values.
+     *   Case and leading/trailing spaces don't matter.
+     */
+    public static byte parseBooleanToByte(String s) {
+        if (s == null)
+            return Byte.MAX_VALUE;
+        s = s.toLowerCase().trim();
+        if (s.length() == 0)
+            return Byte.MAX_VALUE;
+        return (s.equals("false") || s.equals("f") || s.equals("0"))? (byte)0 : (byte)1;
+    }
+
     /** This removes leading ch's.
      * @param s
      * @param ch
@@ -3452,7 +3549,7 @@ public class String2 {
         if (s == null)
             return null;
 
-        ArrayList arrayList = new ArrayList();
+        ArrayList<String> arrayList = new ArrayList();
         int sLength = s.length();
         int index = 0; //next char to be read
         //eat spaces
@@ -3483,7 +3580,7 @@ public class String2 {
                 index++;
         }
 
-        return toStringArray(arrayList.toArray());
+        return arrayList.toArray(new String[0]);
     }
 
     /** The size of the int[] needed for distribute() and getDistributionStatistics(). */
@@ -4059,7 +4156,7 @@ public class String2 {
      * e.g., c:/programs/tomcat/webapps/cwexperimental/WEB-INF/classes/.
      *
      * @return directory that is the classpath for the source
-     *     code files 
+     *     code files (with / separator and / at the end)
      * @throws Exception if trouble
      */
     public static String getClassPath() {

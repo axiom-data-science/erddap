@@ -13,7 +13,6 @@
 package gov.noaa.pmel.util;
 
 import java.beans.PropertyChangeListener;
-
 import gov.noaa.pmel.util.Range2D;
 import gov.noaa.pmel.sgt.Transform;
  
@@ -165,8 +164,5 @@ public class LinearTransform implements Transform {
 		mUPSlope = num/denom;
 		mUPYintercept = mPhysRange.start - (mPUSlope * mUserRange.start);
 	}
-
-	@Override
-	public void releaseResources() throws Exception {}
 }
 
