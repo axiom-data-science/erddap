@@ -18,7 +18,9 @@ import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
+import com.cohort.util.XML;
 
+import gov.noaa.pfel.coastwatch.griddata.NcHelper;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.sgt.SgtUtil;
 
@@ -28,6 +30,10 @@ import gov.noaa.pfel.erddap.variable.*;
 
 import java.text.MessageFormat;
 import java.util.List;
+
+import ucar.nc2.NetcdfFile;
+import ucar.nc2.Variable;
+import ucar.nc2.Dimension;
 
 
 
@@ -332,7 +338,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
 
                     //store the axis vars
                     for (int avi = 0; avi < maxDim; avi++) {
-                        String axisName = ((Dimension)dimensions.get(avi)).getName();
+                        String axisName = ((Dimension)dimensions.get(avi)).getFullName();
                         Variable axisVariable = ncFile.findVariable(axisName);
                         Attributes sourceAtts = new Attributes();
                         if (axisVariable != null) //it will be null for dimension without same-named coordinate axis variable
@@ -350,7 +356,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                     //if axes are different, reject this var
                     boolean ok = true;
                     for (int avi = 0; avi < maxDim; avi++) {
-                        String axisName = ((Dimension)dimensions.get(avi)).getName();
+                        String axisName = ((Dimension)dimensions.get(avi)).getFullName();
                         String expectedName = axisSourceTable.getColumnName(avi);
                         if (!axisName.equals(expectedName)) {
                             if (verbose) String2.log("variable=" + varName + 
