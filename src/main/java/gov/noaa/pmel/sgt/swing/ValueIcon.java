@@ -14,6 +14,7 @@ package gov.noaa.pmel.sgt.swing;
 import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 
+import gov.noaa.pmel.sgt.JPane;
 import gov.noaa.pmel.sgt.LayerChild;
 import gov.noaa.pmel.sgt.Layer;
 import gov.noaa.pmel.sgt.CartesianGraph;
