@@ -41,7 +41,7 @@ To add the Axiom sensor service as an ERDDAP dataset, add this to your datasets.
 ```xml
 <dataset type="EDDTableFromAxiomSensorCSVService" datasetID="axiom_sensor_service">
     <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>
-    <!-- Region is taken from the "appregion" parameter here: http://docs.stationsensorservice.apiary.io/#getstationrequest
+    <!-- Region is taken from the "appregion" parameter here: http://docs.stationsensorservice.apiary.io/#getstationrequest -->
     <region>all</region>
     <addAttributes>
         <att name="title">Axiom Sensor Service for ALL regions</att>
@@ -68,13 +68,14 @@ in Git and usally put an entire release into a single commit.  That being said..
 ```
 git clone https://github.com/BobSimons/erddap.git
 cd erddap
-cp -r WEB-INF/classes/gov/* ERDDAP_DEV_ROOT/src/main/java/gov/*
-cp -r WEB-INF/classes/dods/* ERDDAP_DEV_ROOT/src/main/java/dods/
-cp -r WEB-INF/classes/com/cohort/* ERDDAP_DEV_ROOT/src/main/java/com/cohort/
-cp -r WEB-INF/classes/net/jmge/gif/* ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif/
-cp -r WEB-INF/cptfiles/* ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/cptfiles/
-cp -r WEB-INF/ref/* ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/ref/
-cp -r WEB-INF/images/* ERDDAP_DEV_ROOT/src/main/webapp/images/
+export ERDDAP_DEV_ROOT=you_dev_root
+cp -r WEB-INF/classes/gov/* $ERDDAP_DEV_ROOT/src/main/java/gov/
+cp -r WEB-INF/classes/dods/* $ERDDAP_DEV_ROOT/src/main/java/dods/
+cp -r WEB-INF/classes/com/cohort/* $ERDDAP_DEV_ROOT/src/main/java/com/cohort/
+cp -r WEB-INF/classes/net/jmge/gif/* $ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif/
+cp -r WEB-INF/cptfiles/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/cptfiles/
+cp -r WEB-INF/ref/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/ref/
+cp -r WEB-INF/images/* $ERDDAP_DEV_ROOT/src/main/webapp/images/
 
 ```
 
