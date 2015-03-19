@@ -505,4 +505,9 @@ public class Pane extends Container implements AbstractPane {
   public void removePropertyChangeListener(PropertyChangeListener l) {
     proxy_.removePropertyChangeListener(l);
   }
+
+  @Override
+  public void releaseResources() throws Exception {
+	// TODO Auto-generated method stub
+  }
 }

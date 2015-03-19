@@ -237,4 +237,8 @@ public class PseudoRealTimeData implements SGTLine, ActionListener {
   private double tSeries(int val) {
     return A0_*Math.sin(omega0_*val)+A1_*Math.sin(omega1_*val)+A2_*Math.random();
   }
+  @Override
+  public void releaseResources() throws Exception {
+	// TODO Auto-generated method stub
+  }
 }
