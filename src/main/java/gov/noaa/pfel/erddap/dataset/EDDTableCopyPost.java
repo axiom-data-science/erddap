@@ -70,6 +70,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         boolean tFileTableInMemory = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        boolean tAccessibleViaFiles = false;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -110,7 +111,9 @@ public class EDDTableCopyPost extends EDDTableCopy {
             else if (localTags.equals( "<defaultDataQuery>")) {}
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
-            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content;
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content);
             else if (localTags.equals("<dataset>")) {
                 try {
                     if (checkSourceData) {
@@ -136,7 +139,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             tAccessibleTo, tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
-            tSourceEdd, tFileTableInMemory);
+            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
     }
 
     /**
@@ -152,13 +155,13 @@ public class EDDTableCopyPost extends EDDTableCopy {
         int tReloadEveryNMinutes,
         String tExtractDestinationNames, String tOrderExtractBy, 
         Boolean tSourceNeedsExpandedFP_EQ,
-        EDDTable tSourceEdd, boolean tFileTableInMemory) throws Throwable {
+        EDDTable tSourceEdd, boolean tFileTableInMemory, boolean tAccessibleViaFiles) throws Throwable {
 
         super(tDatasetID, tAccessibleTo, tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery,
             tReloadEveryNMinutes,
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ, 
-            tSourceEdd, tFileTableInMemory);
+            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
 
     }
 
