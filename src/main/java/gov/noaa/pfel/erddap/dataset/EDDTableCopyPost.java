@@ -111,7 +111,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             else if (localTags.equals( "<defaultDataQuery>")) {}
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
-            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content;
+            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
             else if (localTags.equals( "<accessibleViaFiles>")) {}
             else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content);
             else if (localTags.equals("<dataset>")) {
@@ -530,9 +530,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
 /* */
         } catch (Throwable t) {
-            String2.getStringFromSystemIn(MustBe.throwableToString(t) + 
-                "Unexpected EDDTableFromPostDatabase.testCopyPostSurg3 error:\n" +
-                "Press ^C to stop or Enter to continue..."); 
+            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+                "Unexpected EDDTableFromPostDatabase.testCopyPostSurg3 error."); 
         }
         defaultCheckSourceData = true;
 
@@ -552,9 +551,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
         try {
             EDDTable tedd = (EDDTable)oneFromDatasetXml("chunkPostDet3"); 
         } catch (Throwable t) {
-            String2.getStringFromSystemIn(MustBe.throwableToString(t) + 
-                "Unexpected EDDTableFromPostDatabase.testCopyPostSurg3 error:\n" +
-                "Press ^C to stop or Enter to continue..."); 
+            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+                "Unexpected EDDTableFromPostDatabase.testCopyPostSurg3 error."); 
         }
     }
 
@@ -565,19 +563,17 @@ public class EDDTableCopyPost extends EDDTableCopy {
      */
     public static void testBreakUpDet3Chunks() throws Throwable {
         String2.log("\n*** testBreakUpDet3Chunks");
-        String2.getStringFromSystemIn(
+        String2.pressEnterToContinue(
             "\nMake sure that the datasets2.xml has the temporary version of cPostDet3\n" +
-            "that gets data from chunkPostDet3 files.\n" +
-            "Press ^C to stop or Enter to continue..."); 
+            "that gets data from chunkPostDet3 files."); 
         testVerboseOn();
         long eTime;
         String tQuery, tName, results, expected;
         try {
             EDDTable tedd = (EDDTable)oneFromDatasetXml("cPostDet3"); 
         } catch (Throwable t) {
-            String2.getStringFromSystemIn(MustBe.throwableToString(t) + 
-                "Unexpected EDDTableFromPostDatabase.testBreakUpDet3Chunks error:\n" +
-                "Press ^C to stop or Enter to continue..."); 
+            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+                "Unexpected EDDTableFromPostDatabase.testBreakUpDet3Chunks error."); 
         }
     }
 
@@ -759,10 +755,9 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
 /* */
         } catch (Throwable t) {
-            String2.getStringFromSystemIn(MustBe.throwableToString(t) + 
+            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
 "*** THE DATA HAS CHANGED. THESE TESTS NEED WORK.\n" +
-                "Expected EDDTableFromPostDatabase.testCopyPostDet3 error:\n" +
-                "Press ^C to stop or Enter to continue..."); 
+                "Expected EDDTableFromPostDatabase.testCopyPostDet3 error."); 
         }
         defaultCheckSourceData = true;
 
@@ -1068,9 +1063,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
     /** This is a custom little program to find tags which swam upstream. */
     public static void findUpstream(String loggedInAs) throws Throwable {
-        String2.getStringFromSystemIn(
-            "Running this again? Modify to have hashmap of lat+lon->elevation.\n" +
-            "Press Enter to continue-> ");
+        String2.pressEnterToContinue(
+            "Running this again? Modify to have hashmap of lat+lon->elevation.");
         verbose = false;
         reallyVerbose = false;
         defaultCheckSourceData = false;
