@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -441,11 +442,11 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
             // URL to get data
             String encodedSourceUrl = localSourceUrl + "getDataValues" +
-                    "?stationid=" + SSR.minimalPercentEncode(station_id) +
-                    "&sensorid=" + SSR.minimalPercentEncode(sensor_id) +
-                    "&units=" + (int)parameter_id + ";" + unit +
-                    "&start_time=" + (int)beginSeconds +
-                    "&end_time="   + (int)endSeconds +
+                    "?stationid=" + URLEncoder.encode(SSR.minimalPercentEncode(station_id), "UTF-8") +
+                    "&sensorid=" + URLEncoder.encode(SSR.minimalPercentEncode(sensor_id), "UTF-8") +
+                    "&units=" + URLEncoder.encode((int)parameter_id + ";" + unit, "UTF-8") +
+                    "&start_time=" + URLEncoder.encode(String.valueOf((int)beginSeconds), "UTF-8") +
+                    "&end_time="   + URLEncoder.encode(String.valueOf((int)endSeconds), "UTF-8") +
                     "&jsoncallback=false" +
                     "&version=2";
             InputStream is = new URL(encodedSourceUrl).openStream();
@@ -584,7 +585,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
         EDD edd = EDD.oneFromDatasetXml("axiom_sensor_service");
         // Test specific station and sensor
-        String query = "&station=\"urn:ioos:station:wmo:46027\"&parameter=\"Air Temperature\"&time>=2014-11-01T00:00:00Z&time<=2014-12-01T00:00:00Z";
+        String query = "&station=%22urn:ioos:station:wmo:46027%22&parameter=%22Air Temperature%22&time>=2014-11-01T00:00:00Z&time<=2014-12-01T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         String results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
@@ -599,13 +600,12 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         //        results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
         //        String2.log(results);
 
-
         // Specific a specific station and sensor with time bounds
-        //        query = "&station=\"urn:ioos:station:wmo:46214\"&sensor=\"Water Temperature\"&time>=2014-04-01T00:00:00Z&time<=2014-06-01T00:00:00Z";
-        //        tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
-        //                    edd.className() + "_station_sensor_time_" + edd.datasetID(), ".csv");
-        //        results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
-        //        String2.log(results);
+        query = "&station=%22urn:ioos:station:cencoos:MossLanding%22&time%3Enow-7days";
+        tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
+                    edd.className() + "_station_sensor_time_" + edd.datasetID(), ".csv");
+        results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        String2.log(results);
 
         // lat/lon bounds and time bounds
         //        query = "&longitude>=-130&longitude<=74&latitude>=36.751&latitude<=36.752&time>=2014-04-01T00:00:00Z&time<=2014-06-01T00:00:00Z";
