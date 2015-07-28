@@ -448,7 +448,8 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                     "&start_time=" + URLEncoder.encode(String.valueOf((int)beginSeconds), "UTF-8") +
                     "&end_time="   + URLEncoder.encode(String.valueOf((int)endSeconds), "UTF-8") +
                     "&jsoncallback=false" +
-                    "&version=2";
+                    "&version=2" +
+                    "&method=GetSensorObservationsJSON";
             InputStream is = new URL(encodedSourceUrl).openStream();
             try {
                 BufferedReader in = new BufferedReader(
