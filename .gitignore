@@ -6,3 +6,5 @@ WebContent/*
 *.class
 /target
 README.html
+.idea/
+erddap.iml
