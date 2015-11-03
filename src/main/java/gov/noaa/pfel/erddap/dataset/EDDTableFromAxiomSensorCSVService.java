@@ -586,7 +586,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         String2.log("\n****************** EDDTableFromAxiomSensorCSVService.test() *****************\n");
         testVerboseOn();
 
-        EDD edd = EDD.oneFromDatasetXml("axiom_sensor_service");
+        EDD edd = EDD.oneFromDatasetXml("sensor_service");
         // Test specific station and sensor
         String query = "&station=%22urn:ioos:station:wmo:46027%22&parameter=%22Air Temperature%22&time>=2014-11-01T00:00:00Z&time<=2014-12-01T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
