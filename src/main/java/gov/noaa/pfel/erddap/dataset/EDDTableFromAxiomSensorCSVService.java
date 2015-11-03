@@ -61,7 +61,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         String tDatasetID = xmlReader.attributeValue("datasetID");
         Attributes tGlobalAttributes = null;
         String tLocalSourceUrl = null;
-        String tPortalId = "34";
+        String tPortalId = "-1";
         String tRegionSubset = "all";
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tDefaultDataQuery = null;
