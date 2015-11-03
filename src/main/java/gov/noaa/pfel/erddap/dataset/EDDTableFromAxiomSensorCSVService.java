@@ -293,7 +293,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                     all_parameter_info.add(name_unit);
                 } else {
                     ArrayList<String[]> unit_metadata = parameter_type_lookup.get(param.getInt("idParameterType"));
-                    if (!unit_metadata.equals(null)) {
+                    if (unit_metadata != null) {
                         for (String[] unit_array : unit_metadata) {
                             name_unit[1] = unit_array[0];
                             name_unit[2] = unit_array[1];
