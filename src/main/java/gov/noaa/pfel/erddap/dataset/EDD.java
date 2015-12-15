@@ -364,6 +364,7 @@ public abstract class EDD {
             //if (type.equals("EDDTableCopyPost"))        return EDDTableCopyPost.fromXml(xmlReader); //inactive
             if (type.equals("EDDTableFromAsciiServiceNOS")) return EDDTableFromAsciiServiceNOS.fromXml(xmlReader);
             if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(xmlReader);
+            if (type.equals("EDDTableFromAxiomStation")) return EDDTableFromAxiomStation.fromXml(xmlReader);
             //if (type.equals("EDDTableFromBMDE"))        return EDDTableFromBMDE.fromXml(xmlReader); //inactive
             if (type.equals("EDDTableFromCassandra"))   return EDDTableFromCassandra.fromXml(xmlReader);
             if (type.equals("EDDTableFromDapSequence")) return EDDTableFromDapSequence.fromXml(xmlReader);
