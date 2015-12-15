@@ -224,7 +224,7 @@ public class EDDTableFromBMDE extends EDDTable{
      */
     public EDDTableFromBMDE(String tDatasetID, String tAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
-        String tSosOfferingPrefix;
+        String tSosOfferingPrefix,
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         Attributes tAddGlobalAttributes,
         Object tDataVariables[][],
