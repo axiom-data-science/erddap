@@ -68,7 +68,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         String tDefaultGraphQuery = null;
         String tSosOfferingPrefix = null;
 
-        ArrayList<Object[]> tDataVariables = new ArrayList<Object[]>();
+        ArrayList<Object[]> tDataVariables = new ArrayList<>();
 
         // process the tags
         String startOfTags = xmlReader.allTags();
@@ -232,7 +232,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         table.addColumn("parameter_id", parameter_ids);
 
         // Parameters (from Oikos...)
-        HashMap<Integer,ArrayList<String[]>> parameter_lookup = new HashMap<Integer,ArrayList<String[]>>();
+        HashMap<Integer,ArrayList<String[]>> parameter_lookup = new HashMap<>();
         URL url = new URL("http://pdx0.axiomalaska.com/oikos-service/rest/minimal-portal-data?id="+portal_id);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.addRequestProperty("Accept", "application/json");
@@ -244,12 +244,13 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             StringBuilder strbf = new StringBuilder();
             String ln = null;
             while ((ln = bfrd.readLine()) != null) {
-                strbf.append(ln + "\n");
+                strbf.append(ln);
+                strbf.append("\n");
             }
             JSONObject param_json = new JSONObject(strbf.toString());
 
             // Units
-            HashMap<Integer,String[]> units_lookup = new HashMap<Integer,String[]>();
+            HashMap<Integer,String[]> units_lookup = new HashMap<>();
             JSONArray units_array = param_json.getJSONArray("units");
             for (int a = 0 ; a < units_array.length() ; a++) {
                 JSONObject unit = units_array.getJSONObject(a);
@@ -260,7 +261,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             }
 
             // ParameterTypeUnits
-            HashMap<Integer,ArrayList<String[]>> parameter_type_lookup = new HashMap<Integer,ArrayList<String[]>>();
+            HashMap<Integer,ArrayList<String[]>> parameter_type_lookup = new HashMap<>();
             JSONArray param_type_units_array = param_json.getJSONArray("parameterTypeUnits");
             for (int b = 0 ; b < param_type_units_array.length() ; b++) {
                 JSONObject param = param_type_units_array.getJSONObject(b);
@@ -281,7 +282,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
                 if (!parameter_lookup.containsKey(param.getInt("id"))) {
                     // Create array
-                    parameter_lookup.put(param.getInt("id"), new ArrayList<String[]>());
+                    parameter_lookup.put(param.getInt("id"), new ArrayList<>());
                 }
                 // Append to array of parameter/unit combos
                 ArrayList<String[]> all_parameter_info = parameter_lookup.get(param.getInt("id"));
@@ -313,9 +314,10 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             BufferedReader rd = new BufferedReader(
                     new InputStreamReader(is, Charset.forName("UTF-8")));
             StringBuilder sb = new StringBuilder();
-            String line = null;
+            String line;
             while ((line = rd.readLine()) != null) {
-                sb.append(line + "\n");
+                sb.append(line);
+                sb.append("\n");
             }
             JSONObject json = new JSONObject(sb.toString());
 
@@ -324,8 +326,8 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             HashMap<Integer,String> sensor_lookup = new HashMap<Integer,String>();
 
             Iterator<?> sensor_keys = sensors_array.keys();
-            Integer sensor_id = Integer.MIN_VALUE;
-            String sensor_name = null;
+            Integer sensor_id;
+            String sensor_name;
             while (sensor_keys.hasNext()) {
                 String key = (String) sensor_keys.next();
                 JSONObject s = (JSONObject) sensors_array.get(key);
@@ -336,9 +338,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
             // Stations
             JSONArray stations_array = json.getJSONArray("stations");
-            Integer station_id = Integer.MIN_VALUE, station_sensor_id = Integer.MIN_VALUE, parameter_id = Integer.MIN_VALUE;
-            String station_name = null, station_urn = null; sensor_name = null;
-            Double latitude = Double.NaN, longitude = Double.NaN;
+            Integer station_id, station_sensor_id, parameter_id;
+            String station_name, station_urn;
+            Double latitude, longitude;
             for (int i = 0 ; i < stations_array.length() ; i++) {
                 JSONObject stat = stations_array.getJSONObject(i);
                 station_id = stat.getInt("id");
@@ -457,7 +459,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 BufferedReader in = new BufferedReader(
                         new InputStreamReader(is, Charset.forName("UTF-8")));
                 StringBuilder strb = new StringBuilder();
-                String str = null;
+                String str;
                 while ((str = in.readLine()) != null) {
                     strb.append(str);
                 }
@@ -470,7 +472,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 // Using a Double here resulted in crazy sigfigs.
                 FloatArray values_array = new FloatArray();
                 DoubleArray depth_array  = new DoubleArray();
-                Double depth = new Double(0);
+                Double depth;
 
                 for (int c = 0 ; c < data.length() ; c++) {
                     JSONObject vari = data.getJSONObject(c);
