@@ -57,7 +57,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         Object[][] tDataVariables,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, boolean tRecursive, String tFileNameRegex, 
-        String tMetadataFrom, boolean tEnsureAxisValuesAreExactlyEqual, 
+        String tMetadataFrom, int tMatchAxisNDigits,
         boolean tFileTableInMemory, boolean tAccessibleViaFiles) 
         throws Throwable {
 
@@ -69,7 +69,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             tDataVariables,
             tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tRecursive, tFileNameRegex, tMetadataFrom,
-            tEnsureAxisValuesAreExactlyEqual, 
+            tMatchAxisNDigits,
             tFileTableInMemory, tAccessibleViaFiles);
     }
 
