@@ -49,16 +49,20 @@ To add the Axiom sensor service as an ERDDAP dataset, add this to your datasets.
 </dataset>
 ```
 
-**Axiom specific code is in `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService.java`**
+
+Axiom specific code is in:
+ 
+* `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService.java`
+* `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation.java`
 
 To test this package, there is a main() method, so you can just run the file like so (replacing paths as needed):
 
 ```bash
 # All stations
-$ mvn compile war:exploded && pushd . && cd target/erddap-1.62-axiom-r4/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd
+$ mvn compile war:exploded && pushd . && cd target/erddap-1.64-axiom-r1/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd
 
 # Individual stations
-$ mvn compile war:exploded && pushd . && cd target/erddap-1.62-axiom-r4/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
+$ mvn compile war:exploded && pushd . && cd target/erddap-1.64-axiom-r1/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
 ```
 
 
@@ -73,9 +77,11 @@ in Git and usally put an entire release into a single commit.  That being said..
 git clone https://github.com/BobSimons/erddap.git
 cd erddap
 export ERDDAP_DEV_ROOT=you_dev_root
+cp WEB-INF/DasDds.* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/
+cp WEB-INF/GenerateDatasetsXml.* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/
+cp -r WEB-INF/classes/com/cohort/* $ERDDAP_DEV_ROOT/src/main/java/com/cohort/
 cp -r WEB-INF/classes/gov/* $ERDDAP_DEV_ROOT/src/main/java/gov/
 cp -r WEB-INF/classes/dods/* $ERDDAP_DEV_ROOT/src/main/java/dods/
-cp -r WEB-INF/classes/com/cohort/* $ERDDAP_DEV_ROOT/src/main/java/com/cohort/
 cp -r WEB-INF/classes/net/jmge/gif/* $ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif/
 cp -r WEB-INF/cptfiles/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/cptfiles/
 cp -r WEB-INF/ref/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/ref/
