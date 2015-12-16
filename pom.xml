@@ -71,6 +71,7 @@
 						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromBMD.java</exclude>
 						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromBMDE.java</exclude>
 						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDTableFromMWFS.java</exclude>
+						<exclude>**/gov/noaa/pfel/erddap/dataset/EDDGridLonPM180.java</exclude>
 					</excludes>
 				</configuration>
 			</plugin>
@@ -219,5 +220,10 @@
 			<artifactId>cassandra-driver-core</artifactId>
 			<version>2.1.5</version>
 		</dependency>
-	</dependencies>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk</artifactId>
+            <version>1.10.40</version>
+        </dependency>
+    </dependencies>
 </project>
