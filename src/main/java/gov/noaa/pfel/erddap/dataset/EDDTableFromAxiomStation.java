@@ -388,7 +388,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
             tDataVariables.add(new Object[] { "longitude", "longitude", lonats, "double" });
             // Station
             Attributes staatts = new Attributes();
-            staatts.set("ioos_category", "identifier");
+            staatts.set("ioos_category", "Identifier");
             staatts.set("cf_role", "timeseries_id");
             tDataVariables.add(new Object[] { "station", "station", staatts, "String" });
             // Devices
