@@ -148,18 +148,24 @@ class OikosDevice {
     public int id;
     public String discriminant;
     public OikosEnhancedParameter ep;
+    public double depthMin;
+    public double depthMax;
 
     public static OikosDevice fromJson(JSONObject j, HashMap<Integer, OikosEnhancedParameter> enhancedParameterMap) {
 
         return new OikosDevice(j.getInt("id"),
                                enhancedParameterMap.get(j.getInt("enhancedParameterId")),
-                               j.getString("discriminant"));
+                               j.getString("discriminant"),
+                               j.getDouble("depthMin"),
+                               j.getDouble("depthMax"));
     }
 
-    public OikosDevice(int id, OikosEnhancedParameter ep, String discriminant) {
+    public OikosDevice(int id, OikosEnhancedParameter ep, String discriminant, double depthMin, double depthMax) {
         this.id = id;
         this.ep = ep;
         this.discriminant = discriminant;
+        this.depthMin = depthMin;
+        this.depthMax = depthMax;
     }
 
     public String prettyString() {
@@ -192,16 +198,20 @@ class OikosStation {
     public int id;
     public String label;
     public String urn;
-    public ArrayList<OikosDevice> devices;
     public double latitude;
     public double longitude;
+    public int startDate;
+    public int endDate;
+    public ArrayList<OikosDevice> devices;
 
-    public OikosStation(int id, String label, String urn, double latitude, double longitude, ArrayList<OikosDevice> devices) {
+    public OikosStation(int id, String label, String urn, double latitude, double longitude, int startDate, int endDate, ArrayList<OikosDevice> devices) {
         this.id = id;
         this.label = label;
         this.urn = urn;
         this.latitude = latitude;
         this.longitude = longitude;
+        this.startDate = startDate;
+        this.endDate = endDate;
         this.devices = devices;
     }
 
@@ -228,32 +238,14 @@ class OikosStation {
 public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
     protected OikosStation station;
-    protected Table stationTable;
-    protected Table lookupTable;
     private final static String STANDARD_INFO_URL    = "http://axiomdatascience.com";
-    private final static String AXIOM_SENSOR_TITLE   = "Axiom Sensor Service";
-    private final static String AXIOM_SENSOR_SUMMARY = "Axiom Data Science - Station, Sensor, and Observation Web Service";
     private final static String AXIOM_SENSOR_CONTACT = "data@axiomalaska.com";
     private final static String AXIOM_SENSOR_LICENSE = "Unauthorized access is punishable by the use of sophisticated internet bullying tactics";
-
-    private static int station_id_column_num = 0;
-    private static int sensor_id_column_num = 1;
-    private static int parameter_name_column_num = 2;
-    private static int station_urn_column_num = 3;
-    private static int station_name_column_num = 4;
-    private static int latitude_column_num = 5;
-    private static int longitude_column_num = 6;
-    private static int unit_label_column_num = 7;
-    private static int unit_column_num = 8;
-    private static int parameter_id_column_num = 9;
-
-    protected String noData = "";
 
     public static EDDTableFromAxiomStation fromXml(SimpleXMLReader xmlReader) throws Throwable {
         String tDatasetID = xmlReader.attributeValue("datasetID");
         Attributes tGlobalAttributes = null;
         String tLocalSourceUrl = null;
-        String tPortalId = "-1";
         int tStationId = -1;
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tDefaultDataQuery = null;
@@ -368,40 +360,45 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                                                     stat.getString("urn"),
                                                     stat.getDouble("latitude"),
                                                     stat.getDouble("longitude"),
+                                                    stat.getInt("startDate"),
+                                                    stat.getInt("endDate"),
                                                     d_list);
 
             tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
             tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
             tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
             tGlobalAttributes.set("cdm_data_type", EDD.CDM_TIMESERIES);
+            tGlobalAttributes.set("geospatial_lon_min", station.longitude);
+            tGlobalAttributes.set("geospatial_lon_max", station.longitude);
+            tGlobalAttributes.set("geospatial_lat_min", station.latitude);
+            tGlobalAttributes.set("geospatial_lat_max", station.latitude);
 
             // Time
             Attributes tatts = new Attributes();
             tatts.set("units", "seconds since 1970-01-01T00:00:00");
             tatts.set("ioos_category", EDV.TIME_CATEGORY);
+            tatts.set("actual_range", new IntArray(new int[]{station.startDate, station.endDate}));
             tDataVariables.add(new Object[] { "time", "time", tatts, "double" });
             // Latitude
             Attributes latats = new Attributes();
             latats.set("ioos_category", EDV.LOCATION_CATEGORY);
+            latats.set("actual_range", new DoubleArray(new double[]{station.latitude, station.latitude}));
             tDataVariables.add(new Object[] { "latitude", "latitude", latats, "double" });
             // Longitude
             Attributes lonats = new Attributes();
             lonats.set("ioos_category", EDV.LOCATION_CATEGORY);
+            lonats.set("actual_range", new DoubleArray(new double[]{station.longitude, station.longitude}));
             tDataVariables.add(new Object[] { "longitude", "longitude", lonats, "double" });
-            // Depth
-            Attributes depatts = new Attributes();
-            depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
-            depatts.set("units", "m");
-            depatts.set("positive", "down");
-            tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
             // Station
             Attributes staatts = new Attributes();
-            staatts.set("ioos_category", EDV.LOCATION_CATEGORY);
+            staatts.set("ioos_category", "identifier");
             staatts.set("cf_role", "timeseries_id");
             tDataVariables.add(new Object[] { "station", "station", staatts, "String" });
             // Devices
             ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
             Attributes dvaatts;
+            double depthMin = 0;
+            double depthMax = 0;
             for (OikosDevice d : d_list) {
                 dvaatts = new Attributes();
                 dvaatts.set("standard_name", d.ep.parameter.name);
@@ -411,6 +408,8 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 dvaatts.set("urn", d.ep.parameter.urn);
                 dvaatts.set("missing_value", -9999.99);
                 dvaatts.set("_FillValue", -9999.99);
+                depthMin = Math.min(depthMin, d.depthMin);
+                depthMax = Math.max(depthMax, d.depthMax);
                 if (!d.ep.cellMethods.isEmpty()) {
                     dvaatts.set("cell_methods", d.ep.cellMethods);
                 }
@@ -426,6 +425,14 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 tDataVariables.add(new Object[] { d.prettyString(), d.prettyString(), dvaatts, "double" });
                 cdm_timeseries_variables.add(d.prettyString());
             }
+
+            // Depth
+            Attributes depatts = new Attributes();
+            depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
+            depatts.set("units", "m");
+            depatts.set("positive", "down");
+            depatts.set("actual_range", new DoubleArray(new double[]{depthMin, depthMax}));
+            tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
 
             String2.log(String.join(",", cdm_timeseries_variables));
             tGlobalAttributes.set("cdm_timeseries_variables", String.join(",", cdm_timeseries_variables));
@@ -558,7 +565,6 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                     // DATA
                     if (this.station.hasDevice(vari.getJSONObject("metadata").getInt("device_id"))) {
                         // DESIRED DEVICE
-
                         OikosDevice od = this.station.getDevice(vari.getJSONObject("metadata").getInt("device_id"));
 
                         // Using a Double here resulted in crazy sigfigs.
@@ -587,6 +593,9 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                                 values_array.add(new Float(-9999.99));
                             }
                         }
+                        // TODO: This will only work if each device is measured at the same depths
+                        // If not, the indexes will be all messed up.  We should probably error here, or
+                        // Add a column for each device depth value.
                         Double depth = vari.getJSONObject("metadata").getDouble("depth");
                         if (depth_array.indexOf(depth) == -1) {
                             depth_array.addN(values_array.size(), depth);
