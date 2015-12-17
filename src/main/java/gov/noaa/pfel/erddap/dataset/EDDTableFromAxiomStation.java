@@ -20,10 +20,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.*;
 
 
 class OikosUnit {
@@ -397,8 +394,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
             // Devices
             ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
             Attributes dvaatts;
-            double depthMin = 0;
-            double depthMax = 0;
+            ArrayList<Double> depths = new ArrayList<>();
             for (OikosDevice d : d_list) {
                 dvaatts = new Attributes();
                 dvaatts.set("standard_name", d.ep.parameter.name);
@@ -408,8 +404,8 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 dvaatts.set("urn", d.ep.parameter.urn);
                 dvaatts.set("missing_value", -9999.99);
                 dvaatts.set("_FillValue", -9999.99);
-                depthMin = Math.min(depthMin, d.depthMin);
-                depthMax = Math.max(depthMax, d.depthMax);
+                depths.add(Double.valueOf(d.depthMin));
+                depths.add(Double.valueOf(d.depthMax));
                 if (!d.ep.cellMethods.isEmpty()) {
                     dvaatts.set("cell_methods", d.ep.cellMethods);
                 }
@@ -431,7 +427,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
             depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
             depatts.set("units", "m");
             depatts.set("positive", "down");
-            depatts.set("actual_range", new DoubleArray(new double[]{depthMin, depthMax}));
+            depatts.set("actual_range", new DoubleArray(new double[]{Collections.min(depths), Collections.max(depths)}));
             tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
 
             String2.log(String.join(",", cdm_timeseries_variables));
