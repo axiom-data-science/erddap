@@ -256,7 +256,7 @@ public class LoadDatasets extends Thread {
                                     (System.currentTimeMillis() - oldEdd.creationTimeMillis()) / 60000; 
                                 if (minutesOld < oldEdd.getReloadEveryNMinutes()) {
                                     //it exists and is young
-                                    String2.log("*** skipping datasetID=" + tId + 
+                                    if (reallyVerbose) String2.log("*** skipping datasetID=" + tId + 
                                         ": it already exists and minutesOld=" + minutesOld +
                                         " is less than reloadEvery=" + oldEdd.getReloadEveryNMinutes());
                                     skip = true;
@@ -301,7 +301,7 @@ public class LoadDatasets extends Thread {
                         boolean oldCatInfoRemoved = false;
                         long timeToLoadThisDataset = System.currentTimeMillis();
                         try {
-                            dataset = EDD.fromXml(xmlReader.attributeValue("type"), xmlReader);
+                            dataset = EDD.fromXml(erddap, xmlReader.attributeValue("type"), xmlReader);
 
                             //check for interruption right before making changes to Erddap
                             if (isInterrupted()) { //this is a likely place to catch interruption
@@ -457,12 +457,25 @@ public class LoadDatasets extends Thread {
 
                                 for (int a = 0; a < actions.size(); a++) {
                                     String tAction = actions.get(a);
-                                    if (reallyVerbose) String2.log("doing action=" + tAction);
+                                    if (verbose) 
+                                        String2.log("doing action[" + a + "]=" + tAction);
                                     try {
                                         if (tAction.startsWith("http://")) {
-                                            //but don't get the input stream! I don't need to, 
-                                            //and it is a big security risk.
-                                            SSR.touchUrl(tAction, 60000);
+                                            if (tAction.indexOf("/" + EDStatic.warName + "/setDatasetFlag.txt?") > 0 &&
+                                                (tAction.startsWith(EDStatic.baseUrl) ||  
+                                                 tAction.startsWith("http://127.0.0.1"))) { 
+                                                //a dataset on this ERDDAP! just set the flag
+                                                //e.g., http://coastwatch.pfeg.noaa.gov/erddap/setDatasetFlag.txt?datasetID=ucsdHfrW500&flagKey=##########
+                                                String trDatasetID = String2.extractCaptureGroup(tAction, ".*datasetID=(.+?)&.*", 1);
+                                                if (trDatasetID == null)
+                                                    SSR.touchUrl(tAction, 60000); //fall back; just do it
+                                                else EDD.requestReloadASAP(trDatasetID);
+
+                                            } else {
+                                                //but don't get the input stream! I don't need to, 
+                                                //and it is a big security risk.
+                                                SSR.touchUrl(tAction, 60000);
+                                            }
                                         } else if (tAction.startsWith("mailto:")) {
                                             String tEmail = tAction.substring("mailto:".length());
                                             EDStatic.email(tEmail,
@@ -507,6 +520,12 @@ public class LoadDatasets extends Thread {
                 } else if (tags.equals("<erddapDatasets><requestBlacklist>")) {
                 } else if (tags.equals("<erddapDatasets></requestBlacklist>")) {
                     EDStatic.setRequestBlacklist(xmlReader.content());
+
+                } else if (tags.equals("<erddapDatasets><slowDownTroubleMillis>")) {
+                } else if (tags.equals("<erddapDatasets></slowDownTroubleMillis>")) {
+                    int tms = String2.parseInt(xmlReader.content());
+                    EDStatic.slowDownTroubleMillis = tms > 10000? 1000 : tms; 
+                    String2.log("slowDownTroubleMillis=" + EDStatic.slowDownTroubleMillis);
 
                 } else if (tags.equals("<erddapDatasets><convertToPublicSourceUrl>")) {
                     String tFrom = xmlReader.attributeValue("from");
@@ -630,7 +649,7 @@ public class LoadDatasets extends Thread {
 
                     erddap.lastReportDate = reportDate;
                     String stars = String2.makeString('*', 70);
-                    String subject = "ERDDAP Daily Report " + cDateTimeLocal;
+                    String subject = "Daily Report";
                     StringBuilder contentSB = new StringBuilder(subject + "\n\n");
                     EDStatic.addIntroStatistics(contentSB);
 
@@ -687,7 +706,8 @@ public class LoadDatasets extends Thread {
                     EDStatic.tally.remove("Request refused: not enough memory currently (since last daily report)");
                     EDStatic.tally.remove("Request refused: not enough memory ever (since last daily report)");
                     EDStatic.tally.remove("Requester's IP Address (Allowed) (since last daily report)");
-                    EDStatic.tally.remove("Requester's IP Address (Blocked) (since last daily report)");
+                    EDStatic.tally.remove("Requester's IP Address (Blacklisted) (since last daily report)");
+                    EDStatic.tally.remove("Requester's IP Address (Failed) (since last daily report)");
                     EDStatic.tally.remove("RequestReloadASAP (since last daily report)");
                     EDStatic.tally.remove("Response Failed    Time (since last daily report)");
                     EDStatic.tally.remove("Response Succeeded Time (since last daily report)");
@@ -712,13 +732,12 @@ public class LoadDatasets extends Thread {
                     EDStatic.minorLoadDatasetsDistribution24 = new int[String2.DistributionSize];
                     EDStatic.responseTimesDistribution24     = new int[String2.DistributionSize];
 
-                    erddap.todaysNRequests = 0;
                     String2.log("\n" + stars);
                     String2.log(contentSB.toString());
                     String2.log(
                         "\n" + String2.javaInfo() + //Sort of confidential. This info would simplify attacks on ERDDAP.
                         "\n" + stars + 
-                        "\nEnd of ERDDAP Daily Report\n");
+                        "\nEnd of Daily Report\n");
 
                     //after write to log (before email), add URLs to setDatasetFlag (so only in email to admin)
                     contentSB.append("\n" + stars + 
@@ -748,7 +767,7 @@ public class LoadDatasets extends Thread {
                     contentSB.append(
                         "\n" + String2.javaInfo() + //Sort of confidential. This info would simplify attacks on ERDDAP.
                         "\n" + stars + 
-                        "\nEnd of ERDDAP Daily Report\n");
+                        "\nEnd of Daily Report\n");
                     String content = contentSB.toString();
                     String2.log(subject + ":");
                     String2.log(content);
@@ -772,7 +791,8 @@ public class LoadDatasets extends Thread {
                     sb.append(Math2.memoryString() + " " + Math2.xmxMemoryString() + "\n\n");
                     EDStatic.addCommonStatistics(sb);
                     sb.append(EDStatic.tally.toString("Requester's IP Address (Allowed) (since last Major LoadDatasets)", 50));
-                    sb.append(EDStatic.tally.toString("Requester's IP Address (Blocked) (since last Major LoadDatasets)", 50));
+                    sb.append(EDStatic.tally.toString("Requester's IP Address (Blacklisted) (since last Major LoadDatasets)", 50));
+                    sb.append(EDStatic.tally.toString("Requester's IP Address (Failed) (since last Major LoadDatasets)", 50));
                     sb.append(traces);
                     String2.log(sb.toString());
 
@@ -789,12 +809,15 @@ public class LoadDatasets extends Thread {
 
                 //after every major loadDatasets
                 EDStatic.tally.remove("Requester's IP Address (Allowed) (since last Major LoadDatasets)");
-                EDStatic.tally.remove("Requester's IP Address (Blocked) (since last Major LoadDatasets)");
+                EDStatic.tally.remove("Requester's IP Address (Blacklisted) (since last Major LoadDatasets)");
+                EDStatic.tally.remove("Requester's IP Address (Failed) (since last Major LoadDatasets)");
                 EDStatic.failureTimesDistributionLoadDatasets  = new int[String2.DistributionSize];
                 EDStatic.responseTimesDistributionLoadDatasets = new int[String2.DistributionSize];
                 removeOldLines(EDStatic.memoryUseLoadDatasetsSB,     101, 82);
                 removeOldLines(EDStatic.failureTimesLoadDatasetsSB,  101, 59);
                 removeOldLines(EDStatic.responseTimesLoadDatasetsSB, 101, 59);
+
+                String2.flushLog(); //useful to have this info ASAP
             }
 
         } catch (Throwable t) {

@@ -7,6 +7,7 @@ import gov.noaa.pfel.coastwatch.util.SSR;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.variable.EDV;
+import gov.noaa.pfel.erddap.Erddap;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -239,7 +240,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
     private final static String AXIOM_SENSOR_CONTACT = "data@axiomalaska.com";
     private final static String AXIOM_SENSOR_LICENSE = "Unauthorized access is punishable by the use of sophisticated internet bullying tactics";
 
-    public static EDDTableFromAxiomStation fromXml(SimpleXMLReader xmlReader) throws Throwable {
+    public static EDDTableFromAxiomStation fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
         String tDatasetID = xmlReader.attributeValue("datasetID");
         Attributes tGlobalAttributes = null;
         String tLocalSourceUrl = null;
@@ -711,7 +712,12 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         String2.log("\n****************** EDDTableFromAxiomStation.test() *****************\n");
         testVerboseOn();
 
-        EDD edd = EDD.oneFromDatasetXml("station_test");
+        EDD edd = EDD.oneFromXmlFragment(null, "" +
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"station_test\">\n" +
+                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <stationId>57422</stationId>\n" +
+                "</dataset>"
+        );
         // Test specific station and sensor
         String query = "air_temperature,dew_point_temperature,time,latitude,longitude,depth&time>=2015-12-14T00:00:00Z&time<=2015-12-15T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,

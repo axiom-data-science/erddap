@@ -307,13 +307,13 @@ NASA	National Aeronautics and Space Administratio
 NAVGEM	Navy Global Environmental Model
 NAVOCEANO	Naval Oceanographic Office
 NAVO	Naval Oceanography
-NCEP	National Centers for Environmental Prediction
 NCAR	National Center for Atmospheric Research
 NCCCS	Northern California Coastal Circulation Study
 NCCOS	National Centers for Coastal Ocean Science
 NCDC	National Climatic Data Center
 NCDDC	National Coastal Data Development Center
 NCDS	NASA Climate Data System
+NCEI	National Centers for Environmental Information
 NCEP	National Centers for Environmental Prediction
 NCODA	Navy Coupled Ocean Data Assimilation
 NCOM	Navy Coastal Ocean Model
@@ -506,7 +506,6 @@ TOVS	TIROS Operational Vertical Sounder
 TPFO	TOPEX/POSEIDON Follow-On
 TRMM	Tropical Rainfall Measuring Mission
 TUD	Technische Universiteit Delft
-UAF	Unified Access Framework
 UCAR	University Corporation for Atmospheric Research
 UCONN	University of Connecticut
 UCSD	University of California, San Deigo

@@ -73,8 +73,8 @@ public class DoubleCenterGrids {
         logDir = logDir.substring(0, logDir.length() - 1); //remove last "/"
         logDir = File2.getDirectory(logDir); //remove "classes"
         String2.setupLog(true, false, //tLogToSystemOut, tLogToSystemErr,
-            logDir + "DoubleCenterGrids.log", false, //logToStringBuilder, 
-            true, 10000000);  //append
+            logDir + "DoubleCenterGrids.log", 
+            true, String2.logFileDefaultMaxSize);  //append
         String2.log(
             "\n**************************************************************" +
             "\nDoubleCenterGrids " + Calendar2.getCurrentISODateTimeStringLocal() +
@@ -112,8 +112,8 @@ public class DoubleCenterGrids {
         //validate oldBaseDir and newBaseDir
         String oldBaseDir = args[0];
         String newBaseDir = args[1];
-        File2.addSlash(oldBaseDir);
-        File2.addSlash(newBaseDir);
+        oldBaseDir = File2.addSlash(oldBaseDir);
+        newBaseDir = File2.addSlash(newBaseDir);
         String2.log("(oldBaseDir=" + oldBaseDir + " newBaseDir=" + newBaseDir + ")");
 
         boolean fast = false;

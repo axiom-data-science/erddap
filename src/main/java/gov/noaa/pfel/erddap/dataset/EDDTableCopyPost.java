@@ -23,6 +23,7 @@ import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.coastwatch.util.SSR;
 
 import gov.noaa.pfel.erddap.util.EDStatic;
+import gov.noaa.pfel.erddap.Erddap;
 import gov.noaa.pfel.erddap.util.TaskThread;
 import gov.noaa.pfel.erddap.variable.*;
 
@@ -45,13 +46,14 @@ public class EDDTableCopyPost extends EDDTableCopy {
     /**
      * This constructs an EDDTableCopyPost based on the information in an .xml file.
      * 
+     * @param erddap if known in this context, else null
      * @param xmlReader with the &lt;erddapDatasets&gt;&lt;dataset type="EDDTableCopy"&gt; 
      *    having just been read.  
      * @return an EDDTableCopy.
      *    When this returns, xmlReader will have just read &lt;erddapDatasets&gt;&lt;/dataset&gt; .
      * @throws Throwable if trouble
      */
-    public static EDDTableCopyPost fromXml(SimpleXMLReader xmlReader) throws Throwable {
+    public static EDDTableCopyPost fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
 
         //data to be obtained (or not)
         if (verbose) String2.log("\n*** constructing EDDTableCopyPost(xmlReader)...");
@@ -70,7 +72,6 @@ public class EDDTableCopyPost extends EDDTableCopy {
         boolean tFileTableInMemory = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
-        boolean tAccessibleViaFiles = false;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -112,24 +113,34 @@ public class EDDTableCopyPost extends EDDTableCopy {
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
-            else if (localTags.equals( "<accessibleViaFiles>")) {}
-            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content);
             else if (localTags.equals("<dataset>")) {
-                try {
-                    if (checkSourceData) {
-                        //after first time, it's ok if source dataset isn't available
-                        tSourceEdd = (EDDTable)EDD.fromXml(xmlReader.attributeValue("type"), xmlReader);
-                    } else {
-                        String2.log("WARNING!!! checkSourceData is false, so EDDTableCopy datasetID=" + 
-                            tDatasetID + " is not checking the source dataset!");
-                        int stackSize = xmlReader.stackSize();
-                        do {  //will throw Exception if trouble (e.g., unexpected end-of-file
-                            xmlReader.nextTag();
-                        } while (xmlReader.stackSize() != stackSize); 
-                        tSourceEdd = null;
+                if ("false".equals(xmlReader.attributeValue("active"))) {
+                    //skip it - read to </dataset>
+                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                        " because active=\"false\".");
+                    while (xmlReader.stackSize() != startOfTagsN + 1 ||
+                           !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
+                        xmlReader.nextTag();
+                        //String2.log("  skippping tags: " + xmlReader.allTags());
                     }
-                } catch (Throwable t) {
-                    String2.log(MustBe.throwableToString(t));
+
+                } else {
+                    try {
+                        if (checkSourceData) {
+                            //after first time, it's ok if source dataset isn't available
+                            tSourceEdd = (EDDTable)EDD.fromXml(erddap, xmlReader.attributeValue("type"), xmlReader);
+                        } else {
+                            String2.log("WARNING!!! checkSourceData is false, so EDDTableCopy datasetID=" + 
+                                tDatasetID + " is not checking the source dataset!");
+                            int stackSize = xmlReader.stackSize();
+                            do {  //will throw Exception if trouble (e.g., unexpected end-of-file
+                                xmlReader.nextTag();
+                            } while (xmlReader.stackSize() != stackSize); 
+                            tSourceEdd = null;
+                        }
+                    } catch (Throwable t) {
+                        String2.log(MustBe.throwableToString(t));
+                    }
                 }
             } 
             else xmlReader.unexpectedTagException();
@@ -139,7 +150,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             tAccessibleTo, tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
-            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
+            tSourceEdd, tFileTableInMemory);
     }
 
     /**
@@ -155,13 +166,13 @@ public class EDDTableCopyPost extends EDDTableCopy {
         int tReloadEveryNMinutes,
         String tExtractDestinationNames, String tOrderExtractBy, 
         Boolean tSourceNeedsExpandedFP_EQ,
-        EDDTable tSourceEdd, boolean tFileTableInMemory, boolean tAccessibleViaFiles) throws Throwable {
+        EDDTable tSourceEdd, boolean tFileTableInMemory) throws Throwable {
 
         super(tDatasetID, tAccessibleTo, tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery,
             tReloadEveryNMinutes,
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ, 
-            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
+            tSourceEdd, tFileTableInMemory);
 
     }
 
@@ -177,7 +188,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
-        String tFileDir, boolean tRecursive, String tFileNameRegex, String tMetadataFrom,
+        String tFileDir, boolean tRecursive, String tPathRegex, String tFileNameRegex, String tMetadataFrom,
         String tCharset, int tColumnNamesRow, int tFirstDataRow,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
@@ -190,13 +201,13 @@ public class EDDTableCopyPost extends EDDTableCopy {
             "", "", //tDefaultDataQuery, tDefaultGraphQuery
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, 0, //updateEveryNMillis
-            tFileDir, tRecursive, tFileNameRegex, tMetadataFrom,
+            tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
             tCharset, tColumnNamesRow, tFirstDataRow,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, 
             tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ,
-            tFileTableInMemory, 
-            false); //accessibleViaFiles is always false. parent may or may not be.  
+            tFileTableInMemory,
+            false); //accessibleViaFiles is always false. parent may or may not be.
     }
 
     /**
@@ -284,9 +295,9 @@ public class EDDTableCopyPost extends EDDTableCopy {
         long eTime;
         int po;
         String tQuery, tName, results, expected;
-        String today = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10);
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         try {
-            EDDTable tedd = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
+            EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
 /* */
             //das
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
@@ -547,9 +558,9 @@ public class EDDTableCopyPost extends EDDTableCopy {
         testVerboseOn();
         long eTime;
         String tQuery, tName, results, expected;
-        String today = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10);
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         try {
-            EDDTable tedd = (EDDTable)oneFromDatasetXml("chunkPostDet3"); 
+            EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "chunkPostDet3"); 
         } catch (Throwable t) {
             String2.pressEnterToContinue(MustBe.throwableToString(t) + 
                 "Unexpected EDDTableFromPostDatabase.testCopyPostSurg3 error."); 
@@ -570,7 +581,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         long eTime;
         String tQuery, tName, results, expected;
         try {
-            EDDTable tedd = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+            EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         } catch (Throwable t) {
             String2.pressEnterToContinue(MustBe.throwableToString(t) + 
                 "Unexpected EDDTableFromPostDatabase.testBreakUpDet3Chunks error."); 
@@ -593,9 +604,9 @@ public class EDDTableCopyPost extends EDDTableCopy {
         defaultCheckSourceData = checkSourceData;
         long eTime;
         String tQuery, tName, results, expected;
-        String today = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10);
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         try {
-            EDDTable tedd = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+            EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
 /* 
             //das
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
@@ -773,7 +784,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         reallyVerbose = false;
         defaultCheckSourceData = false;
         StringArray tags = findTags(loggedInAs, false);
-        EDDTable eddDet = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable eddDet = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         String dir = "c:/temp/temp/";
         int nFast = 0, nYoungFast = 0, 
             nTagsLookedAt = 0, 
@@ -1004,7 +1015,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         reallyVerbose = false;
         defaultCheckSourceData = false;
         StringArray tags = findTags(loggedInAs, false);
-        EDDTable eddDet = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable eddDet = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         String dir = "c:/temp/temp/";
         float maxDegrees = 0;
         float maxYears = 0;
@@ -1069,8 +1080,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
         reallyVerbose = false;
         defaultCheckSourceData = false;
         StringArray tags = findTags(loggedInAs, false);
-        EDDTable eddDet = (EDDTable)oneFromDatasetXml("cPostDet3"); 
-        EDDGrid etopo180 = (EDDGrid)oneFromDatasetXml("etopo180");
+        EDDTable eddDet = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
+        EDDGrid etopo180 = (EDDGrid)oneFromDatasetsXml(null, "etopo180");
         String dir = "c:/temp/temp/";
         StringBuilder results = new StringBuilder();
         int nTagsChecked = 0, nOdd = 0;
@@ -1155,7 +1166,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         reallyVerbose = false;
         defaultCheckSourceData = false;
         StringArray tags = findTags(loggedInAs, false);
-        EDDTable eddDet = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable eddDet = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         String dir = "c:/temp/temp/";
 
         Table resultsTable = new Table();
@@ -1254,7 +1265,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         reallyVerbose = false;
         defaultCheckSourceData = false;
         StringArray tags = findTags(loggedInAs, false);
-        EDDTable eddDet = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable eddDet = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         String dir = "c:/temp/temp/";
         StringBuilder results = new StringBuilder();
         int nNaN = 0, nG1 = 0;
@@ -1314,7 +1325,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
     public static String findSurgeryBeforeActivation(String loggedInAs) throws Throwable {
         String2.log("\n*** findSurgeries");
         defaultCheckSourceData = false;
-        EDDTable tedd = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
+        EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
 
         Table resultsTable = new Table();
         StringArray resultsPiPa = new StringArray();
@@ -1399,7 +1410,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
         //need to make the file?
         if (forceCreateNewFile || !File2.isFile(dir + name)) {          
-            EDDTable tedd = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
+            EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
             TableWriterAllWithMetadata twa = new TableWriterAllWithMetadata(dir, name);
             tedd.getDataForDapQuery(loggedInAs, "", "unique_tag_id", twa);
             tedd.saveAsFlatNc(dir + name, twa); //internally, it writes to temp file, then rename to cacheFullName
@@ -1420,13 +1431,13 @@ public class EDDTableCopyPost extends EDDTableCopy {
     /** Test role. This gets the role for the tag. */
     public static void testRole(String unique_tag_id) throws Throwable {
         String2.log("\n*************** EDDTableCopyPost.testRole(" + unique_tag_id + ") **************\n");
-        EDDTable surg3 = (EDDTable)oneFromDatasetXml("testPostSurg3"); 
+        EDDTable surg3 = (EDDTable)oneFromDatasetsXml(null, "testPostSurg3"); 
         Table surg3Table = surg3.getTwawmForDapQuery(EDStatic.loggedInAsSuperuser, "", 
             "role&unique_tag_id=%22" + SSR.minimalPercentEncode(unique_tag_id) + 
             "%22&distinct()").cumulativeTable(); 
         String2.log(surg3Table.dataToCSVString(1000000));
 
-        EDDTable det3 = (EDDTable)oneFromDatasetXml("testPostDet3"); 
+        EDDTable det3 = (EDDTable)oneFromDatasetsXml(null, "testPostDet3"); 
         Table det3Table = det3.getTwawmForDapQuery(EDStatic.loggedInAsSuperuser, "",
             "role&unique_tag_id=%22" + SSR.minimalPercentEncode(unique_tag_id) + 
             "%22&distinct()").cumulativeTable(); 
@@ -1438,7 +1449,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
     public static void testOneDetectionMap(String unique_tag_id) throws Throwable {
         String2.log("\n****************** EDDTableCopyPost.testOneDetectionMap() *****************\n");
         defaultCheckSourceData = false;
-        EDDTable postDetections = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable postDetections = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         testOneDetectionMap(postDetections, unique_tag_id, true);
     }
 
@@ -1467,7 +1478,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
     public static void printOneSurgery(String unique_tag_id) throws Throwable {
         String2.log("\n****************** EDDTableCopyPost.printOneSurgery() *****************\n");
         defaultCheckSourceData = false;
-        EDDTable postSurgery3 = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
+        EDDTable postSurgery3 = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
         String tDir = EDStatic.fullTestCacheDirectory;
         String tName = postSurgery3.makeNewFileForDapQuery(null, EDStatic.loggedInAsSuperuser, 
             "&unique_tag_id=%22" + SSR.minimalPercentEncode(unique_tag_id) + "%22", 
@@ -1533,7 +1544,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
 "RESULTS:\n");
 
         //surgery  
-        EDDTable postSurgery = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
+        EDDTable postSurgery = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
         tDir = EDStatic.fullTestCacheDirectory;
 
         tag = "19190_A69-1303_1037589";
@@ -1560,7 +1571,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         
 
         //detection  
-        EDDTable postDetections = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable postDetections = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
 
         tag = "791_A69-1206_1528";
         query = "&unique_tag_id=\"" + tag + "\"&time=\"2006-11-18T04:07:43Z\"";
@@ -1604,8 +1615,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
     public static String testForInconsistencies() throws Throwable { 
         String2.log("\n****************** EDDTableCopyPost.testForInconsistencies() *****************\n");
         StringBuilder resultsSB = new StringBuilder();
-        EDDTable surg3 = (EDDTable)oneFromDatasetXml("cPostSurg3All"); 
-        EDDTable det3  = (EDDTable)oneFromDatasetXml("cPostDet3All"); 
+        EDDTable surg3 = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3All"); 
+        EDDTable det3  = (EDDTable)oneFromDatasetsXml(null, "cPostDet3All"); 
         Table surgTable = surg3.getTwawmForDapQuery(EDStatic.loggedInAsSuperuser, "",
             "unique_tag_id,surgery_id,PI,common_name,stock,longitude,latitude,surgery_time,time,role,date_public" +
             "&distinct()&orderBy(\"unique_tag_id,surgery_id,surgery_time\")").cumulativeTable();
@@ -1750,8 +1761,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
     /** Test if surgery (release)lon,lat,time is in detection3 as first row of data. */
     public static String testIfSurgeryDataIsDetectionFirstRow() throws Throwable { 
         String2.log("\n************* EDDTableCopyPost.testIfSurgeryDataIsDetectionFirstRow() ***********\n");
-        EDDTable surg3 = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
-        EDDTable det3  = (EDDTable)oneFromDatasetXml("cPostDet3"); 
+        EDDTable surg3 = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
+        EDDTable det3  = (EDDTable)oneFromDatasetsXml(null, "cPostDet3"); 
         Table surgTable = surg3.getTwawmForDapQuery(EDStatic.loggedInAsSuperuser, "",
             "unique_tag_id,longitude,latitude,time,PI" +
             "&distinct()&orderBy(\"unique_tag_id\")").cumulativeTable();
@@ -1893,7 +1904,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
     /** Test if surgery items have lowercase letters. */
     public static String testLowerCase() throws Throwable { 
         String2.log("\n************* EDDTableCopyPost.testLowerCase ***********\n");
-        EDDTable surg3 = (EDDTable)oneFromDatasetXml("cPostSurg3"); 
+        EDDTable surg3 = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
         Table surgTable;
         PrimitiveArray pa;
         int n;

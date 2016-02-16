@@ -261,8 +261,8 @@ public class OneOf {
             baseUrl = classRB2.getNotNothingString("baseUrl", errorInMethod);     
             fullContextDirectory = SSR.getContextDirectory(); //with / separator and / at the end
             bigParentDirectory = classRB2.getNotNothingString("bigParentDirectory", errorInMethod);      
-            File2.addSlash(fullContextDirectory);
-            File2.addSlash(bigParentDirectory);
+            fullContextDirectory = File2.addSlash(fullContextDirectory);
+            bigParentDirectory =   File2.addSlash(bigParentDirectory);
 
             Test.ensureTrue(File2.isDirectory(fullContextDirectory),  
                 errorInMethod + "fullContextDirectory (" + fullContextDirectory + ") doesn't exist.");
@@ -273,7 +273,7 @@ public class OneOf {
             //set up log (after bigParentDirectory is known)
             String2.setupLog(false, false, 
                 bigParentDirectory + "log.txt",
-                true, true, 5000000);
+                true, String2.logFileDefaultMaxSize); //append?
             Math2.gcAndWait();  //before get memoryString() in OneOf constructor
             String2.log("*** Constructing OneOf for " + shortClassName + " at " + 
                 Calendar2.getCurrentISODateTimeStringLocal() + "\n" +
@@ -284,9 +284,9 @@ public class OneOf {
             fullPaletteDirectory = classRB2.getNotNothingString("paletteDirectory", errorInMethod);
             fullPrivateDirectory = classRB2.getNotNothingString("privateDirectory", errorInMethod);      
             fullResetFlagDirectory = classRB2.getNotNothingString("resetFlagDirectory", errorInMethod);
-            File2.addSlash(fullPaletteDirectory);
-            File2.addSlash(fullPrivateDirectory);
-            File2.addSlash(fullResetFlagDirectory);
+            fullPaletteDirectory = File2.addSlash(fullPaletteDirectory);
+            fullPrivateDirectory = File2.addSlash(fullPrivateDirectory);
+            fullResetFlagDirectory = File2.addSlash(fullResetFlagDirectory);
 
             resetMaxMillis = classRB2.getInt("resetMaxMinutes", 60) * 60000; // millis/min
             resetStalledMillis = classRB2.getInt("resetStalledMinutes", 10) * 60000; // millis/min
@@ -937,7 +937,7 @@ public class OneOf {
             try {
                 catalog = SSR.getUrlResponseString(dataServerCatalogUrl);
             } catch (Exception e) {
-                throw new Exception(error + e);
+                throw new Exception(error + e, e);
             }
             error += "catalog=" + catalog + "\n";
             

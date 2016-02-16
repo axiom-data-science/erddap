@@ -25,6 +25,7 @@ import gov.noaa.pfel.coastwatch.util.SSR;
 
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.variable.*;
+import gov.noaa.pfel.erddap.Erddap;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -41,6 +42,7 @@ import java.util.BitSet;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
+
 
 /* This uses axis.jar, jaxrps.jar, saaj.jar, and wsdl4j.jar. */
 import javax.xml.soap.*;
@@ -97,13 +99,15 @@ public class EDDTableFromNOS extends EDDTable{
     /**
      * This constructs an EDDTableFromNOS based on the information in an .xml file.
      * 
+     * @param erddap if known in this context, else null
      * @param xmlReader with the &lt;erddapDatasets&gt;&lt;dataset type="EDDTableFromNOS"&gt;
      *    having just been read.  
      * @return an EDDTableFromNOS.
      *    When this returns, xmlReader will have just read &lt;erddapDatasets&gt;&lt;/dataset&gt; .
      * @throws Throwable if trouble
      */
-    public static EDDTableFromNOS fromXml(SimpleXMLReader xmlReader) throws Throwable {
+    public static EDDTableFromNOS fromXml(Erddap erddap, 
+        SimpleXMLReader xmlReader) throws Throwable {
 
         //data to be obtained (or not)
         if (verbose) String2.log("\n*** constructing EDDTableFromNOS(xmlReader)...");
@@ -840,7 +844,7 @@ public class EDDTableFromNOS extends EDDTable{
         String2.log("\n****************** EDDTableFromNOS.test() *****************\n");
         verbose = true;
         reallyVerbose = true;
-        String today = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10);
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
 
 /* during development, test...
             SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
@@ -897,7 +901,7 @@ String2.log("\n  response=\n" + SSR.getSoapString(sourceUrl, request,
 */
 
 //        EDDTable wind = testDataset();  //should work
-        EDDTable wind = (EDDTable)oneFromDatasetXml("nosCoopsWind"); //should work
+        EDDTable wind = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWind"); //should work
 
         double tLon, tLat;
         String name, tName, results, expected, userDapQuery;

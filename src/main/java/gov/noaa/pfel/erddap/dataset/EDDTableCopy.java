@@ -22,6 +22,7 @@ import gov.noaa.pfel.coastwatch.util.RegexFilenameFilter;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.coastwatch.util.SSR;
 
+import gov.noaa.pfel.erddap.Erddap;
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.util.TaskThread;
 import gov.noaa.pfel.erddap.variable.*;
@@ -51,13 +52,14 @@ public class EDDTableCopy extends EDDTable{
     /**
      * This constructs an EDDTableCopy based on the information in an .xml file.
      * 
+     * @param erddap if known in this context, else null
      * @param xmlReader with the &lt;erddapDatasets&gt;&lt;dataset type="EDDTableCopy"&gt; 
      *    having just been read.  
      * @return an EDDTableCopy.
      *    When this returns, xmlReader will have just read &lt;erddapDatasets&gt;&lt;/dataset&gt; .
      * @throws Throwable if trouble
      */
-    public static EDDTableCopy fromXml(SimpleXMLReader xmlReader) throws Throwable {
+    public static EDDTableCopy fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
 
         //data to be obtained (or not)
         if (verbose) String2.log("\n*** constructing EDDTableCopy(xmlReader)...");
@@ -76,7 +78,6 @@ public class EDDTableCopy extends EDDTable{
         boolean tFileTableInMemory = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
-        boolean tAccessibleViaFiles = false;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -117,26 +118,35 @@ public class EDDTableCopy extends EDDTable{
             else if (localTags.equals( "<defaultDataQuery>")) {}
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
-            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
-            else if (localTags.equals( "<accessibleViaFiles>")) {}
-            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
+            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content;
             else if (localTags.equals("<dataset>")) {
-                try {
-
-                    if (checkSourceData) {
-                        //after first time, it's ok if source dataset isn't available
-                        tSourceEdd = (EDDTable)EDD.fromXml(xmlReader.attributeValue("type"), xmlReader);
-                    } else {
-                        String2.log("WARNING!!! checkSourceData is false, so EDDTableCopy datasetID=" + 
-                            tDatasetID + " is not checking the source dataset!");
-                        int stackSize = xmlReader.stackSize();
-                        do {  //will throw Exception if trouble (e.g., unexpected end-of-file
-                            xmlReader.nextTag();
-                        } while (xmlReader.stackSize() != stackSize); 
-                        tSourceEdd = null;
+                if ("false".equals(xmlReader.attributeValue("active"))) {
+                    //skip it - read to </dataset>
+                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                        " because active=\"false\".");
+                    while (xmlReader.stackSize() != startOfTagsN + 1 ||
+                           !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
+                        xmlReader.nextTag();
+                        //String2.log("  skippping tags: " + xmlReader.allTags());
                     }
-                } catch (Throwable t) {
-                    String2.log(MustBe.throwableToString(t));
+                } else {
+                    try {
+
+                        if (checkSourceData) {
+                            //after first time, it's ok if source dataset isn't available
+                            tSourceEdd = (EDDTable)EDD.fromXml(erddap, xmlReader.attributeValue("type"), xmlReader);
+                        } else {
+                            String2.log("WARNING!!! checkSourceData is false, so EDDTableCopy datasetID=" + 
+                                tDatasetID + " is not checking the source dataset!");
+                            int stackSize = xmlReader.stackSize();
+                            do {  //will throw Exception if trouble (e.g., unexpected end-of-file
+                                xmlReader.nextTag();
+                            } while (xmlReader.stackSize() != stackSize); 
+                            tSourceEdd = null;
+                        }
+                    } catch (Throwable t) {
+                        String2.log(MustBe.throwableToString(t));
+                    }
                 }
             } 
             else xmlReader.unexpectedTagException();
@@ -146,7 +156,7 @@ public class EDDTableCopy extends EDDTable{
             tAccessibleTo, tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
-            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
+            tSourceEdd, tFileTableInMemory);
     }
 
     /**
@@ -165,7 +175,7 @@ public class EDDTableCopy extends EDDTable{
      *    that should be used for this dataset, or "" (to cause ERDDAP not
      *    to try to generate FGDC metadata for this dataset), or null (to allow
      *    ERDDAP to try to generate FGDC metadata for this dataset).
-     * @param tIso19115 This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
+     * @param tIso19115File This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
      * @param tReloadEveryNMinutes indicates how often the source should
      *    be checked for new data.
      * @param tExtractDestinationNames a space separated list of destination names (at least one)
@@ -198,8 +208,7 @@ public class EDDTableCopy extends EDDTable{
         int tReloadEveryNMinutes,
         String tExtractDestinationNames, String tOrderExtractBy,
         Boolean tSourceNeedsExpandedFP_EQ,
-        EDDTable tSourceEdd, boolean tFileTableInMemory,
-        boolean tAccessibleViaFiles) throws Throwable {
+        EDDTable tSourceEdd, boolean tFileTableInMemory) throws Throwable {
 
         if (verbose) String2.log(
             "\n*** constructing EDDTableCopy " + tDatasetID + " reallyVerbose=" + reallyVerbose); 
@@ -416,7 +425,7 @@ public class EDDTableCopy extends EDDTable{
             new Attributes(), //addGlobalAttributes
             tDataVariables,
             tReloadEveryNMinutes,
-            copyDatasetDir, recursive, fileNameRegex, 
+            copyDatasetDir, fileNameRegex, recursive, ".*", //pathRegex is for original source files 
             EDDTableFromFiles.MF_LAST,
             "", 1, 2, //columnNamesRow and firstDataRow are irrelevant for .nc files, but must be valid values
             null, null, null, null,  //extract from fileNames
@@ -454,7 +463,7 @@ public class EDDTableCopy extends EDDTable{
         sosMaxLon        = localEdd.sosMaxLon;
 
         //accessibleViaFiles
-        if (EDStatic.filesActive && tAccessibleViaFiles) {
+        if (EDStatic.filesActive) {
             accessibleViaFilesDir = copyDatasetDir;
             accessibleViaFilesRegex = fileNameRegex;
             accessibleViaFilesRecursive = recursive;
@@ -462,6 +471,10 @@ public class EDDTableCopy extends EDDTable{
 
         //ensure the setup is valid
         ensureValid(); //this ensures many things are set, e.g., sourceUrl
+
+        //If the child is a FromErddap, try to subscribe to the remote dataset.
+        if (sourceEdd instanceof FromErddap) 
+            tryToSubscribeToChildFromErddap(sourceEdd);
 
         //finally
         if (verbose) String2.log(
@@ -484,8 +497,8 @@ public class EDDTableCopy extends EDDTable{
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
-        String tFileDir, boolean tRecursive, String tFileNameRegex, String tMetadataFrom,
-        String tCharset, int tColumnNamesRow, int tFirstDataRow,
+        String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
+        String tMetadataFrom, String tCharset, int tColumnNamesRow, int tFirstDataRow,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames, 
@@ -497,7 +510,7 @@ public class EDDTableCopy extends EDDTable{
             "", "", "", //tSosOfferingPrefix, tDefaultDataQuery, tDefaultGraphQuery,
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, 0, //updateEveryNMillis
-            tFileDir, tRecursive, tFileNameRegex, tMetadataFrom,
+            tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
             tCharset, tColumnNamesRow, tFirstDataRow,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, 
             tColumnNameForExtract,
@@ -550,12 +563,12 @@ public class EDDTableCopy extends EDDTable{
         String name, tName, results, tResults, expected, expected2, expected3, userDapQuery, tQuery;
         String error = "";
         int epo, tPo;
-        String today = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10);
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         String mapDapQuery = "longitude,latitude,NO3,time&latitude>0&time>=2002-08-03";
         userDapQuery = "longitude,NO3,time,ship&latitude>0&time>=2002-08-03";
 
         try {
-            EDDTable edd = (EDDTableCopy)oneFromDatasetXml("testTableCopy");
+            EDDTable edd = (EDDTableCopy)oneFromDatasetsXml(null, "testTableCopy");
 
             //*** test getting das for entire dataset
             String2.log("\n****************** EDDTableCopy.test das dds for entire dataset\n");
@@ -1085,7 +1098,7 @@ public class EDDTableCopy extends EDDTable{
         String name, tName, results, tResults, expected, expected2, expected3, userDapQuery, tQuery;
         String error = "";
         int epo, tPo;
-        String today = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10);
+        String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         long eTime;
         EDDTable edd = null;
 
@@ -1093,7 +1106,7 @@ public class EDDTableCopy extends EDDTable{
 //maxChunks = 400;
 
             try {
-                edd = (EDDTableCopy)oneFromDatasetXml("repPostDet");
+                edd = (EDDTableCopy)oneFromDatasetsXml(null, "repPostDet");
             } catch (Throwable t2) {
                 //it will fail if no files have been copied
                 String2.log(MustBe.throwableToString(t2));
@@ -1104,7 +1117,7 @@ public class EDDTableCopy extends EDDTable{
                     Math2.sleep(10000);
                 }
                 //recreate edd to see new copied data files
-                edd = (EDDTableCopy)oneFromDatasetXml("repPostDet");
+                edd = (EDDTableCopy)oneFromDatasetsXml(null, "repPostDet");
             }
 reallyVerbose=false;
 

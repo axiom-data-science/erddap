@@ -1048,7 +1048,7 @@ These datasets were hard to work with:
         //Raw 6 minute          
         if ("nosCoopsWLR6".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLR6"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLR6"); 
 
             query = "&stationID=\"9414290\"&datum=\"MLLW\"&time>=" + yesterday + 
                 "21:00&time<=" + yesterday + "22:00";             
@@ -1080,7 +1080,7 @@ These datasets were hard to work with:
         //Raw 1 minute
         if ("nosCoopsWLR1".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLR1"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLR1"); 
             query = "&stationID=\"9414290\"&datum=\"MLLW\"&time>=" + yesterday + 
                 "21:00&time<=" + yesterday + "21:10";             
             tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
@@ -1113,7 +1113,7 @@ These datasets were hard to work with:
         //Verified 6 minute
         if ("nosCoopsWLV6".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLV6"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLV6"); 
 
             //2012-11-14 and 2013-11-01 Have to experiment a lot to get actual data. (Gap in Early 2013-10?)
             //list of stations: http://opendap.co-ops.nos.noaa.gov/stations/index.jsp
@@ -1150,7 +1150,7 @@ These datasets were hard to work with:
         //Verified hourly
         if ("nosCoopsWLR60".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLV60"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLV60"); 
             //2012-11-14 and 2013-11-01 Have to experiment a lot to get actual data. (Gap in Early 2013-10?)
             //list of stations: http://opendap.co-ops.nos.noaa.gov/stations/index.jsp
             //their example=8454000  SF=9414290  Honolulu=1612340
@@ -1186,7 +1186,7 @@ These datasets were hard to work with:
         //Verified high low
         if ("nosCoopsWLVHL".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLVHL"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLVHL"); 
             //no recent data.  always ask for daysAgo72 ... daysAgo70
             //2012-11-14 was stationID=9044020  but that stopped working
             //2012-11-14 and 2013-11-01 Have to experiment a lot to get actual data. (Gap in Early 2013-10?)
@@ -1224,7 +1224,7 @@ These datasets were hard to work with:
         //RESULT FORMAT IS VERY DIFFERENT  so this class processes this dataset specially
         if ("nosCoopsWLTPHL".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLTPHL"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLTPHL"); 
 
             String daysAhead = daysAhead5;
             query = "&stationID=\"8454000\"&time>=" + daysAhead + 
@@ -1260,7 +1260,7 @@ These datasets were hard to work with:
         //&metadata=yes&Submit=Submit&stationId=1611400
         if ("nosCoopsWLTP6".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLTP6"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLTP6"); 
 
             String daysAhead = daysAhead5;
             query = "&stationID=\"8454000\"&datum=\"MLLW\"&time>=" + daysAhead + 
@@ -1301,7 +1301,7 @@ These datasets were hard to work with:
         //&metadata=yes&Submit=Submit&stationId=1611400
         if ("nosCoopsWLTP60".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLTP60"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLTP60"); 
 
             String daysAhead = daysAhead5;
             query = "&stationID=\"8454000\"&time>=" + daysAhead + 
@@ -1339,7 +1339,7 @@ These datasets were hard to work with:
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMAT".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMAT"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMAT"); 
 
             String daysAgo = yesterday;
             query = "&stationID=\"8454000\"&time>=" + daysAgo + 
@@ -1378,7 +1378,7 @@ These datasets were hard to work with:
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMBP".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMBP"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMBP"); 
 
             String daysAgo = yesterday;
             query = "&stationID=\"8454000\"&time>=" + daysAgo + 
@@ -1417,11 +1417,11 @@ These datasets were hard to work with:
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMC".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMC"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMC"); 
 
             String id =     "8452660";
             String cityLL = ",Newport,RI,1930-09-11T00:00:00Z,NWPR1,\"NWLON,PORTS\",-71.3267,41.505,"; 
-            String daysAgo = daysAgo40;
+            String daysAgo = daysAgo20;
             query = "&stationID=\"" + id + "\"&time>=" + daysAgo + 
                                         "00:00&time<=" + daysAgo + "01:00";             
             tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
@@ -1458,9 +1458,9 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMRF".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMRF"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMRF"); 
 
-            String daysAgo = yesterday;
+            String daysAgo = daysAgo70; //yesterday;
             query = "&stationID=\"9752619\"&time>=" + daysAgo + 
                                      "00:00&time<=" + daysAgo + "00:54";             
             tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
@@ -1496,9 +1496,9 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMRH".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMRH"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMRH"); 
 
-            String daysAgo = yesterday;
+            String daysAgo = daysAgo5; //yesterday;
             query = "&stationID=\"9063063\"&time>=" + daysAgo + 
                                      "00:00&time<=" + daysAgo + "01:00";             
             tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
@@ -1534,7 +1534,7 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMWT".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMWT"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMWT"); 
 
             //2014-01 "yesterday" fails, so seek a specific date
             String daysAgo = "2010-10-24T"; //yesterday;
@@ -1574,7 +1574,7 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMW".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMW"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMW"); 
 
             String daysAgo = yesterday;
             query = "&stationID=\"8454000\"&time>=" + daysAgo + 
@@ -1613,7 +1613,7 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //&beginDate=20101024+00:00&endDate=20101026+00:00
         if ("nosCoopsMV".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsMV"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsMV"); 
 
             //2014-01 "yesterday" fails, so seek a specific date
             String daysAgo = "2010-10-24T"; //yesterday;
@@ -1645,7 +1645,7 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //metadata=yes&Submit=Submit&stationId=db0301&beginDate=20101121+00:00&endDate=20101121+01:00
         if ("nosCoopsCA".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsCA"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsCA"); 
 
             //2014-01 "yesterday" fails, so seek a specific date
             String daysAgo = "2010-11-21T"; //yesterday;
@@ -1684,7 +1684,7 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         //  "Your query produced no matching results. (There are no matching stations.)"
         if ("nosCoopsWLVDM".matches(idRegex)) {
         try {
-            EDDTable edd = (EDDTable)oneFromDatasetXml("nosCoopsWLVDM"); 
+            EDDTable edd = (EDDTable)oneFromDatasetsXml(null, "nosCoopsWLVDM"); 
             query = "&stationID=\"1612340\"&datum=\"MLLW\"&time>=" + daysAgo72 + 
                 "00:00&time<=" + daysAgo70 + "00:00";             
             tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
@@ -1718,10 +1718,11 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
         String2.log("\n****************** EDDTableFromAsciiServiceNOS.test() *****************\n");
         testVerboseOn();
  
-        //do every 3 months
+        //update nosCoops datasets every 3 months
         //then copy [tomcat]/content/erddap/subset/nosCoops*.json files 
         //  to coastwatch ERDDAP /subset
         //  and UAF       ERDDAP /subset
+        //then flag all the datasets (use the list of flags)
         if (makeSubsetFiles) {
             if (reloadSF) reloadStationsFile();
             makeNosCoopsWLSubsetFiles(false);  //re-download the stations file
@@ -1729,8 +1730,24 @@ id + cityLL + daysAgo + "01:00:00Z,1,CN,([\\-\\.\\d]{1,6}|NaN),0,0,0\n";
             makeNosActiveCurrentsSubsetFile(reloadSF); //re-download the currents stations file (a different file)
         }
 
-        //always done  
-        testNosCoops(".*");  //test all: ".*"
+        //always done   could test all with testNosCoops(".*"); but troublesome to debug
+        /* */
+        testNosCoops("nosCoopsWLR1");
+        testNosCoops("nosCoopsWLV6");
+        testNosCoops("nosCoopsWLR60");
+        testNosCoops("nosCoopsWLVHL");
+        testNosCoops("nosCoopsWLTPHL");
+        testNosCoops("nosCoopsWLTP60");
+        testNosCoops("nosCoopsMAT");
+        testNosCoops("nosCoopsMBP");
+        testNosCoops("nosCoopsMC");
+        testNosCoops("nosCoopsMRF");
+        testNosCoops("nosCoopsMRH");
+        testNosCoops("nosCoopsMWT");
+        testNosCoops("nosCoopsMW");
+        testNosCoops("nosCoopsMV");
+        testNosCoops("nosCoopsCA");
+  
 
     }
 

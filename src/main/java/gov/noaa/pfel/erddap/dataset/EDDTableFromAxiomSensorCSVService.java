@@ -5,6 +5,7 @@ import gov.noaa.pfel.coastwatch.util.SSR;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.variable.EDV;
+import gov.noaa.pfel.erddap.Erddap;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -57,7 +58,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
     protected String noData = "";
 
-    public static EDDTableFromAxiomSensorCSVService fromXml(SimpleXMLReader xmlReader) throws Throwable {
+    public static EDDTableFromAxiomSensorCSVService fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
         String tDatasetID = xmlReader.attributeValue("datasetID");
         Attributes tGlobalAttributes = null;
         String tLocalSourceUrl = null;
@@ -588,7 +589,11 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         String2.log("\n****************** EDDTableFromAxiomSensorCSVService.test() *****************\n");
         testVerboseOn();
 
-        EDD edd = EDD.oneFromDatasetXml("sensor_service");
+        EDD edd = EDD.oneFromXmlFragment(null, "" +
+                "<dataset type=\"EDDTableFromAxiomSensorCSVService\" datasetID=\"sensor_service\">\n" +
+                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "</dataset>"
+        );
         // Test specific station and sensor
         String query = "&station=%22urn:ioos:station:wmo:46027%22&parameter=%22Air Temperature%22&time>=2014-11-01T00:00:00Z&time<=2014-12-01T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
