@@ -362,8 +362,12 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                                                     stat.getInt("endDate"),
                                                     d_list);
 
-            tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
-            tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
+            if (tGlobalAttributes.get(EDStatic.INSTITUTION) == null) {
+                tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
+            }
+            if (tGlobalAttributes.get("infoUrl") == null) {
+                tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
+            }
             tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
             tGlobalAttributes.set("cdm_data_type", EDD.CDM_TIMESERIES);
             tGlobalAttributes.set("geospatial_lon_min", station.longitude);

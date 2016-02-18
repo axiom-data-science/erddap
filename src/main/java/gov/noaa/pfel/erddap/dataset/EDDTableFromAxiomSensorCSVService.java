@@ -122,8 +122,12 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         if (tGlobalAttributes.get("summary") == null) {
             tGlobalAttributes.set("summary", AXIOM_SENSOR_SUMMARY);
         }
-        tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
-        tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
+        if (tGlobalAttributes.get(EDStatic.INSTITUTION) == null) {
+            tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
+        }
+        if (tGlobalAttributes.get("infoUrl") == null) {
+            tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
+        }
         tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
         tGlobalAttributes.set("cdm_data_type", EDD.CDM_TIMESERIES);
         tGlobalAttributes.set("cdm_timeseries_variables", "parameter");
