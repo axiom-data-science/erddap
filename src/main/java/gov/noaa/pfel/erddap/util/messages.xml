@@ -17,9 +17,8 @@ If the message uses HTML tags, please use the same tags in the translation.
 MessageFormat Placeholders
 Many messages use Java MessageFormat-style substitition placeholders like {0} and {1}.
 In these messages, any single quote ' must be escaped as ''.
-See http://docs.oracle.com/javase/1.5.0/docs/api/java/text/MessageFormat.html
+See https://docs.oracle.com/javase/8/docs/api/java/text/MessageFormat.html
 
-BOB! For POST: remove [font class="standoutColor"] and [/font] around "GetStarted".
 -->
 <erddapMessages>
 
@@ -36,11 +35,11 @@ BOB! For POST: remove [font class="standoutColor"] and [/font] around "GetStarte
 <advl_institution>Institution</advl_institution>
 <advc_dataStructure>ERDDAP treats each dataset as either a 'grid' or a 'table' dataset.</advc_dataStructure>
 <advl_dataStructure>Data Structure</advl_dataStructure>
-<advr_dataStructure>http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#dataStructures</advr_dataStructure>
+<advr_dataStructure>https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#dataStructures</advr_dataStructure>
 <advl_cdm_data_type>Common Data Model Type</advl_cdm_data_type>
-<advr_cdm_data_type>http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#cdm_data_type</advr_cdm_data_type>
+<advr_cdm_data_type>https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#cdm_data_type</advr_cdm_data_type>
 <advl_class>ERDDAP Class</advl_class>
-<advr_class>http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#datasetTypes</advr_class>
+<advr_class>https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#datasetTypes</advr_class>
 <advl_title>Title</advl_title>
 <advl_minLongitude>Minimum Longitude</advl_minLongitude>
 <advl_maxLongitude>Maximum Longitude</advl_maxLongitude>
@@ -64,6 +63,8 @@ BOB! For POST: remove [font class="standoutColor"] and [/font] around "GetStarte
 <advl_sos>Base URL of SOS Service</advl_sos>
 <advl_wcs>Base URL of WCS Service</advl_wcs>
 <advl_wms>Base URL of WMS Service</advl_wms>
+<advc_files>The /files/ services lets you browse and download source files.</advc_files>
+<advl_files>Base URL of /files/ Service</advl_files>
 <advc_fgdc>The FGDC .xml document has geographic metadata.</advc_fgdc>
 <advl_fgdc>URL of FGDC Document</advl_fgdc>
 <advc_iso19115>The ISO 19115 .xml document has geographic metadata.</advc_iso19115>
@@ -304,11 +305,17 @@ href="{0}/convert/oceanicAtmosphericAcronyms.txt?fullName=National%20Oceanic%20a
      >{0}/convert/oceanicAtmosphericAcronyms.txt?fullName=National%20Oceanic%20and%20Atmospheric%20Administration</a>
   <br>&nbsp;
 </ul>
-Note that the parameter values in the URL must be properly
- <a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
+  Percent Encoding - The parameter values in the URL (the parts after ''='' signs) must be properly
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>,
- which is normally taken care of by a browser.
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+    all characters other than A-Za-z0-9_-!.~''()* must be encoded as %HH,
+  <br>where HH is the 2 digit hexadecimal value of the character, for example, a space becomes
+  <br>%20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8 byte must
+  <br>be percent encoded (ask a programmer for help).  There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>.
 ]]></convertOceanicAtmosphericAcronymsService>
 
 <convertOceanicAtmosphericVariableNames>Convert a Common Oceanic/Atmospheric Variable Name to/from a Full Name</convertOceanicAtmosphericVariableNames>
@@ -368,11 +375,17 @@ href="{0}/convert/oceanicAtmosphericVariableNames.txt?fullName=Sea%20Surface%20T
      >{0}/convert/oceanicAtmosphericVariableNames.txt?fullName=Sea%20Surface%20Temperature</a>
   <br>&nbsp;
 </ul>
-Note that the parameter values in the URL must be properly
- <a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
+  Percent Encoding - The parameter values in the URL (the parts after ''='' signs) must be properly
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>,
- which is normally taken care of by a browser.
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+    all characters other than A-Za-z0-9_-!.~''()* must be encoded as %HH,
+  <br>where HH is the 2 digit hexadecimal value of the character, for example, a space becomes
+  <br>%20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8 byte must
+  <br>be percent encoded (ask a programmer for help).  There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>.
 ]]></convertOceanicAtmosphericVariableNamesService>
 
 <convertFipsCounty>Convert a FIPS County Code to/from a County Name</convertFipsCounty>
@@ -381,7 +394,7 @@ Note that the parameter values in the URL must be properly
 <convertFipsCountyIntro><![CDATA[
 This web page lets you convert a 5-digit, U.S. 
 <!-- was http://www.itl.nist.gov/fipspubs/fip6-4.htm -->
-<a rel="bookmark" href="http://www.census.gov/geo/reference/codes/cou.html">FIPS county code<img 
+<a rel="bookmark" href="https://www.census.gov/geo/reference/codes/cou.html">FIPS county code<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
 to/from a county name.
@@ -427,7 +440,8 @@ to/from a county name.
 <li><a name="equivalent">County-Equivalent Entities</a> -
   This service includes county-equivalent entities from
   <br>U.S. protectorates and freely associated states originally in Appendix A and B of the
-  <br><a rel="bookmark" href="http://www.census.gov/geo/reference/codes/cou.html">FIPS list<img 
+  <br><a rel="bookmark" href="https://www.census.gov/geo/reference/codes/cou.html"
+    >FIPS list<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>.
     The state-level entities are:
@@ -462,11 +476,17 @@ href="{0}/convert/fipscounty.txt?county=CA%2C%20Monterey"
      >{0}/convert/fipscounty.txt?county=CA%2C%20Monterey</a>
   <br>&nbsp;
 </ul>
-Note that the parameter values in the URL must be properly
- <a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
+  Percent Encoding - The parameter values in the URL (the parts after ''='' signs) must be properly
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>,
- which is normally taken care of by a browser.
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+    all characters other than A-Za-z0-9_-!.~''()* must be encoded as %HH,
+  <br>where HH is the 2 digit hexadecimal value of the character, for example, a space becomes
+  <br>%20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8 byte must
+  <br>be percent encoded (ask a programmer for help).  There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>.  
 ]]></convertFipsCountyService>
 
 
@@ -544,12 +564,17 @@ If you change the extension of this web page''s URL from .html to .txt,
 href="{0}/convert/keywords.txt?gcmd=Atmosphere%20%3e%20Atmospheric%20Pressure%20%3e%20Sea%20Level%20Pressure"
      >{0}/convert/keywords.txt?gcmd=Atmosphere%20%3e%20Atmospheric%20Pressure%20%3e%20Sea%20Level%20Pressure</a>
 </ul>
-Percent Encoding - 
-The parameter values in the URL must be properly 
-<a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">Percent Encoded<img 
+Percent Encoding - The parameter values in the URL (the parts after ''='' signs) must be properly
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>,
-<br>which is normally taken care of by a browser.
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+    all characters other than A-Za-z0-9_-!.~''()* must be encoded as %HH,
+  <br>where HH is the 2 digit hexadecimal value of the character, for example, a space becomes
+  <br>%20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8 byte must
+  <br>be percent encoded (ask a programmer for help).  There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>.  
 
 <p><a name="exact">Exact Match</a> -
   This service requires an exact match. Trying to translate a partial or  
@@ -577,7 +602,7 @@ This web page lets you convert a time value to/from an
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
   - for example, 473472000 "seconds since 1970-01-01T00:00:00Z", or
-<li><a rel="help" href="http://en.wikipedia.org/wiki/ISO_8601"
+<li><a rel="help" href="https://en.wikipedia.org/wiki/ISO_8601"
   >ISO 8601:2004 "extended" format String<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
@@ -662,7 +687,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   ("seconds since 1970-00-00T00:00:00Z")
   <br>for all datasets allows times from different datasets to be compared easily. 
   <br>Seconds are the 
-    <a rel="help" href="http://en.wikipedia.org/wiki/International_System_of_Units">International 
+    <a rel="help" href="https://en.wikipedia.org/wiki/International_System_of_Units">International 
       System of Units (SI)<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
@@ -670,7 +695,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   <br>1970-01-01T00:00:00Z is the start of the Unix epoch, which is widely used by computer 
   <br>operating systems.  "seconds since 1970-00-00T00:00:00Z" are widely used and are 
   <br>often called
-    <a rel="help" href="http://en.wikipedia.org/wiki/Unix_time">Unix time<img 
+    <a rel="help" href="https://en.wikipedia.org/wiki/Unix_time">Unix time<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
     or epoch seconds.  The use of the units string 
@@ -690,7 +715,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   
 <li><a name="textRepresentation">Text Representation</a> - By default, when formatting times as
     text, ERDDAP uses the 
-  <br><a rel="help" href="http://en.wikipedia.org/wiki/ISO_8601"
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/ISO_8601"
     >ISO 8601:2004 "extended" format String<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>, 
@@ -714,7 +739,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   <br>discontinuity in 1582 and the Julian calendar for times before the discontinuity.
   <br>(The ISO 8601:2004 standard doesn''t specify how to handle times before 1582.)
   <br>See the
-    <a rel="help" href="http://download.oracle.com/javase/6/docs/api/java/util/GregorianCalendar.html"
+    <a rel="help" href="https://docs.oracle.com/javase/8/docs/api/java/util/GregorianCalendar.html"
       >Java GregorianCalendar class<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
@@ -767,7 +792,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   <br>&nbsp;
 
 <li><a name="UTC">UTC</a> - As much as is practical, ERDDAP, like Unix time and UDUNITS-2, uses the 
-  <br><a rel="help" href="http://en.wikipedia.org/wiki/Coordinated_Universal_Time">Coordinated Universal 
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Coordinated_Universal_Time">Coordinated Universal 
     Time (UTC)<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a> 
@@ -797,12 +822,15 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   <br>time calculations and ignore leap seconds.  With ERDDAP, Unix time, and UDUNITS-2
   <br>numeric time values, all minutes are treated as having 60 seconds, even though UTC
   <br>minutes with leap seconds have 61 seconds.  Note that database programs like
-    <a rel="bookmark" href="http://www.sql4oracle.com/?p=504">Oracle<img 
+    <a rel="bookmark"
+    href="http://stackoverflow.com/questions/31136211/how-to-handle-leap-seconds-in-oracle"
+    >Oracle<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
   <br>
-    <a rel="bookmark" href="http://dev.mysql.com/doc/refman/5.0/en/time-zone-leap-seconds.html"
-      >MySQL<img 
+    <a rel="bookmark"
+    href="https://dev.mysql.com/doc/refman/7.0/en/time-zone-leap-seconds.html"
+    >MySQL<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
     (and so probably MariaDB also),
@@ -811,7 +839,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
     and languages like 
-     <a rel="bookmark" href="http://bytes.com/topic/c-sharp/answers/231842-datetime-accounts-leap-seconds"
+     <a rel="bookmark" href="https://bytes.com/topic/c-sharp/answers/231842-datetime-accounts-leap-seconds"
        >C#<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
@@ -831,7 +859,7 @@ time values in ERDDAP always use the Zulu (UTC, GMT) time zone.
   <br>seconds between two points in time, you can use ERDDAP to handle the time data,
   <br>but subtracting one numeric time value from the other is just the first step in
   <br>the calculation.  You need manually adjust that value by consulting a
-  <br><a rel="help" href="http://en.wikipedia.org/wiki/Leap_seconds">table of leap seconds<img 
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Leap_seconds">table of leap seconds<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>.
   <br>&nbsp;
@@ -884,12 +912,18 @@ href="{0}/convert/time.txt?isoTime=1985-01-02T00:00:00Z&amp;units=seconds%20sinc
 >{0}/convert/time.txt?isoTime=1985-01-02T00:00:00Z&amp;units=seconds%20since%201970-01-01T00:00:00Z</a>
   <br>&nbsp;
 </ul>
-Note that the parameter values in the URL must be properly
- <a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
+The "&amp;units=..." parameter is optional. The default value is "seconds since 1970-01-01T00:00:00Z".
+  <p>Percent Encoding - The parameter values in the URL (the parts after ''='' signs) must be properly
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>,
- which is normally taken care of by a browser.
-<br>The "&amp;units=..." parameter is optional. The default value is "seconds since 1970-01-01T00:00:00Z".
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+    all characters other than A-Za-z0-9_-!.~''()* must be encoded as %HH,
+  <br>where HH is the 2 digit hexadecimal value of the character, for example, a space becomes
+  <br>%20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8 byte must
+  <br>be percent encoded (ask a programmer for help).  There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>.  
 ]]></convertTimeService>
 
 <!-- The example on the first line is EDV.TIME_UNITS. -->
@@ -911,14 +945,14 @@ For example, "seconds since 1970-01-01T00:00:00Z".
 <br>Separately, if you omit .sss, :ss.sss, :mm:ss.sss, or Thh:mm:ss.sss, the
 <br>missing fields are assumed to be 0. 
 <p>So another example is "hours since 0001-01-01".
-<p>Technically, ERDDAP does NOT follow the CF standard when converting "years since"
-<br>and "months since" time values to "seconds since". The CF standard defines a
-<br>year as a fixed, single value: 3.15569259747e7 seconds. And CF defines a month
+<p>Technically, ERDDAP does NOT follow the UDUNITS standard when converting "years since"
+<br>and "months since" time values to "seconds since". The UDUNITS standard defines a
+<br>year as a fixed, single value: 3.15569259747e7 seconds. And UDUNITS defines a month
 <br>as year/12. Unfortunately, most/all datasets that we have seen that use 
 <br>"years since" or "months since" clearly intend the values to be calendar years
 <br>or calendar months. For example, "3 months since 1970-01-01" is usually intended
 <br>to mean 1970-04-01. So, ERDDAP interprets "years since" and "months since" as
-<br>calendar years and months, and does not strictly follow the CF standard.
+<br>calendar years and months, and does not strictly follow the UDUNITS standard.
 ]]></convertTimeUnitsHelp>
 
 <convertUnits>Convert UDUNITS to/from Unified Code for Units of Measure (UCUM)</convertUnits>
@@ -1240,13 +1274,34 @@ If you change the extension of this web page''s URL from .html to .txt,
   <br><a href="{0}/convert/units.txt?UCUM=Cel.m-1"
   >{0}/convert/units.txt?UCUM=Cel.m-1</a>
 </ul>
-Note that the parameter value must be properly
-<a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
+  Percent Encoding - The parameter values in the URL (the parts after ''='' signs) must be properly
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img 
     src="../images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>,
-which is normally taken care of by a browser.
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+    all characters other than A-Za-z0-9_-!.~''()* must be encoded as %HH,
+  <br>where HH is the 2 digit hexadecimal value of the character, for example, a space becomes
+  <br>%20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8 byte must
+  <br>be percent encoded (ask a programmer for help).  There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>.  
 ]]></convertUnitsService>
 
+<!-- cookiesHelp last updated 2016-03-21 -->
+<cookiesHelp><![CDATA[Make sure your browser is set to allow
+  <a rel="help" href="https://en.wikipedia.org/wiki/HTTP_cookie">cookies<img 
+    src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+  <ul>
+  <li>In Chrome, use "Settings : Show advanced settings : Privacy/Content Settings : Cookies/Allow local data to be set"
+  <li>In Firefox, use "Options : Privacy : History/Accept cookies from sites"
+  <li>In Internet Explorer, use "Tools : Internet Options : Privacy : Settings : Advanced : First Party Cookies/Accept"
+  <li>In Opera, use "Menu : Settings : Privacy and Security : Cookies/Allow local data to be set"
+  <li>In Safari, use "Safari : Preferences : Security : Cookies and website data : Allow"
+  </ul>
+  If you are making ERDDAP requests from a computer program (other than a browser),
+  cookies are hard to work with. Sorry.
+]]></cookiesHelp>
 
 <daf>Data Access Form</daf>
 
@@ -1310,7 +1365,7 @@ Well, you can do anything you want with your graphs, of course.
 But some things you might not have considered are:
 <ul>
 <li>Web page authors can
-  <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/images/embed.html"
+  <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/images/embed.html"
     >embed a graph of the latest data in a web page</a>
   using HTML &lt;img&gt; tags.
 &ssUse;
@@ -1320,10 +1375,11 @@ But some things you might not have considered are:
 
 <!-- Dataset Table (e.g., a list of datasets) -->
 <dtAccessible><![CDATA[<b>Is this dataset accessible to you?</b>
-  <br>"public" = Yes.  It is accessible to anyone (logged in or not logged in).]]></dtAccessible>
-<dtAccessibleYes><![CDATA[<br>"yes" = Yes. You are logged in and have the appropriate role.]]></dtAccessibleYes>
-<dtAccessibleNo><![CDATA[<br>"no" = No. You are logged in but don't have the appropriate role.]]></dtAccessibleNo>
+  <br>"public" = Yes. It is accessible to anyone (logged in or not logged in).]]></dtAccessible>
+<dtAccessibleYes><![CDATA[<br>"yes" = You are logged in and have the appropriate role.]]></dtAccessibleYes>
+<dtAccessibleNo><![CDATA[<br>"no" = You are logged in but don't have the appropriate role.]]></dtAccessibleNo>
 <dtAccessibleLogIn><![CDATA[<br>"log in" = Currently, no. It may become accessible if you log in.]]></dtAccessibleLogIn>
+<dtAccessibleGraphs><![CDATA[<br>"graphs" = You have access to graphs and metadata, but not the actual data.]]></dtAccessibleGraphs>
 <dtLogIn>Click to log in and try to make this dataset accessible.</dtLogIn>
 <dtDAF1>Click to see a</dtDAF1>
 <dtDAF2>Data Access Form for this dataset so that you can request data.</dtDAF2>
@@ -1338,7 +1394,7 @@ But some things you might not have considered are:
 <EDDClickOnSubmitHtml><![CDATA[Click on <tt>Submit</tt>.]]></EDDClickOnSubmitHtml>
 <EDDDatasetID>Dataset ID</EDDDatasetID>
 <EDDFgdc>FGDC</EDDFgdc>
-<EDDFgdcMetadata>FGDC Metadata</EDDFgdcMetadata>
+<EDDFgdcMetadata>FGDC-STD-001-1998 Metadata</EDDFgdcMetadata>
 <EDDFiles>Files</EDDFiles>
 <EDDIso19115>ISO 19115</EDDIso19115>
 <EDDIso19115Metadata>ISO 19115-2/19139 Metadata</EDDIso19115Metadata>
@@ -1456,7 +1512,10 @@ But some things you might not have considered are:
 <EDDGridNValuesHtml><![CDATA[For your information: this is the total size (number of values) of this dimension.]]></EDDGridNValuesHtml>
 <EDDGridSpacingHtml><![CDATA[For your information: this is the average spacing between values of a dimension
   <br>(in the units of the dimension)
-  <br>and an indication of whether the values are evenly spaced or not.]]></EDDGridSpacingHtml>
+  <br>and an indication of whether the values are perfectly evenly spaced or not.
+  <br>A slightly odd, uneven spacing often indicates that one or a few files are
+  <br>missing or bad in an otherwise perfectly evenly spaced dataset.
+]]></EDDGridSpacingHtml>
 <EDDGridDimensionFirstHtml><![CDATA[For your information: this is the first value of a dimension.]]></EDDGridDimensionFirstHtml>
 <EDDGridDimensionLastHtml><![CDATA[For your information: this is the last value of a dimension.]]></EDDGridDimensionLastHtml>
 
@@ -1632,7 +1691,11 @@ This constraint variable has a limited number of values. They are listed here.
 <!-- The Description and Warning wording is vague to allow for one or many datasets. -->
 <filesDescription>ERDDAP's "files" system lets you browse a virtual file system and download source data files.</filesDescription>
 <filesSort>Click on a heading (e.g., Name, Last modified, Size) to change the sort order.  "Last modified" uses the Zulu time zone.</filesSort>
-<filesWarning>The dataset's metadata and variable names in these source files may be different than elsewhere in ERDDAP! You might prefer using the dataset's Data Access Form instead.</filesWarning>
+<filesWarning><![CDATA[
+The dataset's metadata and variable names in these source files may be different 
+than elsewhere in ERDDAP! 
+<br>You might prefer using the dataset's Data Access Form instead.
+]]></filesWarning>
 <filesDocumentation><![CDATA[
 ERDDAP's "files" system lets you browse a virtual file system and download 
 source
@@ -1708,8 +1771,8 @@ If you want to download a series of files from ERDDAP, you don't have to request
 <br>use ERDDAP in many new ways.
 <br>On Linux and Mac OS X, curl is probably already installed as /usr/bin/curl.
 <br>On Windows, or if your computer doesn't have curl already, you need to 
-  <a rel="bookmark" href="http://curl.haxx.se/download.html">download curl<img
-    src="http://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
+  <a rel="bookmark" href="https://curl.haxx.se/download.html">download curl<img
+    src="https://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
     title="This link to an external web site does not constitute an endorsement."/></a>
 <br>and install it.  To get to a command line in Windows, click on "Start" and type 
 <br>"cmd" into the search textfield.
@@ -1717,11 +1780,11 @@ If you want to download a series of files from ERDDAP, you don't have to request
 <br><b>Please be kind to other ERDDAP users: run just one script or curl command at a time.</b>
 
 <p>Instructions for using curl are on the 
-<a rel="help" href="http://curl.haxx.se/download.html">curl man page<img
-    src="http://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
+<a rel="help" href="https://curl.haxx.se/download.html">curl man page<img
+    src="https://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
     title="This link to an external web site does not constitute an endorsement."/></a> and in this
-<a rel="help" href="http://curl.haxx.se/docs/httpscripting.html">curl tutorial<img
-    src="http://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
+<a rel="help" href="https://curl.haxx.se/docs/httpscripting.html">curl tutorial<img
+    src="https://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
     title="This link to an external web site does not constitute an endorsement."/></a>.
 <br>But here is a quick tutorial related to using curl with ERDDAP:
 <ul>
@@ -1732,23 +1795,24 @@ If you want to download a series of files from ERDDAP, you don't have to request
   <br>&nbsp;&nbsp;<tt>-o <i>fileDir/fileName.ext</i></tt> specifies the name for the file that will be created.
   <br>For example,
 <pre>curl -g "http://coastwatch.pfeg.noaa.gov/erddap/files/cwwcNDBCMet/NDBC_41004_met.nc" -o ndbc/41004.nc</pre>
-The erddapUrl must be <a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img
-    src="http://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
-    title="This link to an external web site does not constitute an endorsement."/></a>.
+The erddapUrl must be <a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encoded<img
+    src="https://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
+    title="This link to an external web site does not constitute an endorsement."/></a>:
+  <br>all characters in parameter values (the parts after '=' signs) other than A-Za-z0-9_-!.~'()*
+  <br>must be encoded as %HH, where HH is the 2 digit hexadecimal value of the character, for example,
+  <br>a space becomes %20. Characters above #127 must be converted to UTF-8 bytes, then each UTF-8
+  <br>byte must be percent encoded (ask a programmer for help). There are
+  <br><a rel="help" href="http://www.url-encode-decode.com/">web sites that percent encode and decode for you<img 
+    src="../images/external.png" align="bottom" alt=" (external link)" 
+    title="This link to an external web site does not constitute an endorsement."/></a>. 
   <br>If you get the URL from your browser's address textfield, this may be already done.
-  <br>If not, in practice, this can be very minimal percent encoding: all you usually have 
-  <br>to do is convert % into %25, &amp; into %26, " into %22, + into %2B, 
-  <br>space into %20 (or +), &lt; into %3C, &gt; into %3E, = into %3D, ~ into %7E, and convert
-  <br>all characters above #126 to their %HH form (where HH is the 2-digit hex value).
-  <br>Unicode characters above #255 must be UTF-8 encoded and then each byte must be 
-  <br>converted to %HH form (ask a programmer for help).
   <br>&nbsp;
 <li>To download and save many files in one step, use curl with the globbing feature
   <br>enabled:
   <br><tt>curl "<i>erddapUrl</i>" -o <i>fileDir/fileName#1.ext</i></tt>
   <br>Since the globbing feature treats the characters [, ], {, and } as special, you must also
-  <br><a rel="help" href="http://en.wikipedia.org/wiki/Percent-encoding">percent encode<img
-    src="http://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
+  <br><a rel="help" href="https://en.wikipedia.org/wiki/Percent-encoding">percent encode<img
+    src="https://coastwatch.pfeg.noaa.gov/erddap/images/external.png" align="bottom" alt=" (external link)"
     title="This link to an external web site does not constitute an endorsement."/></a> 
     them in the erddapURL as &#37;5B, &#37;5D, &#37;7B, &#37;7D, respectively.
   <br>Fortunately, these are almost never in "files" file names.
@@ -1816,12 +1880,13 @@ Checking 'distinct()' tells ERDDAP to sort the results table by all of the
 
 <geoServicesDescription><![CDATA[
 In order to make this ERDDAP's data more accessible to ArcGIS users, this part of ERDDAP mimics part of
-<br><a rel="bookmark" href="http://www.esri.com/software/arcgis/arcgisserver">ArcGIS for Server<img 
+<br><a rel="bookmark" href="https://www.esri.com/software/arcgis/arcgisserver">ArcGIS for Server<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
   by following parts of the
-  <a rel="help" href="http://www.esri.com/industries/landing-pages/geoservices/geoservices" 
-    >ESRI GeoServices REST Specification<img 
+  <a rel="help"
+  href="http://resources.arcgis.com/en/help/arcgis-rest-api/#/The_ArcGIS_REST_API/02r300000054000000/"
+  >ESRI GeoServices REST Specification<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a> 
   (<a rel="copyright" 
@@ -1851,7 +1916,6 @@ In order to make this ERDDAP's data more accessible to ArcGIS users, this part o
 
 <!-- Get Started appears on the right hand side of the home page.
 "Get Started with ERDDAP".
-For POST: remove <font> and </font> tags.
 -->
 <getStartedHtml><![CDATA[<a name="GetStarted"><font class="standoutColor">Start Using ERDDAP:<br>&nbsp;&nbsp;&nbsp;&nbsp;Search for Interesting Datasets</font></a>]]></getStartedHtml>
 
@@ -1901,11 +1965,9 @@ can search for datasets via</indexDevelopersSearch>
 <indexOpenSearch>ERDDAP's OpenSearch 1.1 Service</indexOpenSearch>
 <indexMetadata>Metadata</indexMetadata>
 <!-- {0} is link to just one of FGDC or ISO 19115 WAF -->
-<indexWAF1>ERDDAP has a Web Accessible Folder (WAF) with {0} .xml metadata files
-for all of the geospatial datasets.</indexWAF1>
+<indexWAF1>ERDDAP has an {0} metadata files for all of the geospatial datasets in this ERDDAP.</indexWAF1>
 <!-- links to both FGDC and ISO 19115 WAFs -->
-<indexWAF2>ERDDAP has Web Accessible Folders (WAF) with {0} and {1} .xml metadata files
-for all of the geospatial datasets.</indexWAF2>
+<indexWAF2>ERDDAP has an {0} metadata files and an {1} metadata files for all of the geospatial datasets in this ERDDAP.</indexWAF2>
 <indexConverters>Converters</indexConverters>
 <indexDescribeConverters>In addition to serving data, ERDDAP has some handy converters:</indexDescribeConverters>
 <indexServices>RESTful Web Services</indexServices>
@@ -1983,7 +2045,27 @@ Wait {1} minutes, then try again.
 
 <loginDescribeCustom><![CDATA[
 <p>This ERDDAP is configured to let you log in by entering your User Name and Password.
+<br>Only people who have made arrangements with the administrator of this ERDDAP may log in.
 ]]></loginDescribeCustom>
+
+<loginDescribeEmail><![CDATA[
+<p>This ERDDAP is configured to let you log in via email address authentication.
+<br>After you enter your email address below, ERDDAP will email you a link.
+<br>After you click on the link in the email, you will be logged in.
+<br>The administrator of this ERDDAP determines who can log in and which 
+  additional datasets they can access.
+]]></loginDescribeEmail>
+
+<loginDescribeGoogle><![CDATA[
+<p>This ERDDAP is configured to let you log in by signing in to your Google email account,
+<br>including Google-managed accounts such as @noaa.gov accounts.
+<br>This allows ERDDAP to verify your identity (name and email address) 
+  and access your profile image, 
+<br>but does not give ERDDAP access to your emails, your Google Drive, 
+  or any other private information.
+<br>Anyone can log in but the administrator of this ERDDAP determines who gets 
+  access to additional datasets.
+]]></loginDescribeGoogle>
 
 <loginDescribeOpenID><![CDATA[
 <p><a rel="help" href="http://openid.net/">OpenID<img 
@@ -1991,14 +2073,21 @@ Wait {1} minutes, then try again.
     title="This link to an external web site does not constitute an endorsement."/></a> 
     is an open standard that lets you log in with your password at one web site
 <br>and then log in without your password at many other web sites, including ERDDAP.
+<br>Only people who have made arrangements with the administrator of this ERDDAP may log in.
 ]]></loginDescribeOpenID>
 
 <loginCanNot>This ERDDAP is not configured to let users log in.</loginCanNot>
-<loginWereNot>You weren't logged in.</loginWereNot>
-<loginPleaseLogIn>Please log in</loginPleaseLogIn>
+<loginAreNot>You aren't logged in.</loginAreNot>
+<loginToLogIn>To log in</loginToLogIn>
+<loginEmailAddress>email address</loginEmailAddress>
+<loginYourEmailAddress>Your email address</loginYourEmailAddress>
 <loginUserName>User Name</loginUserName>
 <loginPassword>Password</loginPassword>
 <loginUserNameAndPassword>User Name and Password</loginUserNameAndPassword>
+
+<loginGoogleSignIn>Sign into your Google account. (The button's label will change from "Sign in" to Signed in".)</loginGoogleSignIn>
+<loginGoogleErddap>Log into ERDDAP</loginGoogleErddap>
+
 <loginOpenID>Log in with your OpenID URL</loginOpenID>
 <loginOpenIDOr>Or log in to your existing (non-OpenID) account at</loginOpenIDOr>
 <loginOpenIDCreate>Or create an OpenID URL at</loginOpenIDCreate>
@@ -2008,36 +2097,47 @@ Wait {1} minutes, then try again.
 <loginAs>You are logged in as</loginAs>
 <loginFailed>ERROR: Login failed</loginFailed>
 <loginInvalid>Invalid User Name and/or Password.</loginInvalid>
+<loginSucceeded>Login succeeded!</loginSucceeded>
 
 <loginNot>You are not logged in.</loginNot>
 
 <loginBack><![CDATA[
 <b>Don't use your browser's <tt>Back</tt> button. Use the "ERDDAP" link above,</b>
 <br>then use other links to go to ERDDAP pages you are interested in.
+<br>If a cached web page says you aren't logged in, reload the page.
 ]]></loginBack>
+
+<loginProblemExact><![CDATA[<li>Make sure that you log in with the exact same &info; that you gave to the ERDDAP administrator.  
+  <br>Uppercase and lower case letters are different.  Capital 'oh' and 'zero' are different.
+  <br>&nbsp;
+]]></loginProblemExact>
+
+<loginProblemExpire><![CDATA[<li>If you wait more than &offerValidMinutes; minutes after ERDDAP sends you the invitation email,
+  the invitation will expire.
+  <br>&nbsp;
+]]></loginProblemExpire>
+
+<loginProblemGoogleAgain><![CDATA[<li>If the Google button says you are "Signed in", 
+  but clicking "Log into ERDDAP" doesn't log you into ERDDAP,
+  <br>click the Google button and sign in to Google again.
+  <br>&nbsp;
+]]></loginProblemGoogleAgain>
+
+<loginProblemSameBrowser><![CDATA[<li>Make sure that you use the same browser to request a login invitation email
+  and to visit the verification URL in the email.
+  <br>&nbsp;
+]]></loginProblemSameBrowser>
+
+<loginProblem3Times><![CDATA[<li>If you fail to log in three times, you are locked out. Wait 10 minutes and try again.
+  <br>&nbsp;
+]]></loginProblem3Times>
 
 <loginProblems><![CDATA[
 <p>&nbsp;<hr><p><b>Problems?</b>
 <p>If you have problems logging in:
 <ul>
-<li>Make sure that you log in with the exact same &info; that you gave to the ERDDAP administrator.  <br>Uppercase and lower case letters are different.  Capital 'oh' and 'zero' are different.
-  <br>&nbsp;
-<li>Your password must be 7 or more characters long.
-  <br>&nbsp;
-<li>Make sure your browser is set to allow
-  <a rel="help" href="http://en.wikipedia.org/wiki/HTTP_cookie">cookies<img 
-    src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>:
-  <ul>
-  <li>In Internet Explorer, use "Tools : Internet Options : Privacy"
-  <li>In Firefox, use "Options : Options : Privacy"
-  <li>In Opera, use "Settings : Quick Preferences"
-  <li>In Safari, use "Safari : Preferences : Security"
-  </ul>
-  If you are making ERDDAP requests from a computer program (other than a browser),
-  cookies are hard to work with. Sorry.
-  <br>&nbsp;
-<li>If you fail to log in three times, you are locked out. Wait 10 minutes and try again.
+&initialHelp;
+<li>&cookiesHelp;
   <br>&nbsp;
 <li>Contact the administrator of this ERDDAP: &adminContact;.
 </ul>
@@ -2045,29 +2145,33 @@ Wait {1} minutes, then try again.
 
 <loginProblemsAfter><![CDATA[
 <p>&nbsp;<hr>
-<p><b>If you are having problems ...</b>
+<p><b>If you are having login problems, for example,</b>
 <ul>
-<li>You just logged in, but private datasets in ERDDAP still aren't visible
+<li>You just logged in, but private datasets in ERDDAP still aren't visible.
 <li>You just logged in, but some ERDDAP web pages indicate you aren't logged in.
   <br>And if you try to log in again, ERDDAP says you are already logged in.
 <li>You logged in a while ago and now, after a period of inactivity, ERDDAP says 
     you aren't logged in.
 </ul>
-<p><b>Try these solutions ...</b>
+<p><b>Try these solutions:</b>
 <ul>
-<li>ERDDAP URLs are slightly different for users who are logged in and users who aren't
-  <br>("https:" vs. "http:", and sometimes other differences).
-  <br>Don't use your browser's <tt>Back</tt> button. Use the "ERDDAP" link above,
-  <br>then use other links to go to ERDDAP pages you are interested in.
+<li>Make sure you are using the https URL:
+  <br>All ERDDAP web pages can be accessed via http or https URLs.
+  <br>If you use an http URL, ERDDAP considers you to be not logged in, even if you 
+    would be if you used https.
+  <br>So if you think you're logged in and ERDDAP is acting as if you aren't,
+    make sure you're using the https (not the http) URL.
   <br>&nbsp;
-<li>Click on your browser's Refresh button.
+<li>Click on your browser's Reload button.
   <br>Your browser may have cached the web page before you logged in.
   <br>&nbsp;
-<li>If, after a period of inactivity, ERDDAP says you aren't logged in, 
+<li>After a period of inactivity, if ERDDAP says you aren't logged in, 
     you have to log in again.
   <br>&nbsp;
 <li>If you have multiple accounts, make sure you are logged in with the appropriate 
     name to see the desired datasets.
+  <br>&nbsp;
+<li>Try logging out, then logging in again.
   <br>&nbsp;
 &second;
 <li>Contact the administrator of this ERDDAP: &adminContact;.
@@ -2085,20 +2189,24 @@ Wait {1} minutes, then try again.
 
 <logoutOpenID>Log out from your OpenID provider.</logoutOpenID>
 
+<!-- logoutSuccess last updated 2016-03-28 -->
 <logoutSuccess>
 You have successfully logged out.
 
 Don't use your browser's Back button. Use the "ERDDAP" link above,
 then use other links to go to ERDDAP pages you are interested in.
-
+If a cached web page says you are still logged in, reload the page.
 
 For increased security (especially if this is a shared computer), you can:
  * Clear your browser's cache:
-   * In Internet Explorer, use "Safety : Delete Browsing History : Delete Files"
-   * In Firefox, use "History : Clear Recent History"
-   * In Opera, use "Settings : Preferences : Advanced : Cookies : Manage Cookies"
-     and delete any OpenID cookies.
-   * In Safari, use "Safari : Empty Cache"
+   * In Chrome, use "More tools : Clear browsing data : Cached images and files 
+       (and perhaps others)"
+   * In Firefox, use "Options : Advanced : Network : Cached Web Content : Clear Now"
+   * In Internet Explorer, use "Options : Safety : Delete Browsing History :
+       Temporary Internet files and website files : Delete"
+   * In Opera, use "Menu : More tools : Clear browsing data".
+   * In Safari, use "Safari : Preferences : Advanced : Show Develop", 
+       then "Safari : Develop : Empty Caches"
 </logoutSuccess>
 
 <mag>Make A Graph</mag>
@@ -2401,6 +2509,7 @@ Better to return an empty file? But .nc and others don't allow 0-length data.
 
 <notAllowed>{0} isn''t allowed.</notAllowed>
 <notAuthorized>loggedInAs={0} isn''t authorized to access datasetID={1}.</notAuthorized>
+<notAuthorizedForData>loggedInAs={0} isn''t authorized to access data from datasetID={1}, but is authorized to access graphs and metadata.</notAuthorizedForData>
 <notAvailable>Currently, datasetID={0} isn''t available.</notAvailable>
 
 <!-- Xxx is Make A Graph, FGDC, ISO 19115, SOS, WCS, WMS, ... -->
@@ -2525,6 +2634,8 @@ Widths are in ratio 1:2:3.
 <queryErrorNotExpectedAt>"{0}" was not expected at position={1}.</queryErrorNotExpectedAt>
 <queryErrorNotFoundAfter>"{0}" was not found after position={1}.</queryErrorNotFoundAfter>
 <queryErrorOccursTwice>Variable name={0} occurs twice.</queryErrorOccursTwice>
+<queryErrorOneOrderBy>The query has more than one orderBy...() constraint.</queryErrorOneOrderBy>
+<queryErrorOrderByVariable>orderBy variable={0} isn''t in the list of results variables.</queryErrorOrderByVariable>
 <queryErrorUnknownVariable>Unknown variable={0}.</queryErrorUnknownVariable>
 
 <queryErrorGrid1Axis>Grid axis queries must specify at least one axis variable.</queryErrorGrid1Axis>
@@ -2564,7 +2675,7 @@ Widths are in ratio 1:2:3.
 
 <requestFormatExamplesHtml><![CDATA[
 (for example,
-  <a rel="help" href="http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.3">HTTP GET<img 
+  <a rel="help" href="https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html#sec9.3">HTTP GET<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
   <a rel="help" href="http://www.xml.com/pub/a/98/10/guide0.html">XML<img 
@@ -2596,7 +2707,7 @@ Widths are in ratio 1:2:3.
   <a rel="help" href="http://www.geotools.org/ArcInfo+ASCII+Grid+format">ESRI .asc<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
-  <a rel="help" href="http://earth.google.com/">Google Earth .kml<img 
+  <a rel="help" href="https://developers.google.com/kml/">Google Earth .kml<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
   <a rel="help" href="http://www.mathworks.com/">.mat<img 
@@ -2605,7 +2716,7 @@ Widths are in ratio 1:2:3.
   <a rel="help" href="http://www.unidata.ucar.edu/software/netcdf/">.nc<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
-  <a rel="help" href="http://odv.awi.de/en/documentation/">ODV .txt<img 
+  <a rel="help" href="https://odv.awi.de/en/documentation/">ODV .txt<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
   <a rel="help" href="http://www.creativyst.com/Doc/Articles/CSV/CSV01.htm">.csv<img 
@@ -2698,6 +2809,37 @@ For details, see ERDDAP''s <a rel="help" href="{0}/{1}/documentation.html">{2} D
 <selectNext>Select the next item.</selectNext>
 <selectPrevious>Select the previous item.</selectPrevious>
 
+<sosDescriptionHtml>The Sensor Observation Service (SOS) lets you request data via the SOS protocol.  This is an EXPERIMENTAL WORK-IN-PROGRESS.</sosDescriptionHtml>
+
+<sosLongDescriptionHtml><![CDATA[
+ERDDAP's Sensor Observation Service (SOS) lets you request data via the SOS protocol.
+<br><font class="warningColor"><b>This is an EXPERIMENTAL WORK-IN-PROGRESS.</b></font>
+<p><a rel="help" href="http://www.opengeospatial.org/standards/sos">SOS<img 
+      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
+      title="This link to an external web site does not constitute an endorsement."/></a>
+is an <a rel="bookmark" href="http://www.opengeospatial.org/">Open Geospatial Consortium (OGC)<img 
+      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
+      title="This link to an external web site does not constitute an endorsement."/></a>
+standard that "provides an API for managing deployed
+<br>sensors and retrieving sensor data and specifically 'observation' data. Whether from in-situ sensors
+<br>(e.g., water monitoring) or dynamic sensors (e.g., satellite imaging), measurements made from sensor
+<br>systems contribute most of the geospatial data by volume used in geospatial systems today."
+
+<p>The SOS specification is intentionally incomplete. Some parts must be specified separately.
+<br>ERDDAP's SOS service is intended to be compatible with the
+  <a rel="bookmark" href="http://sdf.ndbc.noaa.gov/sos/">IOOS DIF SOS servers<img 
+      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
+      title="This link to an external web site does not constitute an endorsement."/></a>
+  (which use the
+<br><a rel="bookmark" href="http://www.csc.noaa.gov/ioos/schema/IOOS-DIF/">IOOS DIF SOS schemas<img 
+      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
+      title="This link to an external web site does not constitute an endorsement."/></a>)
+  and the <a rel="bookmark" href="http://www.oostethys.org/">OOSTethys SOS servers<img 
+      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
+      title="This link to an external web site does not constitute an endorsement."/></a>.
+]]></sosLongDescriptionHtml>
+
+
 <!-- SlideSorter messages -->
 <ssUse><![CDATA[
 <li>Anyone can use ERDDAP's <a rel="help" href="&erddapUrl;/slidesorter.html">Slide Sorter</a>
@@ -2771,7 +2913,7 @@ Any reference obtained from this server to a specific product, process, or servi
 ]]></standardDisclaimerOfEndorsement>
 
 <!-- This is used by <legal> in setup.xml.
-  This is based on http://swfsc.nmfs.noaa.gov/disclaimer.htm. -->
+  This is based on https://swfsc.nmfs.noaa.gov/disclaimer.htm. -->
 <standardDisclaimerOfExternalLinks><![CDATA[
 <h3>DISCLAIMER OF EXTERNAL LINKS</h3>
 The appearance of external links on this World Wide Web site does not constitute endorsement by 
@@ -2854,9 +2996,7 @@ with ERDDAP''s RSS subscription service.
 
 <subscriptionAbuse><![CDATA[
 <p><font class="warningColor">Don't abuse this system by entering someone else's email address!</font>
-<br>If you do, you may be blocked from using ERDDAP. Your IP address will be included in the email
-<br>with the subscription invitation. So if you enter someone else's email address, the email recipient
-<br>and the ERDDAP administrator will be able to figure out that you did it.
+<br>If you do, you may be blocked from using ERDDAP.
 ]]></subscriptionAbuse>
 
 <subscriptionAddError><![CDATA[
@@ -2940,7 +3080,10 @@ Your request for an email with a list of your subscriptions has been submitted s
 <br><tt>http://www.yourWebSite.com?department=R%26D&amp;action=rerunTheModel</tt>
 ]]></subscriptionUrlHtml>
 
-<subscriptionUrlInvalid>The URL/action isn't valid. If present, it must start with "http://" and be percent encoded.</subscriptionUrlInvalid>
+<subscriptionUrlInvalid><![CDATA[
+The URL/action isn't valid. It must start with "http://" or "https://", be percent encoded,
+<br>and not be to localhost, 127.0.0.1, or 192.168.#.#.
+]]></subscriptionUrlInvalid>
 <subscriptionUrlTooLong>The URL/action is too long.</subscriptionUrlTooLong>
 
 <subscriptionValidateError><![CDATA[
@@ -3035,7 +3178,7 @@ make it easier for you to get scientific data.-->
     and even from web pages (via HTML image tags or JavaScript).  
 </ul>
 
-<p><b><a rel="help" href="http://www.youtube.com/watch?v=18xZoXu1USM">For a quick introduction to ERDDAP,
+<p><b><a rel="help" href="https://www.youtube.com/watch?v=18xZoXu1USM">For a quick introduction to ERDDAP,
   watch the first half of this  
   <img align="bottom" alt="YouTube" src="&erddapUrl;/images/youtube.png" >
   video<img 
@@ -3053,7 +3196,7 @@ when searching for datasets, don't use <tt>AND</tt> between search terms. It is 
 <p><a rel="help" href="&erddapUrl;/information.html"><b>Find out more about ERDDAP.</b></a>
 
 <p><b>Data Providers: You can
-  <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html">set up your own ERDDAP server</a>
+  <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html">set up your own ERDDAP server</a>
   and serve your own data.</b>
 <br>ERDDAP is free and open source. It uses Apache-like licenses, so you can do anything you want with it.
 ERDDAP's appearance is customizable, so your ERDDAP will reflect your institution, not NOAA. 
@@ -3277,7 +3420,7 @@ there are problems ...
 
 <ul>
 <li><b><a name="video">For</a> a quick introduction to ERDDAP, 
-  <a rel="help" href="http://www.youtube.com/watch?v=18xZoXu1USM">watch the first half of this 
+  <a rel="help" href="https://www.youtube.com/watch?v=18xZoXu1USM">watch the first half of this 
   <img align="bottom" alt="YouTube" src="&erddapUrl;/images/youtube.png" >
   video<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
@@ -3321,7 +3464,7 @@ when searching for datasets, don't use <tt>AND</tt> between search terms. It is 
 <li><b><a name="localAndRemote">ERDDAP</a> can get data from local (on the server's hard drive) and
 remote (accessed via the web) data sources.</b>
   <br>See the
-    <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#datasetTypes">list
+    <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#datasetTypes">list
     of types of data sources</a>
     that ERDDAP can access.
   <br>&nbsp;
@@ -3330,8 +3473,8 @@ remote (accessed via the web) data sources.</b>
   <br>ERDDAP is a data server that was written at
       <a title="National Oceanic and Atmospheric Administration" rel="bookmark" href="http://www.noaa.gov">NOAA</a>
       <a title="National Marine Fisheries Service" rel="bookmark" href="http://www.nmfs.noaa.gov">NMFS</a>
-      <a title="Southwest Fisheries Science Center" rel="bookmark" href="http://swfsc.noaa.gov">SWFSC</a>
-      <a title="Environmental Research Division" rel="bookmark" href="http://swfsc.noaa.gov/textblock.aspx?Division=ERD&amp;id=1315&amp;ParentMenuId=200">ERD</a>.
+      <a title="Southwest Fisheries Science Center" rel="bookmark" href="https://swfsc.noaa.gov">SWFSC</a>
+      <a title="Environmental Research Division" rel="bookmark" href="https://swfsc.noaa.gov/textblock.aspx?Division=ERD&amp;id=1315&amp;ParentMenuId=200">ERD</a>.
     The ERDDAP server at ERD serves oceanographic data,
     but ERDDAP (the program) can access and serve any gridded or tabular data.
   <br>&nbsp;
@@ -3356,10 +3499,11 @@ remote (accessed via the web) data sources.</b>
       and <a rel="help" href="&erddapUrl;/wms/index.html">WMS</a>.
   <li>ERDDAP makes tabular data available via tabledap
     (ERDDAP's implementation of the
-      <a rel="help" href="&erddapUrl;/tabledap/index.html">OPeNDAP constraint protocol</a>) and
+      <a rel="help" href="&erddapUrl;/tabledap/index.html">OPeNDAP constraint protocol</a>).
+      <!--and
       <a rel="help" href="http://www.opengeospatial.org/standards/sos">SOS<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-    title="This link to an external web site does not constitute an endorsement."/></a>.
+    title="This link to an external web site does not constitute an endorsement."/></a>. -->
   </ul>
   ERDDAP also provides Data Access Forms (web pages) which help humans create the OPeNDAP
   requests. <a rel="bookmark" href="http://www.opendap.org">OPeNDAP's<img 
@@ -3427,17 +3571,17 @@ remote (accessed via the web) data sources.</b>
   <li>altitude is always in meters with positive=up.
   <li>depth is always in meters with positive=down.
   <li>time, when formatted as a number, is always in "seconds since 1970-01-01T00:00:00Z"
-    (known as <a rel="help" href="http://en.wikipedia.org/wiki/Unix_time">Unix time<img 
+    (known as <a rel="help" href="https://en.wikipedia.org/wiki/Unix_time">Unix time<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a> or epoch seconds,
     which is
-      <a rel="bookmark"   href="http://www.unidata.ucar.edu/software/udunits/udunits-2/udunits2.html"
+      <a rel="bookmark" href="http://www.unidata.ucar.edu/software/udunits/"
       >UDUNITS<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>-compatible)
       and, when formatted as a string, is formatted according
     to the
-      <a rel="help" href="http://en.wikipedia.org/wiki/ISO_8601">ISO 8601:2004 "extended" format<img 
+      <a rel="help" href="https://en.wikipedia.org/wiki/ISO_8601">ISO 8601:2004 "extended" format<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>
       standard <span style="white-space: nowrap;">(YYYY-MM-DDThh:mm:ssZ,</span> for example,
@@ -3465,7 +3609,7 @@ remote (accessed via the web) data sources.</b>
 
   <p>Two common standards for writing units of measure are:
   <ul>
-  <li><a rel="help" href="http://www.unidata.ucar.edu/software/udunits/udunits-2/udunits2.html">UDUNITS<img 
+  <li><a rel="help" href="http://www.unidata.ucar.edu/software/udunits/">UDUNITS<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>
     - from
@@ -3520,7 +3664,7 @@ remote (accessed via the web) data sources.</b>
 
 <li><b><a name="metadata">ERDDAP</a> can add or modify metadata.</b>
   <br>Many data sources have little or no
-    <a rel="help" href="http://en.wikipedia.org/wiki/Metadata">metadata<img 
+    <a rel="help" href="https://en.wikipedia.org/wiki/Metadata">metadata<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>
     (for example, 
@@ -3531,9 +3675,9 @@ remote (accessed via the web) data sources.</b>
   ERDDAP lets (and encourages) the administrator to describe metadata which will be added
   to datasets and their variables on-the-fly.
   See the
-    <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#addAttributes">addAttributes section</a>
+    <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#addAttributes">addAttributes section</a>
     of the
-    <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html">directions for administrators</a>.
+    <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html">directions for administrators</a>.
   <br>&nbsp;
 
 <li><b><a name="images">ERDDAP</a> lets you request .png and .pdf image files with graphs and maps</b>
@@ -3541,11 +3685,11 @@ remote (accessed via the web) data sources.</b>
   Some special uses of these images are:
   <ul>
   <li>Web page authors can
-    <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/images/embed.html">embed a graph with the latest data in a web page</a> using an
+    <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/images/embed.html">embed a graph with the latest data in a web page</a> using an
     HTML &lt;img&gt; tag.
 &ssUse;
   <!--li>Anyone can use or make
-      <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/images/gadgets/GoogleGadgets.html">Google Gadgets</a>
+      <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/images/gadgets/GoogleGadgets.html">Google Gadgets</a>
       to display images with the latest data. -->
     <br>&nbsp;
   </ul>
@@ -3600,7 +3744,7 @@ remote (accessed via the web) data sources.</b>
   <li>Certainly, not all data can be expressed in these structures, but much of it can.
     Tables, in particular, are very flexible data structures (look at the phenomenal success
     of
-      <a rel="help" href="http://en.wikipedia.org/wiki/Relational_database_management_system">relational database<img 
+      <a rel="help" href="https://en.wikipedia.org/wiki/Relational_database_management_system">relational database<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a> programs).
   <li>This makes data queries easier to construct.
@@ -3619,9 +3763,9 @@ remote (accessed via the web) data sources.</b>
     If you accept ERDDAP's approach enough to try to work with it, you may find that it has
     its advantages (notably the support for multiple file types that can hold the data responses).
     The  
-    <a rel="help" href="http://coastwatch.pfel.noaa.gov/erddap/images/erddapTalk/erddapTechTalk.html">original ERDDAP slide show</a>
+    <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/images/erddapTalk/erddapTechTalk.html">original ERDDAP slide show</a>
     (particularly the
-    <a rel="help" href="http://coastwatch.pfel.noaa.gov/erddap/images/erddapTalk/erddapTechTalk.html#dataStructures">data
+    <a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/images/erddapTalk/erddapTechTalk.html#dataStructures">data
     structures slide</a>)
     talks about these issues.
   <li>And even if this approach sounds odd to you, most ERDDAP clients will never notice --
@@ -3634,7 +3778,7 @@ remote (accessed via the web) data sources.</b>
 
 <li><b><a name="subscriptions">ERDDAP</a> offers
   <a rel="help" href="&erddapUrl;/subscriptions/index.html">email/URL</a> and
-  <a rel="help" href="http://en.wikipedia.org/wiki/RSS_(file_format)">RSS<img 
+  <a rel="help" href="https://en.wikipedia.org/wiki/RSS_(file_format)">RSS<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a> 
     subscription services,</b>
@@ -3665,7 +3809,7 @@ remote (accessed via the web) data sources.</b>
      (Computer programmers: if you write web services, you can use the URL system
      to have ERDDAP notify your web service immediately whenever a dataset changes.)
 
-  <p><b><a rel="help" href="http://en.wikipedia.org/wiki/RSS_(file_format)">RSS<img 
+  <p><b><a rel="help" href="https://en.wikipedia.org/wiki/RSS_(file_format)">RSS<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>
       Subscriptions</b>
@@ -3698,19 +3842,19 @@ remote (accessed via the web) data sources.</b>
     <br>&nbsp;
 
 <li><b><a name="diverseSources">ERDDAP</a> is a
-    <a rel="help" href="http://en.wikipedia.org/wiki/Web_application">web application<img 
+    <a rel="help" href="https://en.wikipedia.org/wiki/Web_application">web application<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a> 
     (for humans with browsers)
   <br>and a
-    <a rel="help" href="http://en.wikipedia.org/wiki/Web_service">web service<img 
+    <a rel="help" href="https://en.wikipedia.org/wiki/Web_service">web service<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>
     (with <a rel="help" href="&erddapUrl;/rest.html">services for computer programs</a>).</b>
   <br>&nbsp;
 
 <li><b><a name="rest">ERDDAP</a> has
-  <a rel="help" href="http://en.wikipedia.org/wiki/Representational_State_Transfer">REST<img 
+  <a rel="help" href="https://en.wikipedia.org/wiki/Representational_State_Transfer">REST<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>- 
   and
@@ -3738,16 +3882,17 @@ remote (accessed via the web) data sources.</b>
   Users never have to log in to access the publicly available datasets.
   Users who have logged in can access public datasets and the private datasets to which
   they are allowed access.
-  ERDDAP uses http: URLs for users who aren't logged in, and https: (Secure Sockets Layer)
-  URLs for users who are.
-    <a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html#security">more information</a>
+  Users must use https: (Secure Sockets Layer) to log in and to access private datasets.
+  Datasets can configured to have graphs and maps publicly accessible, 
+    but have data only accessible to authorized users.
+  (<a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html#security">more information</a>)
   <br>&nbsp;
 
 <li><b><a name="chunks">ERDDAP</a> processes data in chunks.</b>
   <br>To save memory (a big issue) and make responses start sooner, ERDDAP processes
   data requests in chunks -- repeatedly getting a chunk of data from the source,
   cleaning it up (for example, adding
-    <a rel="help" href="http://en.wikipedia.org/wiki/Metadata">metadata<img 
+    <a rel="help" href="https://en.wikipedia.org/wiki/Metadata">metadata<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>),
     and sending that to the client.
@@ -3769,22 +3914,22 @@ remote (accessed via the web) data sources.</b>
 <li><b><a name="pushPull">Data Dissemination / Data Distribution Networks: Push and Pull Technology</a></b>
 <br>Normally, ERDDAP acts as an intermediary: it takes a request from a user;
 gets data from a remote data source; reformats the data; and sends it to the user.
-<a rel="help" href="http://en.wikipedia.org/wiki/Pull_technology">Pull Technology<img 
+<a rel="help" href="https://en.wikipedia.org/wiki/Pull_technology">Pull Technology<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>:
 But ERDDAP also has the ability to actively get all of the available data
 from a remote data source and
-<a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDGridCopy">store
+<a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDGridCopy">store
 a local copy of the data</a>.
-<a rel="help" href="http://en.wikipedia.org/wiki/Push_technology">Push Technology<img 
+<a rel="help" href="https://en.wikipedia.org/wiki/Push_technology">Push Technology<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>:
 By using ERDDAP's <a href="#subscriptions">subscription services</a>,
 other data servers can be notified
 as soon as new data is available so that they can request the data (by pulling the data).
 ERDDAP's
-<a rel="help"  href="http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDGridFromErddap">EDDGridFromErddap</a> and <a rel="help"  href="http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDTableFromErddap">EDDTableFromErddap</a> use ERDDAP's subscription services and
-<a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html#flag">flag system</a>
+<a rel="help"  href="https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDGridFromErddap">EDDGridFromErddap</a> and <a rel="help"  href="https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDTableFromErddap">EDDTableFromErddap</a> use ERDDAP's subscription services and
+<a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html#flag">flag system</a>
 so that they will be notified immediately when new data is available.
 You can combine these to great effect:
 if you wrap an EDDGridCopy around an EDDGridFromErddap dataset
@@ -3838,7 +3983,7 @@ However, those datasets are often only "understood" by the specialized software 
 
 <p>A Work-Around for Complex Datasets - ERDDAP has a way to handle complex datasets that it
 can't handle directly. Just as a
-<a rel="help" href="http://en.wikipedia.org/wiki/Relational_database_management_system"
+<a rel="help" href="https://en.wikipedia.org/wiki/Relational_database_management_system"
   >relational database<img 
       src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
       title="This link to an external web site does not constitute an endorsement."/></a>
@@ -3889,10 +4034,10 @@ expense of developing ERDDAP. (I think it could be shown that ERDDAP has saved
 more NOAA scientist's time than that I have spent developing ERDDAP. Time=Money.)
 But the side benefit is that any other organization can 
 <a rel="bookmark" 
-href="http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html">download, install, and use ERDDAP</a>
+href="https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html">download, install, and use ERDDAP</a>
 <b>for free</b> to distribute their scientific data.  
 <br><a rel="bookmark" 
-href="http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html#organizations">Over 50 organizations around the world use ERDDAP</a>. Maybe there is such a thing as a free lunch.
+href="https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html#organizations">Over 50 organizations around the world use ERDDAP</a>. Maybe there is such a thing as a free lunch.
 
 <p>ERDDAP is a Java program. The source code
 for every version is on 
@@ -3916,11 +4061,11 @@ great incentive to write clean code with good comments.
 <p><a name="FOSS">But</a> all of my answers so far are not very important. 
 Only one thing that is really important. Only one thing guarantees sustainability
 for ERDDAP or any software project: that ERDDAP is 
-<a rel="bookmark" href="http://en.wikipedia.org/wiki/Free_and_open-source_software">Free and Open Source Software (FOSS)<img 
+<a rel="bookmark" href="https://en.wikipedia.org/wiki/Free_and_open-source_software">Free and Open Source Software (FOSS)<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>.
 Specifically, ERDDAP uses 
-<a rel="bookmark" href="http://en.wikipedia.org/wiki/Apache_License">Apache-compatible software licenses<img 
+<a rel="bookmark" href="https://en.wikipedia.org/wiki/Apache_License">Apache-compatible software licenses<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>,
 so anyone can do anything they want with the code.
@@ -3929,7 +4074,8 @@ so anyone can do anything they want with the code.
 in the future because a big 
 company is behind it. But Google, for example, has discontinued numerous projects 
 (<a rel="bookmark"
-href="http://en.wikipedia.org/wiki/List_of_Google_products#Discontinued_products_and_services">here's a list<img 
+href="https://en.wikipedia.org/wiki/List_of_Google_products#Discontinued_products_and_services"
+>here's a list<img 
     src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
     title="This link to an external web site does not constitute an endorsement."/></a>).
 I don't want to pick on Google because I really like Google and they 
@@ -3985,7 +4131,7 @@ I cannot think of a better situation.
 I hope that relieves any fears you (or anyone else) had about ERDDAP's sustainability. 
 If you hear people questioning or discouraging the use of ERDDAP because there is just one 
 developer, please set them straight by pointing them to the above discussion at this URL:
-<a rel="bookmark" href="#sustainable">http://coastwatch.pfeg.noaa.gov/erddap/information.html#sustainable</a> .
+<a rel="bookmark" href="#sustainable">https://coastwatch.pfeg.noaa.gov/erddap/information.html#sustainable</a> .
 <!-- (&lt;sarc&gt;Or, if you would be more comfortable paying $1,000,000 a year
 for ERDDAP development, please contact me. I sure we can work something out.&lt;/sarc&gt;) -->
 
@@ -3993,7 +4139,7 @@ for ERDDAP development, please contact me. I sure we can work something out.&lt;
 <p><b><a name="cite">How</a> to Cite ERDDAP in a Paper</b>
 <br>If you want to cite ERDDAP itself in a scientific paper, please use something like
 <pre>
-Simons, R.A. 2015. ERDDAP. http://coastwatch.pfeg.noaa.gov/erddap . Monterey, CA: NOAA/NMFS/SWFSC/ERD.</pre>
+Simons, R.A. 2016. ERDDAP. https://coastwatch.pfeg.noaa.gov/erddap . Monterey, CA: NOAA/NMFS/SWFSC/ERD.</pre>
 
 <p>Please always separately cite the dataset: see the "creator" attributes in the dataset's global metadata. Please include the URL of the dataset in ERDDAP so people know how you accessed the data.  
 
@@ -4006,11 +4152,11 @@ Now, please just think of it as a name, not an acronym.
 <p><b><a name="dataDistributionSystems">Guidelines</a> for Data Distribution Systems</b>
 <br>Bob's opinions about the design
 and evaluation of data distribution systems can be found
-<a rel="help" href="http://coastwatch.pfel.noaa.gov/erddap/images/erddapTalk/erdData.html">here</a>.
+<a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/images/erddapTalk/erdData.html">here</a>.
 
 <br>&nbsp;
 <p><b><a name="setup">You</a> can</b>
-<a rel="help" href="http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html"><b>Set Up Your Own ERDDAP Server</b></a>
+<a rel="help" href="https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html"><b>Set Up Your Own ERDDAP Server</b></a>
 and serve your own data.
 <ul>
 <li>The small effort to set up ERDDAP brings many benefits.
@@ -4019,7 +4165,7 @@ and serve your own data.
   Then, people will have another way to access your data and will be able to download
   the data in additional file formats or as graphs or maps.
 <li>If you have datasets that are in high demand, you can install
-  <a href="http://coastwatch.pfeg.noaa.gov/erddap/download/grids.html">multiple ERDDAPs
+  <a href="https://coastwatch.pfeg.noaa.gov/erddap/download/grids.html">multiple ERDDAPs
   that work together</a> to scale up and meet the needs of a large data
   distribution center.
 </ul>
@@ -4047,42 +4193,13 @@ Government or the National Oceanic and Atmospheric Administration.
 </table>
 ]]></theLongDescriptionHtml>
 
+<Then>Then</Then>
 
 <viewAllDatasetsHtml>View a List of All Datasets</viewAllDatasetsHtml>
 
 <waitThenTryAgain>There was a (temporary?) problem.  Wait a minute, then try again.  (In a browser, click the Reload button.)</waitThenTryAgain>
 
 <warning>WARNING!</warning>
-
-<sosDescriptionHtml>The Sensor Observation Service (SOS) lets you request data via the SOS protocol.  This is an EXPERIMENTAL WORK-IN-PROGRESS.</sosDescriptionHtml>
-
-<sosLongDescriptionHtml><![CDATA[
-ERDDAP's Sensor Observation Service (SOS) lets you request data via the SOS protocol.
-<br><font class="warningColor"><b>This is an EXPERIMENTAL WORK-IN-PROGRESS.</b></font>
-<p><a rel="help" href="http://www.opengeospatial.org/standards/sos">SOS<img 
-      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-      title="This link to an external web site does not constitute an endorsement."/></a>
-is an <a rel="bookmark" href="http://www.opengeospatial.org/">Open Geospatial Consortium (OGC)<img 
-      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-      title="This link to an external web site does not constitute an endorsement."/></a>
-standard that "provides an API for managing deployed
-<br>sensors and retrieving sensor data and specifically 'observation' data. Whether from in-situ sensors
-<br>(e.g., water monitoring) or dynamic sensors (e.g., satellite imaging), measurements made from sensor
-<br>systems contribute most of the geospatial data by volume used in geospatial systems today."
-
-<p>The SOS specification is intentionally incomplete. Some parts must be specified separately.
-<br>ERDDAP's SOS service is intended to be compatible with the
-  <a rel="bookmark" href="http://sdf.ndbc.noaa.gov/sos/">IOOS DIF SOS servers<img 
-      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-      title="This link to an external web site does not constitute an endorsement."/></a>
-  (which use the
-<br><a rel="bookmark" href="http://www.csc.noaa.gov/ioos/schema/IOOS-DIF/">IOOS DIF SOS schemas<img 
-      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-      title="This link to an external web site does not constitute an endorsement."/></a>)
-  and the <a rel="bookmark" href="http://www.oostethys.org/">OOSTethys SOS servers<img 
-      src="&erddapUrl;/images/external.png" align="bottom" alt=" (external link)" 
-      title="This link to an external web site does not constitute an endorsement."/></a>.
-]]></sosLongDescriptionHtml>
 
 <unknownDatasetID>Currently unknown datasetID={0}</unknownDatasetID>
 <unknownProtocol>Unknown protocol={0}</unknownProtocol>

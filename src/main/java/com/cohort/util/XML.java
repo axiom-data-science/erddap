@@ -223,6 +223,11 @@ public class XML {
 
     /** This encodes spaces as (char)160 (nbsp) when they are leading, trailing,
      * or more than 1 consecutive.
+     * #160 (instead of &amp;nbsp; or &amp;#160;) is fine because that is the 
+     * UTF character for a non-break-space. When UTF stream is encoded as UTF-8, 
+     * it is appropriately encoded.
+     *
+     * This is reasonable for HTML, but not recommended for xhtml.
      *
      * @param s
      * @return s with some spaces encoded as (char)160 (nbsp)
@@ -598,7 +603,7 @@ public class XML {
 
     /**
      * This gets a nodeList for an XPath query.
-     * <br>See http://download.oracle.com/javase/7/docs/api/javax/xml/xpath/package-summary.html 
+     * <br>See https://docs.oracle.com/javase/8/docs/api/javax/xml/xpath/package-summary.html 
      * <br>See javadoc for xpath
      * <br>See examples at http://javaalmanac.com/egs/org.w3c.dom/xpath_GetElemByAttr.html?l=rel
      * <br>See examples at http://javaalmanac.com/egs/org.w3c.dom/xpath_GetAbsElem.html?l=rel

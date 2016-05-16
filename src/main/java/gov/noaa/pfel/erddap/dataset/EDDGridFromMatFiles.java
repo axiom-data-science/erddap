@@ -18,11 +18,10 @@ import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
-import com.cohort.util.XML;
 
-import gov.noaa.pfel.coastwatch.griddata.NcHelper;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.sgt.SgtUtil;
+import gov.noaa.pfel.coastwatch.util.FileVisitorDNLS;
 
 import gov.noaa.pfel.erddap.GenerateDatasetsXml;
 import gov.noaa.pfel.erddap.util.EDStatic;
@@ -30,10 +29,6 @@ import gov.noaa.pfel.erddap.variable.*;
 
 import java.text.MessageFormat;
 import java.util.List;
-
-import ucar.nc2.NetcdfFile;
-import ucar.nc2.Variable;
-import ucar.nc2.Dimension;
 
 
 
@@ -50,7 +45,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
 
     /** The constructor just calls the super constructor. */
     public EDDGridFromMatFiles(String tDatasetID, 
-        String tAccessibleTo, boolean tAccessibleViaWMS,
+        String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         Attributes tAddGlobalAttributes,
@@ -58,12 +53,12 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         Object[][] tDataVariables,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
-        String tMetadataFrom, int tMatchAxisNDigits,
+        String tMetadataFrom, boolean tEnsureAxisValuesAreExactlyEqual, 
         boolean tFileTableInMemory, boolean tAccessibleViaFiles) 
         throws Throwable {
 
         super("EDDGridFromMatFiles", tDatasetID, 
-            tAccessibleTo, tAccessibleViaWMS,
+            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
             tOnChange, tFgdcFile, tIso19115File, 
             tDefaultDataQuery, tDefaultGraphQuery, 
             tAddGlobalAttributes,
@@ -71,7 +66,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             tDataVariables,
             tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tMatchAxisNDigits,
+            tEnsureAxisValuesAreExactlyEqual, 
             tFileTableInMemory, tAccessibleViaFiles);
     }
 
@@ -151,7 +146,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
      * @param fileDir
      * @param fileName
      * @param sourceAxisNames the names of the desired source axis variables.
-     *    If special axis0, this list will be the instances list[1 ... n-1].
+     *    If special axis0, this will not include axis0's name.
      * @return a PrimitiveArray[] with the results (with the requested sourceDataTypes).
      *   It needn't set sourceGlobalAttributes or sourceDataAttributes
      *   (but see getSourceMetadata).
@@ -310,6 +305,11 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         if (tReloadEveryNMinutes <= 0 || tReloadEveryNMinutes == Integer.MAX_VALUE)
             tReloadEveryNMinutes = 1440; //1440 works well with suggestedUpdateEveryNMillis
 
+        if (!String2.isSomething(sampleFileName)) 
+            String2.log("Found/using sampleFileName=" +
+                (sampleFileName = FileVisitorDNLS.getSampleFileName(
+                    tFileDir, tFileNameRegex, true, ".*"))); //recursive, pathRegex
+
         //make tables to hold variables
         NetcdfFile ncFile = NcHelper.openFile(sampleFileName); //may throw exception
         Table axisSourceTable = new Table();  
@@ -400,7 +400,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                     "Grid",  //another cdm type could be better; this is ok
                     tFileDir, externalAddGlobalAttributes, 
                     EDD.chopUpCsvAndAdd(axisAddTable.getColumnNamesCSVString(),
-                        suggestKeywords(dataSourceTable, dataAddTable))));
+                        suggestKeywords(dataSourceTable, dataAddTable)));
 
             //gather the results 
             String tDatasetID = suggestDatasetID(tFileDir + tFileNameRegex);
@@ -836,7 +836,7 @@ today;
 //            + " http://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\n" +
 //today + 
 
-expected = " http://127.0.0.1:8080/cwexperimental/griddap/testGriddedNcFiles.das\";\n" +
+expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das\";\n" +
 "    String infoUrl \"http://coastwatch.pfel.noaa.gov/infog/QS_ux10_las.html\";\n" +
 "    String institution \"NOAA CoastWatch, West Coast Node\";\n" +
 "    String keywords \"EARTH SCIENCE > Oceans > Ocean Winds > Surface Winds\";\n" +

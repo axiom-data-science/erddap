@@ -67,6 +67,7 @@ public class EDDTableCopy extends EDDTable{
         EDDTable tSourceEdd = null;
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tAccessibleTo = null;
+        String tGraphsAccessibleTo = null;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
         String tIso19115File = null;
@@ -78,6 +79,7 @@ public class EDDTableCopy extends EDDTable{
         boolean tFileTableInMemory = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        boolean tAccessibleViaFiles = false;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -95,6 +97,8 @@ public class EDDTableCopy extends EDDTable{
             //try to make the tag names as consistent, descriptive and readable as possible
             if      (localTags.equals( "<accessibleTo>")) {}
             else if (localTags.equals("</accessibleTo>")) tAccessibleTo = content;
+            else if (localTags.equals( "<graphsAccessibleTo>")) {}
+            else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<onChange>")) {}
             else if (localTags.equals("</onChange>")) tOnChange.add(content); 
             else if (localTags.equals( "<fgdcFile>")) {}
@@ -118,7 +122,9 @@ public class EDDTableCopy extends EDDTable{
             else if (localTags.equals( "<defaultDataQuery>")) {}
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
-            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content;
+            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
@@ -153,10 +159,11 @@ public class EDDTableCopy extends EDDTable{
         }
 
         return new EDDTableCopy(tDatasetID, 
-            tAccessibleTo, tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
+            tAccessibleTo, tGraphsAccessibleTo, 
+            tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
-            tSourceEdd, tFileTableInMemory);
+            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
     }
 
     /**
@@ -175,7 +182,7 @@ public class EDDTableCopy extends EDDTable{
      *    that should be used for this dataset, or "" (to cause ERDDAP not
      *    to try to generate FGDC metadata for this dataset), or null (to allow
      *    ERDDAP to try to generate FGDC metadata for this dataset).
-     * @param tIso19115File This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
+     * @param tIso19115 This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
      * @param tReloadEveryNMinutes indicates how often the source should
      *    be checked for new data.
      * @param tExtractDestinationNames a space separated list of destination names (at least one)
@@ -202,13 +209,14 @@ public class EDDTableCopy extends EDDTable{
      * @throws Throwable if trouble
      */
     public EDDTableCopy(String tDatasetID, 
-        String tAccessibleTo, 
+        String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, String tSosOfferingPrefix,
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         int tReloadEveryNMinutes,
         String tExtractDestinationNames, String tOrderExtractBy,
         Boolean tSourceNeedsExpandedFP_EQ,
-        EDDTable tSourceEdd, boolean tFileTableInMemory) throws Throwable {
+        EDDTable tSourceEdd, boolean tFileTableInMemory,
+        boolean tAccessibleViaFiles) throws Throwable {
 
         if (verbose) String2.log(
             "\n*** constructing EDDTableCopy " + tDatasetID + " reallyVerbose=" + reallyVerbose); 
@@ -221,6 +229,7 @@ public class EDDTableCopy extends EDDTable{
         datasetID = tDatasetID;
         sourceEdd = tSourceEdd;
         setAccessibleTo(tAccessibleTo);
+        setGraphsAccessibleTo(tGraphsAccessibleTo);
         onChange = tOnChange;
         fgdcFile = tFgdcFile;
         iso19115File = tIso19115File;
@@ -279,11 +288,14 @@ public class EDDTableCopy extends EDDTable{
                         "&distinct()";
                     String cacheDir = cacheDirectory();
                     File2.makeDirectory(cacheDir);  //ensure it exists
-                    TableWriterAll twa = new TableWriterAll(cacheDir, "extract");
-                    TableWriter tw = encloseTableWriter(cacheDir, "extractDistinct", twa, query); 
+                    TableWriterAll twa = new TableWriterAll(null, null, //metadata not relevant
+                        cacheDir, "extract");
+                    TableWriter tw = encloseTableWriter(true, cacheDir, "extractDistinct",
+                        twa, "", //metadata not relevant
+                        query); //leads to enclosing in TableWriterDistinct
                     sourceEdd.getDataForDapQuery(EDStatic.loggedInAsSuperuser, 
                         "", query, tw); //"" is requestUrl, not relevant here
-                    Table table = twa.cumulativeTable();
+                    Table table = twa.cumulativeTable(); //has the distinct results
                     tw = null;
                     twa.releaseResources();
                     int nRows = table.nRows();  //nRows = 0 will throw an exception above
@@ -420,7 +432,7 @@ public class EDDTableCopy extends EDDTable{
         boolean recursive = true;
         String fileNameRegex = ".*\\.nc";
         localEdd = makeLocalEdd(datasetID, 
-            tAccessibleTo,
+            tAccessibleTo, tGraphsAccessibleTo, //irrelevant
             tOnChange, tFgdcFile, tIso19115File, 
             new Attributes(), //addGlobalAttributes
             tDataVariables,
@@ -463,7 +475,7 @@ public class EDDTableCopy extends EDDTable{
         sosMaxLon        = localEdd.sosMaxLon;
 
         //accessibleViaFiles
-        if (EDStatic.filesActive) {
+        if (EDStatic.filesActive && tAccessibleViaFiles) {
             accessibleViaFilesDir = copyDatasetDir;
             accessibleViaFilesRegex = fileNameRegex;
             accessibleViaFilesRecursive = recursive;
@@ -492,7 +504,8 @@ public class EDDTableCopy extends EDDTable{
      * <p>It will fail if 0 local files -- that's okay, TaskThread will continue to work 
      *  and constructor will try again in 15 min.
      */
-    EDDTableFromFiles makeLocalEdd(String tDatasetID, String tAccessibleTo,
+    EDDTableFromFiles makeLocalEdd(String tDatasetID, 
+        String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
@@ -505,7 +518,8 @@ public class EDDTableCopy extends EDDTable{
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory) 
         throws Throwable {
 
-        return new EDDTableFromNcFiles(tDatasetID, tAccessibleTo, 
+        return new EDDTableFromNcFiles(tDatasetID, 
+            tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, 
             "", "", "", //tSosOfferingPrefix, tDefaultDataQuery, tDefaultGraphQuery,
             tAddGlobalAttributes, 
@@ -516,7 +530,8 @@ public class EDDTableCopy extends EDDTable{
             tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
-            false); //accessibleViaFiles is always false. parent may or may not be.  
+            false, //accessibleViaFiles is always false. parent may or may not be.  
+            false); //removeMVrows is irrelevant for EDDTableFromNcFiles
     }
 
 
@@ -858,7 +873,7 @@ public class EDDTableCopy extends EDDTable{
 //"    String history \"" + today + " 2012-07-29T19:11:09Z (local files; contact erd.data@noaa.gov)\n";  //date is from last created file, so varies sometimes
 //today + " http://coastwatch.pfeg.noaa.gov/erddap/tabledap/erdGlobecBottle.das"; //\n" +
 //today + " http://oceanwatch.pfeg.noaa.gov/opendap/GLOBEC/GLOBEC_bottle\n" +
-//today + " http://127.0.0.1:8080/cwexperimental/tabledap/rGlobecBottle.das\";\n" +
+//today + " http://localhost:8080/cwexperimental/tabledap/rGlobecBottle.das\";\n" +
     expected2 = 
 "    String infoUrl \"http://www.globec.org/\";\n" +
 "    String institution \"GLOBEC\";\n" +

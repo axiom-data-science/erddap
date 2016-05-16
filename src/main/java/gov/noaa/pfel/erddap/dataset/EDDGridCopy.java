@@ -32,7 +32,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Get netcdf-X.X.XX.jar from http://www.unidata.ucar.edu/software/netcdf-java/index.htm
+ * Get netcdf-X.X.XX.jar from 
+ * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
  * Get slf4j-jdk14.jar from 
  * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
@@ -90,6 +91,7 @@ public class EDDGridCopy extends EDDGrid {
         EDDGrid tSourceEdd = null;
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tAccessibleTo = null;
+        String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
         int tMatchAxisNDigits = DEFAULT_MATCH_AXIS_N_DIGITS;
         StringArray tOnChange = new StringArray();
@@ -117,6 +119,8 @@ public class EDDGridCopy extends EDDGrid {
             //try to make the tag names as consistent, descriptive and readable as possible
             if      (localTags.equals( "<accessibleTo>")) {}
             else if (localTags.equals("</accessibleTo>")) tAccessibleTo = content;
+            else if (localTags.equals( "<graphsAccessibleTo>")) {}
+            else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<accessibleViaWMS>")) {}
             else if (localTags.equals("</accessibleViaWMS>")) tAccessibleViaWMS = String2.parseBoolean(content);
             else if (localTags.equals( "<matchAxisNDigits>")) {}
@@ -184,7 +188,7 @@ public class EDDGridCopy extends EDDGrid {
         }
 
         return new EDDGridCopy(tDatasetID, 
-            tAccessibleTo, tAccessibleViaWMS, tMatchAxisNDigits, 
+            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS, tMatchAxisNDigits, 
             tOnChange, tFgdcFile, tIso19115File,
             tDefaultDataQuery, tDefaultGraphQuery, 
             tReloadEveryNMinutes, 
@@ -216,7 +220,8 @@ public class EDDGridCopy extends EDDGrid {
      * @throws Throwable if trouble
      */
     public EDDGridCopy(String tDatasetID, 
-        String tAccessibleTo, boolean tAccessibleViaWMS, int tMatchAxisNDigits, 
+        String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS, 
+        int tMatchAxisNDigits, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         int tReloadEveryNMinutes, EDDGrid tSourceEdd, 
@@ -233,6 +238,7 @@ public class EDDGridCopy extends EDDGrid {
         datasetID = tDatasetID;
         sourceEdd = tSourceEdd;
         setAccessibleTo(tAccessibleTo);
+        setGraphsAccessibleTo(tGraphsAccessibleTo);
         if (!tAccessibleViaWMS) 
             accessibleViaWMS = String2.canonical(
                 MessageFormat.format(EDStatic.noXxx, "WMS"));
@@ -416,7 +422,7 @@ public class EDDGridCopy extends EDDGrid {
         boolean recursive = false; //false=notRecursive   since always just 1 directory
         String fileNameRegex = ".*\\.nc";
         localEdd = new EDDGridFromNcFiles(datasetID, 
-            tAccessibleTo, tAccessibleViaWMS,
+            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
             tOnChange, tFgdcFile, tIso19115File, 
             tDefaultDataQuery, tDefaultGraphQuery,
             new Attributes(), //addGlobalAttributes
@@ -679,7 +685,7 @@ today;
 //today + 
 
 expected = 
-    " http://127.0.0.1:8080/cwexperimental/griddap/testGridCopy.das\";\n" + //different
+    " http://localhost:8080/cwexperimental/griddap/testGridCopy.das\";\n" + //different
     "    String infoUrl \"http://coastwatch.pfel.noaa.gov/infog/QS_ux10_las.html\";\n" +
     "    String institution \"NOAA CoastWatch, West Coast Node\";\n" +
     "    String keywords \"EARTH SCIENCE > Oceans > Ocean Winds > Surface Winds\";\n" +

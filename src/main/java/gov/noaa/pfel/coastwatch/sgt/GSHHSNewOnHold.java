@@ -22,19 +22,19 @@ import java.util.Collections;
 import java.util.Map;
 
 
-/*2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
-When it is time to resucitate this, merge changes from this into GSHHS.java.*/
+2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
+When it is time to resucitate this, merge changes from this into GSHHS.java.
 
 /**
  *
  * <p>This class has methods related to GSHHS -
  * A Global Self-consistent, Hierarchical, High-resolution Shoreline Database
  * created by the GMT authors Wessel and Smith 
- * (http://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html and 
+ * (https://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html and 
  * bob's c:/programs/gshhs/2009v7/readme.txt).
  * GPL License http://www.soest.hawaii.edu/pwessel/gshhs/README.TXT
  */
-public class GSHHSNewOnHold  {
+public class GSHHS  {
 
     /** The characters of the RESOLUTIONS string represent the 5 resolutions
      * in order of decreasing accuracy: "fhilc": 'f'ull, 'h'igh, 'i'ntermediate, 'l'ow, 'c'rude.
@@ -58,7 +58,7 @@ public class GSHHSNewOnHold  {
      * The GSHHS files must be in the refDirectory. 
      *    "gshhs_?.b" (?=f|h|i|l|c) files. 
      *    The files are from the GSHHS project
-     *    (http://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html).
+     *    (https://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html).
      *    landMaskDir should have slash at end.
      */
     public static String gshhsDirectory = 
@@ -464,7 +464,7 @@ public class GSHHSNewOnHold  {
                 }
 
                 //if polygon crosses greenwich, x's < 0 are stored +360 degrees
-                //see http://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html  where is new gshhs.c?
+                //see https://www.ngdc.noaa.gov/mgg/shorelines/gshhs.html  where is new gshhs.c?
                 if ((greenwich & 1) == 1) {
                     for (int i = 0; i < n; i++) 
                         if (xArray[i] > east) xArray[i] -= intShift;

@@ -25,7 +25,6 @@ import gov.noaa.pfel.coastwatch.util.SSR;
 
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.variable.*;
-import gov.noaa.pfel.erddap.Erddap;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
@@ -42,7 +41,6 @@ import java.util.BitSet;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
-
 
 /* This uses axis.jar, jaxrps.jar, saaj.jar, and wsdl4j.jar. */
 import javax.xml.soap.*;
@@ -116,6 +114,7 @@ public class EDDTableFromNOS extends EDDTable{
         ArrayList tDataVariables = new ArrayList();
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tAccessibleTo = null;
+        String tGraphsAccessibleTo = null;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
         String tIso19115File = null;
@@ -148,6 +147,8 @@ public class EDDTableFromNOS extends EDDTable{
                 tDataVariables.add(getSDADVariableFromXml(xmlReader));           
             else if (localTags.equals( "<accessibleTo>")) {}
             else if (localTags.equals("</accessibleTo>")) tAccessibleTo = content;
+            else if (localTags.equals( "<graphsAccessibleTo>")) {}
+            else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<reloadEveryNMinutes>")) {}
             else if (localTags.equals("</reloadEveryNMinutes>")) tReloadEveryNMinutes = String2.parseInt(content); 
             else if (localTags.equals( "<sourceUrl>")) {}
@@ -256,8 +257,8 @@ public class EDDTableFromNOS extends EDDTable{
      *      <li> a org.joda.time.format.DateTimeFormat string
      *        (which is compatible with java.text.SimpleDateFormat) describing how to interpret 
      *        string times  (e.g., the ISO8601TZ_FORMAT "yyyy-MM-dd'T'HH:mm:ssZ", see 
-     *        http://joda-time.sourceforge.net/api-release/org/joda/time/format/DateTimeFormat.html or 
-     *        http://docs.oracle.com/javase/7/docs/api/java/text/SimpleDateFormat.html).
+     *        http://www.joda.org/joda-time/apidocs/org/joda/time/format/DateTimeFormat.html or 
+     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/text/SimpleDateFormat.html)).
      *      </ul>
      *   The altitude and time variables (if any) should have actual_range metadata.
      * @param tReloadEveryNMinutes indicates how often the source should
@@ -269,7 +270,7 @@ public class EDDTableFromNOS extends EDDTable{
      *     wsdlUrl.
      * @param tRequestTimeFormat the SimpleDateFormat for formatting the time requests
      *    e.g., "yyyyMMdd HH:mm"
-     *    (see http://docs.oracle.com/javase/7/docs/api/java/text/SimpleDateFormat.html).
+     *    (see https://docs.oracle.com/javase/8/docs/api/index.html?java/text/SimpleDateFormat.html)).
      * @param tRowElementXPath  e.g., /soapenv:Envelope/soapenv:Body/WindMeasurements/data/item
      * @throws Throwable if trouble
      */
@@ -294,6 +295,7 @@ public class EDDTableFromNOS extends EDDTable{
         className = "EDDTableFromNOS"; 
         datasetID = tDatasetID;
         setAccessibleTo(tAccessibleTo);
+        setGraphsAccessibleTo(tGraphsAccessibleTo);
         onChange = tOnChange;
         fgdcFile = tFgdcFile;
         iso19115File = tIso19115File;

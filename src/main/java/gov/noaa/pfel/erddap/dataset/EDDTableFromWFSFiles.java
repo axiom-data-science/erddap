@@ -58,7 +58,8 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
      *    ERDDAP to try to generate FGDC metadata for this dataset).
      * @param tIso19115 This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
      */
-    public EDDTableFromWFSFiles(String tDatasetID, String tAccessibleTo,
+    public EDDTableFromWFSFiles(String tDatasetID, 
+        String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
@@ -71,10 +72,11 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
-        boolean tAccessibleViaFiles) 
+        boolean tAccessibleViaFiles, boolean tRemoveMVRows) 
         throws Throwable {
 
-        super("EDDTableFromWFSFiles", tDatasetID, tAccessibleTo, 
+        super("EDDTableFromWFSFiles", tDatasetID, 
+            tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix, 
             tDefaultDataQuery, tDefaultGraphQuery,
             tAddGlobalAttributes, 
@@ -83,7 +85,8 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             tCharset, tColumnNamesRow, tFirstDataRow,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
-            tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles);
+            tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
+            tRemoveMVRows);
     }
 
     /**

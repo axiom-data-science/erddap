@@ -40,10 +40,12 @@ import java.io.IOException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.Files;
 import java.nio.file.FileSystems;
+import java.nio.file.FileVisitOption;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.FileVisitResult;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.regex.Matcher;
@@ -55,6 +57,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 
 /**
  * This class gathers basic information about a group of files.
+ * This follows Linux symbolic links, but not Windows .lnk's (see testSymbolicLinks() below).
  *
  * @author Bob Simons (bob.simons@noaa.gov) 2014-11-25
  */
@@ -97,8 +100,10 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
     /** things set by constructor */
     public String dir;  //with \\ or / separators. With trailing slash (to match).
     private char fromSlash, toSlash;
-    public String fileNameRegex, pathRegex;
-    public Pattern pattern; //from fileNameRegex
+    public String fileNameRegex;
+    public String pathRegex;  //will be null if equivalent of .*
+    public Pattern fileNamePattern; //from fileNameRegex
+    public Pattern pathPattern;     //will be null if pathRegex is null
     public boolean recursive, directoriesToo;
     static boolean OSIsWindows = String2.OSIsWindows;
     public Table table;
@@ -115,18 +120,23 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
      *
      * @param tDir The starting directory, with \\ or /, with or without trailing /.  
      *    The resulting dirPA will contain dirs with matching slashes.
+     * @param pathRegex This is a regex to constrain which subdirectories to include.
+     *   null or "" is treated as .* (i.e., match everything).
      * @param tDirectoriesToo
      */
     public FileVisitorDNLS(String tDir, String tFileNameRegex, boolean tRecursive,
-        boolean tDirectoriesToo) {
+        String tPathRegex, boolean tDirectoriesToo) {
         super();
 
         dir = File2.addSlash(tDir);
         toSlash = dir.indexOf('\\') >= 0? '\\' : '/';
         fromSlash = toSlash == '/'? '\\' : '/';        
-        recursive = tRecursive;
         fileNameRegex = tFileNameRegex;
-        pattern = Pattern.compile(fileNameRegex);
+        fileNamePattern = Pattern.compile(fileNameRegex);
+        recursive = tRecursive;
+        pathRegex = tPathRegex == null || tPathRegex.length() == 0 || tPathRegex.equals(".*")?
+            null : tPathRegex;
+        pathPattern = pathRegex == null? null : Pattern.compile(pathRegex);
         directoriesToo = tDirectoriesToo;
         table = makeEmptyTable();
         directoryPA    = (StringArray)table.getColumn(DIRECTORY);
@@ -138,10 +148,18 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
     /** Invoked before entering a directory. */
     public FileVisitResult preVisitDirectory(Path tDir, BasicFileAttributes attrs)
         throws IOException {
-        
+
         String ttDir = String2.replaceAll(tDir.toString(), fromSlash, toSlash) + toSlash;
-        if (ttDir.equals(dir)) //initial dir
+        if (ttDir.equals(dir)) {
+            if (debugMode) String2.log(">> initial dir");
             return FileVisitResult.CONTINUE;
+        }
+
+        //skip because it doesn't match pathRegex?
+        if (pathPattern != null && !pathPattern.matcher(ttDir).matches()) {
+            if (debugMode) String2.log(">> doesn't match pathRegex: " + ttDir + " regex=" + pathRegex);
+            return FileVisitResult.SKIP_SUBTREE;    
+        }
 
         if (directoriesToo) {
             directoryPA.add(ttDir);
@@ -150,7 +168,9 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
             sizePA.add(0);
         }
 
-        return recursive? FileVisitResult.CONTINUE : 
+        if (debugMode) String2.log(">> recursive=" + recursive + " dir=" + ttDir);
+        return recursive?
+            FileVisitResult.CONTINUE : 
             FileVisitResult.SKIP_SUBTREE;    
     }
 
@@ -161,13 +181,15 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
         int oSize = directoryPA.size();
         try {
             String name = file.getFileName().toString();
-            Matcher matcher = pattern.matcher(name);
-            if (!matcher.matches()) 
+            if (!fileNamePattern.matcher(name).matches()) {
+                if (debugMode) String2.log(">> fileName doesn't match: name=" + name + " regex=" + fileNameRegex);
                 return FileVisitResult.CONTINUE;    
+            }
 
             //getParent returns \\ or /, without trailing /
             String ttDir = String2.replaceAll(file.getParent().toString(), fromSlash, toSlash) +
                 toSlash;
+            if (debugMode) String2.log(">> add fileName: " + ttDir + name);
             directoryPA.add(ttDir);
             namePA.add(name);
             lastModifiedPA.add(attrs.lastModifiedTime().toMillis());
@@ -424,9 +446,16 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
         }
 
         //local files
+        //follow symbolic links: https://docs.oracle.com/javase/7/docs/api/java/nio/file/FileVisitor.html
+        //But this doesn't follow Windows symbolic link .lnk's:
+        //  http://bugs.java.com/bugdatabase/view_bug.do?bug_id=4237760
         FileVisitorDNLS fv = new FileVisitorDNLS(tDir, tFileNameRegex, tRecursive, 
-            tDirectoriesToo);
-        Files.walkFileTree(FileSystems.getDefault().getPath(tDir), fv);
+            tPathRegex, tDirectoriesToo);
+        EnumSet<FileVisitOption> opts = EnumSet.of(FileVisitOption.FOLLOW_LINKS);
+        Files.walkFileTree(FileSystems.getDefault().getPath(tDir), 
+            opts,               //follow symbolic links
+            Integer.MAX_VALUE,  //maxDepth
+            fv);
         fv.table.leftToRightSortIgnoreCase(2);
         if (verbose) String2.log("FileVisitorDNLS.oneStep(local) finished successfully. n=" + 
             fv.directoryPA.size() + " time=" +
@@ -559,6 +588,25 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 
         return tTable;
     }        
+
+    /** 
+     * As a convenience to generateDatasetsXml methods, this returns the last
+     * matching fullFileName.
+     *
+     */
+    public static String getSampleFileName(String tFileDir, String tFileNameRegex,
+        boolean tRecursive, String tPathRegex) throws Exception {
+        Table fileTable = oneStep(tFileDir, tFileNameRegex, tRecursive, tPathRegex,
+            false); //dirNamesToo
+        int nRows = fileTable.nRows();
+        if (nRows == 0)
+            throw new RuntimeException(
+                "ERROR in getSampleFileName: No matching files found for\n" +
+                "  dir=" + tFileDir + " fileNameRegex=" + tFileNameRegex + 
+                " recursive=" + tRecursive + " pathRegex=" + tPathRegex);
+        return fileTable.getColumn(DIRECTORY).getString(nRows - 1) +
+               fileTable.getColumn(NAME).getString(nRows - 1);
+    }
 
 //Patterns are thread safe.
 //inport:
@@ -923,30 +971,30 @@ http://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         table.removeAllRows();
         Test.ensureTrue( //completelySuccessful
             addToWAFUrlList("https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/",
-                "1797.*\\.xml", 
-                true, ".*/NMFS/(|NWFSC/)(|inport/)(|xml/)", //tricky!
+                "22...\\.xml",   
+                //pre 2016-03-04 I tested NWFSC/inport/xml, but it has been empty for a month!
+                true, ".*/NMFS/(|NEFSC/)(|inport/)(|xml/)", //tricky!
                 true, //tDirsToo, 
                 dirs, names, lastModifieds, sizes),
             "");
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/,,,\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/,,,\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,,,\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17970.xml,1450369020000,12288\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17971.xml,1450369020000,12288\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17972.xml,1450369020000,13312\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17973.xml,1450369020000,11264\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17975.xml,1450369020000,13312\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17977.xml,1450369080000,12288\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/,17979.xml,1450369080000,14336\n";
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/,,,\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/,,,\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,,,\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,22560.xml,1455948120000,21504\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,22561.xml,1455948120000,21504\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,22562.xml,1455948120000,19456\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,22563.xml,1455948120000,21504\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,22564.xml,1456553280000,23552\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/,22565.xml,1455948120000,25600\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
       } catch (Throwable t) {
           String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-              "\nThis changes periodically. If reasonable, just continue\n" +
-              "(there no more subtests in this test)."); 
+              "\nThis changes periodically. If reasonable, just continue." +
+              "\n(there no more subtests in this test).");
       }
     }
 
@@ -1358,6 +1406,7 @@ http://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 
       } catch (Throwable t) {
           String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+              "\n2016-02-29 results=\"\" because HTTP 503, Server Not Available." +
               "\nUnexpected error."); 
       }
     }
@@ -1664,56 +1713,56 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
         int n;
         String results, expected;
 
-        //recursive and dirToo
-        table = oneStep("c:/erddapTest/fileNames", ".*\\.png", true, tPathRegex, true); 
+        //recursive and dirToo             and test \\ separator
+        table = oneStep("c:\\erddapTest\\fileNames", ".*\\.png", true, tPathRegex, true); 
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n" +
-"c:/erddapTest/fileNames/sub/,,1420735700318,0\n" +
-"c:/erddapTest/fileNames/sub/,jplMURSST20150105090000.png,1420669304917,46549\n";
+"c:\\erddapTest\\fileNames\\,jplMURSST20150103090000.png,1421276044628,46482\n" +
+"c:\\erddapTest\\fileNames\\,jplMURSST20150104090000.png,1420669338436,46586\n" +
+"c:\\erddapTest\\fileNames\\sub\\,,1420735700318,0\n" +
+"c:\\erddapTest\\fileNames\\sub\\,jplMURSST20150105090000.png,1420669304917,46549\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-        //recursive and !dirToo
-        table = oneStep("c:/erddapTest/fileNames", ".*\\.png", true, tPathRegex, false);
+        //recursive and !dirToo           and test // separator
+        table = oneStep(String2.unitTestDataDir + "fileNames", ".*\\.png", true, tPathRegex, false);
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n" +
-"c:/erddapTest/fileNames/sub/,jplMURSST20150105090000.png,1420669304917,46549\n";
+String2.unitTestDataDir + "fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
+String2.unitTestDataDir + "fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n" +
+String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1420669304917,46549\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //!recursive and dirToo
-        table = oneStep("c:/erddapTest/fileNames", ".*\\.png", false, tPathRegex, true);
+        table = oneStep(String2.unitTestDataDir + "fileNames", ".*\\.png", false, tPathRegex, true);
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n" +
-"c:/erddapTest/fileNames/sub/,,1420735700318,0\n";
+String2.unitTestDataDir + "fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
+String2.unitTestDataDir + "fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n" +
+String2.unitTestDataDir + "fileNames/sub/,,1420735700318,0\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //!recursive and !dirToo
-        table = oneStep("c:/erddapTest/fileNames", ".*\\.png", false, tPathRegex, false);
+        table = oneStep(String2.unitTestDataDir + "fileNames", ".*\\.png", false, tPathRegex, false);
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
-"c:/erddapTest/fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n";
+String2.unitTestDataDir + "fileNames/,jplMURSST20150103090000.png,1421276044628,46482\n" +
+String2.unitTestDataDir + "fileNames/,jplMURSST20150104090000.png,1420669338436,46586\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
 
         //***
         //oneStepDouble
-        table = oneStepDouble("c:/erddapTest/fileNames", ".*\\.png", true, tPathRegex, true); 
+        table = oneStepDouble(String2.unitTestDataDir + "fileNames", ".*\\.png", true, tPathRegex, true); 
         results = table.toCSVString();
         expected = 
 "{\n" +
 "dimensions:\n" +
 "\trow = 4 ;\n" +
-"\tdirectory_strlen = 28 ;\n" +
+"\tdirectory_strlen = 26 ;\n" +
 "\tname_strlen = 27 ;\n" +
 "variables:\n" +
 "\tchar directory(row, directory_strlen) ;\n" +
@@ -1734,18 +1783,18 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
 "// global attributes:\n" +
 "}\n" +
 "row,directory,name,lastModified,size\n" +
-"0,c:/erddapTest/fileNames/,jplMURSST20150103090000.png,1.421276044628E9,46482.0\n" +
-"1,c:/erddapTest/fileNames/,jplMURSST20150104090000.png,1.420669338436E9,46586.0\n" +
-"2,c:/erddapTest/fileNames/sub/,,1.420735700318E9,0.0\n" +
-"3,c:/erddapTest/fileNames/sub/,jplMURSST20150105090000.png,1.420669304917E9,46549.0\n";
+"0," + String2.unitTestDataDir + "fileNames/,jplMURSST20150103090000.png,1.421276044628E9,46482.0\n" +
+"1," + String2.unitTestDataDir + "fileNames/,jplMURSST20150104090000.png,1.420669338436E9,46586.0\n" +
+"2," + String2.unitTestDataDir + "fileNames/sub/,,1.420735700318E9,0.0\n" +
+"3," + String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.420669304917E9,46549.0\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
 
         //***
         //oneStepAccessibleViaFiles
-        table = oneStepDoubleWithUrlsNotDirs("c:/erddapTest/fileNames", ".*\\.png", 
+        table = oneStepDoubleWithUrlsNotDirs(String2.unitTestDataDir + "fileNames", ".*\\.png", 
             true, tPathRegex,
-            "http://127.0.0.1:8080/cwexperimental/files/testFileNames/");
+            "http://localhost:8080/cwexperimental/files/testFileNames/");
         results = table.toCSVString();
         expected = 
 "{\n" +
@@ -1772,9 +1821,9 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
 "// global attributes:\n" +
 "}\n" +
 "row,url,name,lastModified,size\n" +
-"0,http://127.0.0.1:8080/cwexperimental/files/testFileNames/jplMURSST20150103090000.png,jplMURSST20150103090000.png,1.421276044628E9,46482.0\n" +
-"1,http://127.0.0.1:8080/cwexperimental/files/testFileNames/jplMURSST20150104090000.png,jplMURSST20150104090000.png,1.420669338436E9,46586.0\n" +
-"2,http://127.0.0.1:8080/cwexperimental/files/testFileNames/sub/jplMURSST20150105090000.png,jplMURSST20150105090000.png,1.420669304917E9,46549.0\n";
+"0,http://localhost:8080/cwexperimental/files/testFileNames/jplMURSST20150103090000.png,jplMURSST20150103090000.png,1.421276044628E9,46482.0\n" +
+"1,http://localhost:8080/cwexperimental/files/testFileNames/jplMURSST20150104090000.png,jplMURSST20150104090000.png,1.420669338436E9,46586.0\n" +
+"2,http://localhost:8080/cwexperimental/files/testFileNames/sub/jplMURSST20150105090000.png,jplMURSST20150105090000.png,1.420669304917E9,46549.0\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
 
@@ -1864,9 +1913,9 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
 "directory,name,lastModified,size\n" +
 "http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/,,,\n" +
 "http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,,,\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_200601-201012.nc,1382457840000,1368327466\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201101-201512.nc,1382457577000,1369233982\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201601-202012.nc,1382260226000,1368563375\n";
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_200601-201012.nc,1380652638000,1368229240\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201101-201512.nc,1380649780000,1368487462\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201601-202012.nc,1380651065000,1368894133\n";
         if (expected.length() > results.length()) 
             String2.log("results=\n" + results);
         Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
@@ -1876,9 +1925,9 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_200601-201012.nc,1382457840000,1368327466\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201101-201512.nc,1382457577000,1369233982\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201601-202012.nc,1382260226000,1368563375\n";
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_200601-201012.nc,1380652638000,1368229240\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201101-201512.nc,1380649780000,1368487462\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201601-202012.nc,1380651065000,1368894133\n";
         if (expected.length() > results.length()) 
             String2.log("results=\n" + results);
         Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
@@ -1889,9 +1938,9 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
         expected = 
 "directory,name,lastModified,size\n" +
 "http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,,,\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_200601-201012.nc,1382457840000,1368327466\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201101-201512.nc,1382457577000,1369233982\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201601-202012.nc,1382260226000,1368563375\n";
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_200601-201012.nc,1380652638000,1368229240\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201101-201512.nc,1380649780000,1368487462\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201601-202012.nc,1380651065000,1368894133\n";
         if (expected.length() > results.length()) 
             String2.log("results=\n" + results);
         Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
@@ -1901,9 +1950,9 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
         results = table.dataToCSVString();
         expected = 
 "directory,name,lastModified,size\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_200601-201012.nc,1382457840000,1368327466\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201101-201512.nc,1382457577000,1369233982\n" +
-"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_BNU-ESM_201601-202012.nc,1382260226000,1368563375\n";
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_200601-201012.nc,1380652638000,1368229240\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201101-201512.nc,1380649780000,1368487462\n" +
+"http://nasanex.s3.amazonaws.com/NEX-DCP30/BCSD/rcp26/mon/atmos/tasmin/r1i1p1/v1.0/CONUS/,tasmin_amon_BCSD_rcp26_r1i1p1_CONUS_bcc-csm1-1_201601-202012.nc,1380651065000,1368894133\n";
         if (expected.length() > results.length()) 
             String2.log("results=\n" + results);
         Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
@@ -1929,10 +1978,12 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
      *    paths will be followed.
      *    Use null, "", or ".*" to get the default ".*".
      *    Creating these is very tricky. In general, it must start with .* and
-     *    then a specific directory. Each subsequent dir must be a capturing group
+     *    then a specific directory using forward slashes. 
+     *    Each subsequent dir must be a capturing group
      *    with the option of nothing, e.g., "(|someDir/)". 
+     *    It must start with the last part of the remoteDir and localDir, which must be the same.
      *    Use "(|[^/]+/)" to match anything at a given level.  Example:
-     *    ".* /NMFS/(|NWFSC/)(|inport/)(|xml/)" (but remove the internal space which
+     *    ".* /NMFS/(|NEFSC/)(|inport/)(|xml/)" (but remove the internal space which
      *    lets this javadoc comment continue).
      * @param doIt if true, the files are actually copied
      * @return a Table with 2 String columns (remote, local)
@@ -1946,9 +1997,9 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
         String tFileNameRegex, boolean tRecursive, String tPathRegex,
         boolean doIt) throws Exception {
 
-        //add slashes so I can work consistently with the two dirs
-        remoteDir = File2.addSlash(remoteDir);
-        localDir  = File2.addSlash(localDir);
+        //use forward slashes and final slash so I can work consistently with the two dirs
+        remoteDir = File2.addSlash(String2.replaceAll(remoteDir, '\\', '/'));
+        localDir  = File2.addSlash(String2.replaceAll(localDir,  '\\', '/'));
         int rDirLen = remoteDir.length();
         int lDirLen = localDir.length();
 
@@ -1959,6 +2010,8 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
             tPathRegex, false); //dir too
         rTable.leftToRightSort(2); //lexical sort, so can walk through below
         lTable.leftToRightSort(2); //lexical sort, so can walk through below
+        //String2.log("\nremote table (max of 5)\n" + rTable.dataToCSVString(5) +
+        //            "\nlocal  table (max of 5)\n" + lTable.dataToCSVString(5));
 
         StringArray rDir     = (StringArray)rTable.getColumn(DIRECTORY);
         StringArray lDir     = (StringArray)lTable.getColumn(DIRECTORY);
@@ -2068,63 +2121,66 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
      */
     public static void testSync() throws Throwable {
         String2.log("\n*** FileVisitorDNLS.testSync");
-        String unitTestDataDir = "/erddapTest/"; //from EDStatic
         String rDir = "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/";
-        String lDir = unitTestDataDir + "sync";  //test without trailing slash 
-        String fileRegex = "1797.\\.xml";
+        String lDir = String2.unitTestDataDir + "sync/NMFS";  //test without trailing slash 
+        String fileRegex = "22...\\.xml";
         boolean recursive = true;
-        String pathRegex = ".*/NMFS/(|NWFSC/)(|inport/)(|xml/)"; //tricky!            
+        //first part of pathRegex must be the last part of the rDir and the lDir, e.g., NMFS
+        //pre 2016-03-04 I tested NWFSC/inport/xml, but it has been empty for a month!
+        String pathRegex = ".*/NMFS/(|NEFSC/)(|inport/)(|xml/)"; //tricky!            
         boolean doIt = true;
 
         //get original times
-        String name17975 = lDir + "/NWFSC/inport/xml/17975.xml";
-        String name17977 = lDir + "/NWFSC/inport/xml/17977.xml";
+        String name22560 = lDir + "/NEFSC/inport/xml/22560.xml";
+        String name22565 = lDir + "/NEFSC/inport/xml/22565.xml";
 
-        long time17975 = File2.getLastModified(name17975);
-        long time17977 = File2.getLastModified(name17977);
+        long time22560 = File2.getLastModified(name22560);
+        long time22565 = File2.getLastModified(name22565);
 
         try {
+            //For testing purposes, I put one extra file in the dir: 8083.xml renamed as 22ext.xml
 
             //do the sync
             sync(rDir, lDir, fileRegex, recursive, pathRegex, true);
 
             //current date on all these files
-            Test.ensureEqual(Calendar2.epochSecondsToIsoStringT(1438262220),
-                "2015-07-30T13:17:00", ""); //what the web site shows         
-
+            //Test.ensureEqual(Calendar2.epochSecondsToIsoStringT(1455948120),
+            //    "2016-02-20T06:02:00", ""); //what the web site shows for many
 
             //delete 1 local file
-            File2.delete(lDir + "/NWFSC/inport/xml/17972.xml");
+            File2.delete(lDir + "/NEFSC/inport/xml/22563.xml");
 
             //make 1 local file older
-            File2.setLastModified(name17975, 1438262219000L);
+            File2.setLastModified(name22560, 100);
 
             //make 1 local file newer
-            File2.setLastModified(name17977, System.currentTimeMillis() + 100);
+            File2.setLastModified(name22565, System.currentTimeMillis() + 100);
+            Math2.sleep(500);
 
-            //test the sync (but modified
+            //test the sync 
             Table table = sync(rDir, lDir, fileRegex, recursive, pathRegex, doIt);
             String2.pressEnterToContinue("\nCheck above to ensure these numbers:\n" +
-                "\"found nAlready=4 nToDownload=2 nTooRecent=1 nExtraLocal=1\"\n");
+                "\"found nAlready=3 nToDownload=2 nTooRecent=1 nExtraLocal=1\"\n");
             String results = table.dataToCSVString();
             String expected = //the lastModified values change periodically
+//these are the files which were downloaded
 "remote,local,lastModified\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/17972.xml,/erddapTest/sync/NWFSC/inport/xml/17972.xml,1454507520000\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NWFSC/inport/xml/17975.xml,/erddapTest/sync/NWFSC/inport/xml/17975.xml,1454507520000\n";
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/22560.xml," + String2.unitTestDataDir + "sync/NMFS/NEFSC/inport/xml/22560.xml,1461852360000\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport/xml/22563.xml," + String2.unitTestDataDir + "sync/NMFS/NEFSC/inport/xml/22563.xml,1461852480000\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
             //no changes, do the sync again
             table = sync(rDir, lDir, fileRegex, recursive, pathRegex, doIt);
             String2.pressEnterToContinue("\nCheck above to ensure these numbers:\n" +
-                "\"found nAlready=6 nToDownload=0 nTooRecent=1 nExtraLocal=1\"\n");
+                "\"found nAlready=5 nToDownload=0 nTooRecent=1 nExtraLocal=1\"\n");
             results = table.dataToCSVString();
             expected = 
     "remote,local,lastModified\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
         } finally {
-            File2.setLastModified(name17975, time17975);
-            File2.setLastModified(name17977, time17977);
+            File2.setLastModified(name22560, time22560);
+            File2.setLastModified(name22565, time22565);
         }
 
     }
@@ -2340,6 +2396,52 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
         Test.ensureEqual(results, expected, "results=\n" + results);
     }
         
+    /**
+     * This tests pathRegex().
+     */
+    public static void testPathRegex() throws Throwable {
+        
+        String2.log("\n*** FileVisitorDNLS.testPathRegex()");
+
+        String results = oneStepToString(    
+            String2.unitTestDataDir + "CFPointConventions/timeSeries/", 
+                ".*", true,         //all files
+                ".*H\\.2\\.1.*");   //but only H.2.1 dirs
+        String expected = 
+"timeSeries-Incomplete-MultiDimensional-MultipleStations-H.2.2.rb 2012-11-01T18:16:26Z          5173\n" +
+"timeSeries-Orthogonal-Multidimenstional-MultipleStations-H.2.1.rb 2012-11-01T18:16:26Z          2979\n" +
+"timeSeries-Orthogonal-Multidimenstional-MultipleStations-H.2.1/\n" +
+"  README                                                         2012-11-01T18:16:26Z           538\n" +
+"  timeSeries-Orthogonal-Multidimenstional-MultipleStations-H.2.1.cdl 2012-11-01T18:16:26Z          1515\n" +
+"  timeSeries-Orthogonal-Multidimenstional-MultipleStations-H.2.1.nc 2012-11-01T18:16:26Z         10436\n" +
+"  timeSeries-Orthogonal-Multidimenstional-MultipleStations-H.2.1.ncml 2012-11-01T18:16:26Z          2625\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+    }
+        
+    /**
+     * This tests following symbolic links / soft links.
+     * THIS DOESN'T WORK on Windows, because Java doesn't follow Windows .lnk's.
+     *  Windows links are not easily parsed files. It would be hard to add support
+     *  for .lnk's to this class.
+     * This class now works as expected with symbolic links on Linux.
+     *   I tested manually on coastwatch Linux with FileVisitorDNLS.sh and main() below and
+     *   ./FileVisitorDNLS.sh /u00/satellite/MUR41/anom/1day/ ....0401.\* 
+     */
+    public static void testSymbolicLinks() throws Throwable {
+        
+        String2.log("\n*** FileVisitorDNLS.testSymbolicLinks()");
+        boolean oDebugMode = debugMode;
+        debugMode = true;
+
+        String results = oneStepToString(
+            "/u00/satellite/MUR41/anom/1day/", ".*", true, ".*");
+        String expected = 
+//2002 are files. 2003 is a shortcut to files
+"zztop\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        debugMode = oDebugMode;
+    }
+        
 
     /**
      * This tests the methods in this class.
@@ -2351,15 +2453,39 @@ http://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5d
 /* */
         //always done        
         testLocal(doBigTest);
-        testAWSS3();
+        testAWSS3(); 
         testHyrax();
         testThredds();
         testWAF();
         testSync();
         testMakeTgz();
         testOneStepToString();
+        testPathRegex();
+
+        //testSymbolicLinks(); //THIS TEST DOESN'T WORK on Windows, but links are followed on Linux
 
         //future: FTP? ftp://ftp.unidata.ucar.edu/pub/
+    }
+
+   /**
+     * This is used for testing this class.
+     * This is used when called from the command line.
+     * It explicitly calls System.exit(0) when done.
+     *
+     * @param args if args has values, they are used to answer the question.
+     */
+    public static void main(String args[]) throws Throwable {
+        verbose = true; 
+        reallyVerbose = true;
+        debugMode = true;
+        if (args == null || args.length < 2) {
+            String2.log("Usage: FileVisitorDNLS startingDirectory fileNameRegex");
+        } else {
+            Table table = oneStep(args[0], args[1], 
+                true, ".*", true); //tRecursive, tPathRegex, tDirectoriesToo
+            String2.log(table.dataToCSVString());
+        }
+        System.exit(0);
     }
 
 }

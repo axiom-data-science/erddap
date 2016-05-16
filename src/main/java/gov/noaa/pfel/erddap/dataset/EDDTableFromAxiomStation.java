@@ -517,7 +517,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         String encodedSourceUrl = localSourceUrl + "getDataValues" +
                 "?stationid=" + this.station.id +
                 "&parameterids=" + URLEncoder.encode(SSR.minimalPercentEncode(String.join(",", parameter_id_builder)), "UTF-8") +
-                "&units=" + SSR.minimalPercentEncode(String.join(",", units_builder)) +
+                "&units=" + URLEncoder.encode(SSR.minimalPercentEncode(String.join(",", units_builder)), "UTF-8") +
                 "&start_time=" + URLEncoder.encode(String.valueOf((int)beginSeconds), "UTF-8") +
                 "&end_time="   + URLEncoder.encode(String.valueOf((int)endSeconds), "UTF-8") +
                 "&jsoncallback=false" +
