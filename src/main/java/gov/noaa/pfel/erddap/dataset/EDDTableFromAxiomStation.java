@@ -509,7 +509,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         ArrayList<String> units_builder = new ArrayList<>();
         for ( OikosDevice d : this.station.devices ) {
             OikosUnit u = d.ep.parameter.defaultUnit();
-            units_builder.add(u.id + ";" + u.unit);
+            units_builder.add(d.ep.parameter.id + ";" + u.unit);
             parameter_id_builder.add(String.valueOf(d.ep.parameter.id));
         }
 
@@ -517,13 +517,14 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         String encodedSourceUrl = localSourceUrl + "getDataValues" +
                 "?stationid=" + this.station.id +
                 "&parameterids=" + URLEncoder.encode(SSR.minimalPercentEncode(String.join(",", parameter_id_builder)), "UTF-8") +
-                "&units=" + URLEncoder.encode(SSR.minimalPercentEncode(String.join(",", units_builder)), "UTF-8") +
+                "&units=" + SSR.minimalPercentEncode(String.join(",", units_builder)) +
                 "&start_time=" + URLEncoder.encode(String.valueOf((int)beginSeconds), "UTF-8") +
                 "&end_time="   + URLEncoder.encode(String.valueOf((int)endSeconds), "UTF-8") +
                 "&jsoncallback=false" +
                 "&version=3" +
                 "&force_binned_data=false" +
                 "&method=GetSensorObservationsJSON";
+
         InputStream is = new URL(encodedSourceUrl).openStream();
         try {
             BufferedReader in = new BufferedReader(
@@ -719,11 +720,11 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         EDD edd = EDD.oneFromXmlFragment(null, "" +
                 "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"station_test\">\n" +
                 "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
-                "    <stationId>57422</stationId>\n" +
+                "    <stationId>20363</stationId>\n" +
                 "</dataset>"
         );
         // Test specific station and sensor
-        String query = "air_temperature,dew_point_temperature,time,latitude,longitude,depth&time>=2015-12-14T00:00:00Z&time<=2015-12-15T00:00:00Z";
+        String query = "sea_water_temperature,time,latitude,longitude&time>=2016-05-14T00:00:00Z&time<2016-05-16T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         String results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
