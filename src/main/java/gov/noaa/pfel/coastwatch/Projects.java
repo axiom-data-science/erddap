@@ -8107,19 +8107,19 @@ towTypesDescription);
         return sb.toString();
     }
 
-    /** 
-     * Generate ncml which assigns "days since 1970-01-01" coordValue to a file for a range of times. 
+    /**
+     * Generate ncml which assigns "days since 1970-01-01" coordValue to a file for a range of times.
      * E.g., &lt;netcdf location="V2013074.L3m_DAY_NPP_CHL_chlor_a_4km" coordValue="15779"/&gt;
      * The string is displayed and put on the clipboard.
-     * 
-     * @param fileName  with '*' where YYYYDDD goes.
+     *
+     * @param location  with '*' where YYYYDDD goes.
      * @param startIso
      * @param stopIso   (inclusive)
      * @param increment e.g., 1, 7, or 3
      * @param field  e.g. Calendar2.DAY_OF_YEAR, Calendar2.MONTH
-     * @return ncml which assigns "days since 1970-01-01" coordValue to a file for a range of times. 
+     * @return ncml which assigns "days since 1970-01-01" coordValue to a file for a range of times.
      */
-    public static String makeNcmlCoordValues(String location, String startIso, String stopIso, 
+    public static String makeNcmlCoordValues(String location, String startIso, String stopIso,
         int increment, int field) throws Exception {
 
         StringBuilder sb = new StringBuilder();
