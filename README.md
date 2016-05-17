@@ -86,6 +86,7 @@ cp -r WEB-INF/classes/net/jmge/gif/* $ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif
 cp -r WEB-INF/cptfiles/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/cptfiles/
 cp -r WEB-INF/ref/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/ref/
 cp -r WEB-INF/images/* $ERDDAP_DEV_ROOT/src/main/webapp/images/
+cp -r WEB-INF/web.xml $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/web.xml
 
 ```
 
