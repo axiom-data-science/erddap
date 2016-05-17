@@ -54,25 +54,26 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.1</version>
 				<configuration>
+					<failOnError>false</failOnError>
 					<source>1.8</source>
 					<target>1.8</target>
 					<excludes>
-						<exclude>org/jdom/xpath/JaxenXPath.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/sgt/LandMask.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/sgt/GSHHSNewOnHold.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/griddata/Grd.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/griddata/WriteShapefile.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/pointdata/TwoTable.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/pointdata/DigirIobisTDSP.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/pointdata/DigirObisTDSP.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/hdf/HdfWriter.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/netcheck/SftpTest.java</exclude>
-						<exclude>gov/noaa/pfel/coastwatch/HelloWorld.java</exclude>
-						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromBMD.java</exclude>
-						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromBMDE.java</exclude>
-						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromMWFS.java</exclude>
-						<exclude>gov/noaa/pfel/erddap/dataset/EDDGridLonPM180.java</exclude>
-						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromPostDatabase.java</exclude>
+						<exclude>**/org/jdom/xpath/JaxenXPath.java</exclude>
+						<exclude>**/coastwatch/sgt/LandMask.java</exclude>
+						<exclude>**/coastwatch/sgt/GSHHSNewOnHold.java</exclude>
+						<exclude>**/coastwatch/griddata/Grd.java</exclude>
+						<exclude>**/coastwatch/griddata/WriteShapefile.java</exclude>
+						<exclude>**/coastwatch/pointdata/TwoTable.java</exclude>
+						<exclude>**/coastwatch/pointdata/DigirIobisTDSP.java</exclude>
+						<exclude>**/coastwatch/pointdata/DigirObisTDSP.java</exclude>
+						<exclude>**/coastwatch/hdf/HdfWriter.java</exclude>
+						<exclude>**/coastwatch/netcheck/SftpTest.java</exclude>
+						<exclude>**/coastwatch/HelloWorld.java</exclude>
+						<exclude>**/dataset/EDDTableFromBMD.java</exclude>
+						<exclude>**/dataset/EDDTableFromBMDE.java</exclude>
+						<exclude>**/dataset/EDDTableFromMWFS.java</exclude>
+						<exclude>**/dataset/EDDGridLonPM180.java</exclude>
+						<exclude>**/dataset/EDDTableFromPostDatabase.java</exclude>
 					</excludes>
 				</configuration>
 			</plugin>
