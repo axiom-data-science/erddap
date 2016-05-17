@@ -362,7 +362,7 @@ public abstract class EDD {
                 ": Unexpected <dataset> type=" + type + ".");
         try {
             //future: classes could be added at runtime if I used reflection
-            if (type.equals("EDDGridAggregateExistingDimension")) 
+            if (type.equals("EDDGridAggregateExistingDimension"))
                 return EDDGridAggregateExistingDimension.fromXml(erddap, xmlReader);
             if (type.equals("EDDGridCopy"))             return EDDGridCopy.fromXml(erddap, xmlReader);
             if (type.equals("EDDGridFromDap"))          return EDDGridFromDap.fromXml(erddap, xmlReader);
@@ -403,6 +403,8 @@ public abstract class EDD {
             if (type.equals("EDDTableFromSOS"))         return EDDTableFromSOS.fromXml(erddap, xmlReader);
             if (type.equals("EDDTableFromThreddsFiles"))return EDDTableFromThreddsFiles.fromXml(erddap, xmlReader);
             if (type.equals("EDDTableFromWFSFiles"))    return EDDTableFromWFSFiles.fromXml(erddap, xmlReader);
+            if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(erddap, xmlReader);
+            if (type.equals("EDDTableFromAxiomStation")) return EDDTableFromAxiomStation.fromXml(erddap, xmlReader);
         } catch (Throwable t) {
             String msg = MustBe.getShortErrorMessage(t);
             throw new RuntimeException(
