@@ -444,20 +444,40 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 ttDataVariables[i] = tDataVariables.get(i);
             }
 
-            return new EDDTableFromAxiomStation(tDatasetID, tSosOfferingPrefix, tDefaultDataQuery, tDefaultGraphQuery,
-                    tGlobalAttributes, ttDataVariables, tReloadEveryNMinutes, tLocalSourceUrl, station);
+            return new EDDTableFromAxiomStation(tDatasetID,
+                    null, null,
+                    null, null, null,
+                    tSosOfferingPrefix,
+                    tDefaultDataQuery, tDefaultGraphQuery,
+                    tGlobalAttributes,
+                    ttDataVariables,
+                    tReloadEveryNMinutes, tLocalSourceUrl,
+                    null, null, null,
+                    station);
 
         } finally { is.close(); }
     }
 
-    public EDDTableFromAxiomStation(String tDatasetID, String tSosOfferingPrefix, String tDefaultDataQuery,
-                                    String tDefaultGraphQuery, Attributes tAddGlobalAttributes,
-                                    Object[][] tDataVariables, int tReloadEveryNMinutes, String tLocalSourceUrl,
+    public EDDTableFromAxiomStation(String tDatasetID,
+                                    String tAccessibleTo, String tGraphsAccessibleTo,
+                                    StringArray tOnChange, String tFgdcFile, String tIso19115File,
+                                    String tSosOfferingPrefix,
+                                    String tDefaultDataQuery, String tDefaultGraphQuery,
+                                    Attributes tAddGlobalAttributes,
+                                    Object[][] tDataVariables,
+                                    int tReloadEveryNMinutes, String tLocalSourceUrl,
+                                    String tBeforeData[], String tAfterData, String tNoData,
                                     OikosStation stat) throws Throwable {
 
-        super("EDDTableFromAxiomStation", tDatasetID, null, new StringArray(), null, null,
-                tSosOfferingPrefix, tDefaultDataQuery, tDefaultGraphQuery, tAddGlobalAttributes,
-                tDataVariables, tReloadEveryNMinutes, tLocalSourceUrl, null, null, null);
+        super("EDDTableFromAxiomStation", tDatasetID,
+                tAccessibleTo, tGraphsAccessibleTo,
+                tOnChange, tFgdcFile, tIso19115File,
+                tSosOfferingPrefix,
+                tDefaultDataQuery, tDefaultGraphQuery,
+                tAddGlobalAttributes,
+                tDataVariables,
+                tReloadEveryNMinutes, tLocalSourceUrl,
+                tBeforeData, tAfterData, tNoData);
         this.station = stat;
     }
 
