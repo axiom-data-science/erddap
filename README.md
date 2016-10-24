@@ -32,6 +32,12 @@
         ```bash
         {path_to_java_that_compiled_erddap} -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:{your_path_to_tomcat_directory}/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/coastwatch/TestAll
         ```
+
+        On my machine, I run:
+
+        ```
+        mvn compile war:exploded && pushd . && cd target/erddap-1.74-axiom-r1/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
+        ```
 8. Package WAR - Run the `package` Run Configuration
 
 
@@ -74,20 +80,19 @@ There is really no easy way to do this.  ERRDAP developer(s) do not include comm
 in Git and usally put an entire release into a single commit.  That being said... as long as none of the external libraries change or additional ones are needed, you should try:
 
 ```
-git clone https://github.com/BobSimons/erddap.git
-cd erddap
-export ERDDAP_DEV_ROOT=you_dev_root
-cp WEB-INF/DasDds.* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/
-cp WEB-INF/GenerateDatasetsXml.* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/
-cp -r WEB-INF/classes/com/cohort/* $ERDDAP_DEV_ROOT/src/main/java/com/cohort/
-cp -r WEB-INF/classes/gov/* $ERDDAP_DEV_ROOT/src/main/java/gov/
-cp -r WEB-INF/classes/dods/* $ERDDAP_DEV_ROOT/src/main/java/dods/
-cp -r WEB-INF/classes/net/jmge/gif/* $ERDDAP_DEV_ROOT/src/main/java/net/jmge/gif/
-cp -r WEB-INF/cptfiles/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/cptfiles/
-cp -r WEB-INF/ref/* $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/ref/
-cp -r WEB-INF/images/* $ERDDAP_DEV_ROOT/src/main/webapp/images/
-cp -r WEB-INF/web.xml $ERDDAP_DEV_ROOT/src/main/webapp/WEB-INF/web.xml
+$ git clone https://github.com/BobSimons/erddap.git
+$ cd erddap
+$ export ERDDAP_UPSTREAM_ROOT=$(pwd)
 
+$ cd ..
+$ git clone git@git.axiom:axiom/erddap.git
+$ cd erddap
+$ export ERDDAP_DEV_ROOT=$(pwd)
+
+# Using Python >= 3.5
+(python35)$ python move_changed.py
+
+# Do what the script outputs!
 ```
 
 Now you will need to make a ton of changes to the source to get it to compile.  Pretty much a nightmare, but doable in a few hours.
@@ -96,6 +101,7 @@ Now you will need to make a ton of changes to the source to get it to compile.  
 Add back in to EDD.java:
 
 ```java
-if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(xmlReader);
+if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(erddap, xmlReader);
+if (type.equals("EDDTableFromAxiomStation")) return EDDTableFromAxiomStation.fromXml(erddap, xmlReader);
 ```
 
