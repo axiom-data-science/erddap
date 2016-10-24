@@ -3,16 +3,6 @@ stages:
   - build
   - push
 
-package:
-  stage: package
-  image: maven
-  artifacts:
-    name: "$CI_BUILD_REF_NAME"
-    paths:
-      - target/*.war
-  script:
-    - mvn clean package
-
 build_image:
   stage: build
   script:
