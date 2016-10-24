@@ -41,7 +41,6 @@ import java.util.BitSet;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.TimeZone;
-import gov.noaa.pfel.erddap.Erddap;
 
 /* This uses axis.jar, jaxrps.jar, saaj.jar, and wsdl4j.jar. */
 import javax.xml.soap.*;
@@ -184,7 +183,7 @@ public class EDDTableFromNOS extends EDDTable{
         for (int i = 0; i < tDataVariables.size(); i++)
             ttDataVariables[i] = (Object[])tDataVariables.get(i);
 
-        return new EDDTableFromNOS(tDatasetID, tAccessibleTo, tGraphsAccessibleTo,
+        return new EDDTableFromNOS(tDatasetID, tAccessibleTo,
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
             ttDataVariables,
@@ -218,7 +217,7 @@ public class EDDTableFromNOS extends EDDTable{
      *    that should be used for this dataset, or "" (to cause ERDDAP not
      *    to try to generate FGDC metadata for this dataset), or null (to allow
      *    ERDDAP to try to generate FGDC metadata for this dataset).
-     * @param tIso19115File This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
+     * @param tIso19115 This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
      * @param tAddGlobalAttributes are global attributes which will
      *   be added to (and take precedence over) the data source's global attributes.
      *   This may be null if you have nothing to add.
@@ -275,7 +274,7 @@ public class EDDTableFromNOS extends EDDTable{
      * @param tRowElementXPath  e.g., /soapenv:Envelope/soapenv:Body/WindMeasurements/data/item
      * @throws Throwable if trouble
      */
-    public EDDTableFromNOS(String tDatasetID, String tAccessibleTo,  String tGraphsAccessibleTo,
+    public EDDTableFromNOS(String tDatasetID, String tAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
         String tDefaultDataQuery, String tDefaultGraphQuery, 

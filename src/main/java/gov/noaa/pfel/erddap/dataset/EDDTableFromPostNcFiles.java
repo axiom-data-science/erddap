@@ -70,7 +70,7 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      *    that should be used for this dataset, or "" (to cause ERDDAP not
      *    to try to generate FGDC metadata for this dataset), or null (to allow
      *    ERDDAP to try to generate FGDC metadata for this dataset).
-     * @param tIso19115File This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
+     * @param tIso19115 This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
      */
     public EDDTableFromPostNcFiles(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo,
@@ -111,7 +111,7 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      * It doesn't add a random number, so will return the same results 
      * if the inputs are the same.
      *
-     * @param loggedInAs is only used for POST datasets (which override EDD.suggestFileName)
+     * @param loggedInAs is only used for POST datasets (which overwrite EDD.suggestFileName)
      *    since loggedInAs is used by POST for row-by-row authorization
      * @param userDapQuery
      * @param fileTypeName
