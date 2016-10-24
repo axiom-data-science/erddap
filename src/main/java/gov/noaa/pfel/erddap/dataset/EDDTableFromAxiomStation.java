@@ -171,8 +171,10 @@ class OikosDevice {
         sb.append(this.ep.parameter.name);
 
         if (!this.ep.cellMethods.isEmpty()) {
-            sb.append("_");
-            sb.append(this.ep.cellMethods);
+            sb.append("_cm_");
+            String cm = this.ep.cellMethods.replaceAll(" ", "");  // Remove spaces
+            String rep = cm.replaceAll("[^a-zA-Z0-9_]", "_"); // Remove other chars
+            sb.append(rep);
         }
         if (!this.ep.interval.isEmpty()) {
             sb.append("_over_");
@@ -748,6 +750,19 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         String results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        String2.log(results);
+
+        // Test station with a cell method
+        edd = EDD.oneFromXmlFragment(null, "" +
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"station_cell_method_test\">\n" +
+                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <stationId>16175</stationId>\n" +
+                "</dataset>"
+        );
+        query = "air_temperature_cm_time_mean,time,latitude,longitude&time>=2016-05-14T00:00:00Z&time<2016-05-16T00:00:00Z";
+        tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
+                edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
+        results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
         String2.log(results);
     }
 }
