@@ -1,0 +1,8 @@
+.git/
+.idea/
+.settings/
+target/
+
+.classpath
+.project
+move_changed.py
