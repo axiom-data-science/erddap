@@ -302,7 +302,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         throws Throwable {
 
         String2.log("\n*** EDDGridFromMatFiles.generateDatasetsXml" +
-            "\nfileDir=" + tFileDir + " fileNameRegex=" + tfileNameRegex +
+            "\nfileDir=" + tFileDir + " fileNameRegex=" + tFileNameRegex +
             " sampleFileName=" + sampleFileName +
             "\nreloadEveryNMinutes=" + tReloadEveryNMinutes + 
             "\nexternalAddGlobalAttributes=" + externalAddGlobalAttributes);
