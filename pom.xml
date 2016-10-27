@@ -5,7 +5,7 @@
 
 	<groupId>axiomalaska</groupId>
 	<artifactId>erddap</artifactId>
-	<version>1.74-axiom-r1</version>
+	<version>1.74-axiom-r2</version>
 	<packaging>war</packaging>
 
 	<name>erddap</name>
