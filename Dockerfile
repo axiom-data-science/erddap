@@ -23,6 +23,11 @@ ENV MAVEN_VERSION 3.3.9
 RUN curl -fSL http://apache.mirrors.pair.com/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.zip -o mvn.zip && \
     unzip mvn.zip -d /mvn
 
+# Install dependencies
+COPY pom.xml /pom.xml
+RUN cd / && \
+    /mvn/apache-maven-$MAVEN_VERSION/bin/mvn dependency:resolve
+
 # Install ERDDAP WAR
 COPY . /app
 RUN cd /app && \
