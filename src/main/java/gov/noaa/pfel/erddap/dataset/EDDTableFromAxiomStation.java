@@ -81,8 +81,15 @@ class OikosParameter {
     public static OikosParameter fromJson(JSONObject j, HashMap<Integer, ArrayList<OikosParameterTypeUnit>> parameterTypeUnitMap) {
 
         ArrayList<OikosParameterTypeUnit> ptms;
+
         if (!j.isNull("idParameterType")) {
             ptms = parameterTypeUnitMap.get(j.getInt("idParameterType"));
+            if (ptms == null) {
+                OikosUnit un = new OikosUnit(-1, "unknown", "unknown", "NON_STANDARD");
+                OikosParameterTypeUnit ptm = new OikosParameterTypeUnit(-1, un, true, true);
+                ptms = new ArrayList<>();
+                ptms.add(ptm);
+            }
         } else {
             OikosUnit un = new OikosUnit(-1, "unknown", "unknown", "NON_STANDARD");
             OikosParameterTypeUnit ptm = new OikosParameterTypeUnit(-1, un, true, true);
@@ -168,7 +175,12 @@ class OikosDevice {
 
     public String prettyString() {
         StringBuilder sb = new StringBuilder();
-        sb.append(this.ep.parameter.name);
+
+        if (this.ep.parameter.name.equals("depth")) {
+            sb.append("depth_reading");
+        } else {
+            sb.append(this.ep.parameter.name);
+        }
 
         if (!this.ep.cellMethods.isEmpty()) {
             sb.append("_cm_");
@@ -764,5 +776,21 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
         String2.log(results);
+
+        // Test station with a 'depth' variable
+        EDD.oneFromXmlFragment(null, "" +
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"cencoos_tiburon\">\n" +
+                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <stationId>20358</stationId>\n" +
+                "</dataset>"
+        );
+
+        // Test station with unmapped parameters -> units
+        EDD.oneFromXmlFragment(null, "" +
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"edu_ucdavis_bml_fpt_wts_latest\">\n" +
+                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <stationId>19947</stationId>\n" +
+                "</dataset>"
+        );
     }
 }
