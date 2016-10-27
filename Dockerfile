@@ -7,13 +7,13 @@ RUN \
     rm -rf /var/lib/apt/lists/*
 
 # Install BitstreamVeraSans font
+ENV ERDDAP_FONTS_URL https://www.dropbox.com/s/utr99izlrzudc5g/BitstreamVeraSans.zip
 RUN \
-    curl -fSL "http://coastwatch.pfeg.noaa.gov/erddap/download/BitstreamVeraSans.zip" -o BitstreamVeraSans.zip && \
+    curl -fSL "$ERDDAP_FONTS_URL" -o BitstreamVeraSans.zip && \
     unzip BitstreamVeraSans.zip -d /usr/lib/jvm/java-8-oracle/jre/lib/fonts/
 
 # Install ERDDAP content zip
-ENV ERDDAP_CONTENT_URL http://coastwatch.pfeg.noaa.gov/erddap/download/erddapContent.zip
-#ENV ERDDAP_CONTENT_URL http://coastwatch.pfeg.noaa.gov/erddap/download/erddapContent$ERDDAP_VERSION.zip
+ENV ERDDAP_CONTENT_URL https://www.dropbox.com/s/qxzlpfv8logcgso/erddapContent.zip
 RUN \
     curl -fSL "$ERDDAP_CONTENT_URL" -o erddapContent.zip && \
     unzip erddapContent.zip -d $CATALINA_HOME
