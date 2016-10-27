@@ -752,7 +752,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         testVerboseOn();
 
         EDD edd = EDD.oneFromXmlFragment(null, "" +
-                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"station_test\">\n" +
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"cencoos_humboldt\">\n" +
                 "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
                 "    <stationId>20363</stationId>\n" +
                 "</dataset>"
@@ -766,7 +766,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
         // Test station with a cell method
         edd = EDD.oneFromXmlFragment(null, "" +
-                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"station_cell_method_test\">\n" +
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"edu_dri_raws_cacana\">\n" +
                 "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
                 "    <stationId>16175</stationId>\n" +
                 "</dataset>"
