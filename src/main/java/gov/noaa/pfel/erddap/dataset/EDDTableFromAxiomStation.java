@@ -689,7 +689,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
     }
 
     private static HashMap<Integer, OikosParameter> getParametersFromOikos() throws IOException{
-        URL url = new URL("http://pdx0.axiomalaska.com/oikos-service/rest/minimal-portal-data");
+        URL url = new URL("http://oikos.axds.co/rest/minimal-portal-data");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.addRequestProperty("Accept", "application/json");
         conn.setUseCaches(false);
@@ -753,7 +753,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
         EDD edd = EDD.oneFromXmlFragment(null, "" +
                 "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"cencoos_humboldt\">\n" +
-                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
                 "    <stationId>20363</stationId>\n" +
                 "</dataset>"
         );
@@ -767,7 +767,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         // Test station with a cell method
         edd = EDD.oneFromXmlFragment(null, "" +
                 "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"edu_dri_raws_cacana\">\n" +
-                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
                 "    <stationId>16175</stationId>\n" +
                 "</dataset>"
         );
@@ -780,7 +780,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         // Test station with a 'depth' variable
         EDD.oneFromXmlFragment(null, "" +
                 "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"cencoos_tiburon\">\n" +
-                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
                 "    <stationId>20358</stationId>\n" +
                 "</dataset>"
         );
@@ -788,7 +788,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         // Test station with unmapped parameters -> units
         EDD.oneFromXmlFragment(null, "" +
                 "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"edu_ucdavis_bml_fpt_wts_latest\">\n" +
-                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
                 "    <stationId>19947</stationId>\n" +
                 "</dataset>"
         );
