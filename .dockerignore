@@ -1,8 +1,13 @@
 .git/
 .idea/
 .settings/
+.gitignore
 target/
 
 .classpath
 .project
+erddap.iml
+README.md
+Dockerfile
+.gitlab-ci.yml
 move_changed.py

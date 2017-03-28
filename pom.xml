@@ -5,7 +5,7 @@
 
 	<groupId>axiomalaska</groupId>
 	<artifactId>erddap</artifactId>
-	<version>1.74-axiom-r2</version>
+	<version>1.74-axiom-r3</version>
 	<packaging>war</packaging>
 
 	<name>erddap</name>
@@ -51,8 +51,9 @@
 		</resources>
 		<plugins>
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.1</version>
+				<version>3.6.1</version>
 				<configuration>
 					<failOnError>false</failOnError>
 					<source>1.8</source>
@@ -80,7 +81,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-war-plugin</artifactId>
-				<version>2.4</version>
+				<version>3.0.0</version>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.tomcat.maven</groupId>
@@ -255,7 +256,7 @@
 		<dependency>
 			<groupId>edu.ucar</groupId>
 			<artifactId>netcdfAll</artifactId>
-			<version>4.6.5</version>
+			<version>4.6.8</version>
 		</dependency>
 		<dependency>
 			<groupId>javax.servlet</groupId>

@@ -50,8 +50,8 @@ You MUST CHANGE these to the appropriate browser administrator for your site.
 Whether or not you set up the email system, all potential email messages
 are logged to an emailLogYEAR-MONTH.txt file in the bigParentDirectory.
 -->
-<emailEverythingTo>notme@example.com</emailEverythingTo>
-<emailDailyReportsTo>notme@example.com</emailDailyReportsTo>
+<emailEverythingTo>nobody@example.com</emailEverythingTo>
+<emailDailyReportsTo>nobody@example.com</emailDailyReportsTo>
 
 <!-- This lets you specify a regular expression which determines which datasetIDs
 in the datasets.xml file should be loaded.
@@ -168,7 +168,7 @@ and you are using anti-virus software (e.g., McAfee) make sure McAfee
 Anti Virus Standard Protections :
 Prevent mass mailing worms from sending mail" is un-checked.
 -->
-<emailFromAddress>notme@example.com</emailFromAddress>
+<emailFromAddress>nothing@example.com</emailFromAddress>
 <emailUserName></emailUserName>
 <emailPassword></emailPassword>
 <emailProperties></emailProperties>

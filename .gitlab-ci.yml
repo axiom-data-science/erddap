@@ -6,14 +6,14 @@ stages:
 build_image:
   stage: build
   script:
-    - docker build -t erddap-axiom .
+    - docker build -t erddap-axiom:$CI_BUILD_REF_NAME .
 
 push_master:
   stage: push
   only:
     - master
   script:
-    - docker tag erddap-axiom registry.axiom/erddap-axiom:latest
+    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:latest
     - docker push registry.axiom/erddap-axiom:latest
 
 push_tag:
@@ -21,7 +21,7 @@ push_tag:
   only:
     - tags
   script:
-    - docker tag erddap-axiom registry.axiom/erddap-axiom:$CI_BUILD_TAG
+    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:$CI_BUILD_TAG
     - docker push registry.axiom/erddap-axiom:$CI_BUILD_TAG
-    - docker tag erddap-axiom registry.axiom/erddap-axiom:prod
+    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:prod
     - docker push registry.axiom/erddap-axiom:prod
