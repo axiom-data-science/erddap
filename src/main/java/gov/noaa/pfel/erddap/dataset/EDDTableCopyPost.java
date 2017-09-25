@@ -22,11 +22,11 @@ import gov.noaa.pfel.coastwatch.util.RegexFilenameFilter;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.coastwatch.util.SSR;
 
+import gov.noaa.pfel.erddap.Erddap;
 import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.util.TaskThread;
 import gov.noaa.pfel.erddap.variable.*;
-import gov.noaa.pfel.erddap.Erddap;
-
+import ucar.nc2.NetcdfFileWriter;
 
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -72,9 +72,9 @@ public class EDDTableCopyPost extends EDDTableCopy {
         boolean checkSourceData = defaultCheckSourceData;
         boolean tSourceNeedsExpandedFP_EQ = true;
         boolean tFileTableInMemory = false;
+        boolean tAccessibleViaFiles = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
-        boolean tAccessibleViaFiles = false;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -117,9 +117,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             else if (localTags.equals( "<defaultDataQuery>")) {}
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
-            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content;
-            else if (localTags.equals( "<accessibleViaFiles>")) {}
-            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content);
+            else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
             else if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
@@ -158,7 +156,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
-            tSourceEdd, tFileTableInMemory, tAccessibleViaFiles);
+            tAccessibleViaFiles, tSourceEdd, tFileTableInMemory);
     }
 
     /**
@@ -173,8 +171,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         int tReloadEveryNMinutes,
         String tExtractDestinationNames, String tOrderExtractBy, 
-        Boolean tSourceNeedsExpandedFP_EQ,
-        EDDTable tSourceEdd, boolean tFileTableInMemory, boolean tAccessibleViaFiles) throws Throwable {
+        Boolean tSourceNeedsExpandedFP_EQ, Boolean tAccessibleViaFiles,
+        EDDTable tSourceEdd, boolean tFileTableInMemory) throws Throwable {
 
         super(tDatasetID, tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
@@ -218,7 +216,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
             tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ,
             tFileTableInMemory, 
-            false, tRemoveMVRows); //accessibleViaFiles is always false. parent may or may not be.
+            false, //accessibleViaFiles is always false. parent may or may not be.
+            tRemoveMVRows);
     }
 
     /**
@@ -984,7 +983,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             "(View this in a wide window so the lines don't wrap around.)\n\n");
         fastSwimmerResults.sort(new int[]{resultsPiPaI, resultsTagPaI, resultsErrorPaI}, 
                             new boolean[]{true, true, true});
-        resultsSB.append(fastSwimmerResults.dataToCSVString());
+        resultsSB.append(fastSwimmerResults.dataToString());
         resultsSB.append("\n");
 
         //long   (This was Issue #9 and Issue #10. Now just Of Interest.)
@@ -1009,7 +1008,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             "View this in a wide window so the lines don't wrap around.\n\n");
         longResults.sort(new int[]{resultsPiPaI, resultsTagPaI, resultsErrorPaI}, 
                      new boolean[]{true, true, true});
-        resultsSB.append(longResults.dataToCSVString());
+        resultsSB.append(longResults.dataToString());
         resultsSB.append("\n");
 
         String2.log(resultsSB.toString());
@@ -1262,7 +1261,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             "    the surgery_timestamp = " + nBefore + "\n\n");
         resultsTable.sort(new int[]{resultsPiPaI, resultsTagPaI, resultsErrorPaI}, 
                           new boolean[]{true, true, true});
-        resultsSB.append(resultsTable.dataToCSVString());
+        resultsSB.append(resultsTable.dataToString());
         resultsSB.append("\n\n");
 
         String2.log(resultsSB.toString());
@@ -1347,7 +1346,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         int resultsErrorPaI = resultsTable.addColumn("error",                           resultsErrorPa);
 
         //find activation_time is after surgery_time
-        TableWriterAll twa = new TableWriterAll(tedd, null,
+        TableWriterAll twa = new TableWriterAll(tedd, null, 
             "c:/u00/cwatch/erddap2/cache/cPostSurg3/", "findSurgeryBeforeActivation");
         tedd.getDataForDapQuery(loggedInAs, "requestUrl", 
             "unique_tag_id,activation_time,surgery_time,PI", twa);
@@ -1400,7 +1399,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             "\n\n");
         resultsTable.sort(new int[]{resultsPiPaI, resultsTagPaI, resultsErrorPaI}, 
                           new boolean[]{true, true, true});
-        resultsSB.append(resultsTable.dataToCSVString());
+        resultsSB.append(resultsTable.dataToString());
         resultsSB.append("\n");
 
         String2.log(resultsSB.toString());
@@ -1424,7 +1423,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "cPostSurg3"); 
             TableWriterAllWithMetadata twa = new TableWriterAllWithMetadata(tedd, null, dir, name);
             tedd.getDataForDapQuery(loggedInAs, "", "unique_tag_id", twa);
-            tedd.saveAsFlatNc(dir + name, twa); //internally, it writes to temp file, then rename to cacheFullName
+            tedd.saveAsFlatNc(NetcdfFileWriter.Version.netcdf3, dir + name, twa); //internally, it writes to temp file, then rename to cacheFullName
         }
 
         //read from file
@@ -1446,13 +1445,13 @@ public class EDDTableCopyPost extends EDDTableCopy {
         Table surg3Table = surg3.getTwawmForDapQuery(EDStatic.loggedInAsSuperuser, "", 
             "role&unique_tag_id=%22" + SSR.minimalPercentEncode(unique_tag_id) + 
             "%22&distinct()").cumulativeTable(); 
-        String2.log(surg3Table.dataToCSVString(1000000));
+        String2.log(surg3Table.dataToString(1000000));
 
         EDDTable det3 = (EDDTable)oneFromDatasetsXml(null, "testPostDet3"); 
         Table det3Table = det3.getTwawmForDapQuery(EDStatic.loggedInAsSuperuser, "",
             "role&unique_tag_id=%22" + SSR.minimalPercentEncode(unique_tag_id) + 
             "%22&distinct()").cumulativeTable(); 
-        String2.log(det3Table.dataToCSVString(1000000));
+        String2.log(det3Table.dataToString(1000000));
 
     }
 
@@ -1902,7 +1901,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             "Here are the tags that have problems:\n\n");
         resultsTable.sort(new int[]{resultsPiPaI, resultsTagPaI, resultsErrorPaI}, 
                           new boolean[]{true, true, true});
-        resultsSB.append(resultsTable.dataToCSVString());
+        resultsSB.append(resultsTable.dataToString());
         resultsSB.append("\n");
         //String2.log("\n\nTags where surgery release_time is BEFORE first detection time:\n");
         //String2.log(String2.noLongLinesAtSpace(beforeTags, 75, "").toString());

@@ -37,18 +37,13 @@ import java.util.HashSet;
  * <p>A log file will be created with the name of the xml file + ".log".
  *
  * <p>For Opendap, this program uses Java DAP 1.1.7.
- * See http://www.opendap.org/download/index.html for more information.
+ * See https://www.opendap.org/download/index.html for more information.
  * The .java and .class files for this are in the classes/dods directory.
  * 
  * <p>For reading/writing .nc files, 
- * get netcdf-X.X.XX.jar from 
- * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
+ * get netcdfAll-......jar from ftp://ftp.unidata.ucar.edu/pub
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
- * Get slf4j-jdk14.jar from 
- * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
- * and copy it to <context>/WEB-INF/lib.
- * 2013-02-21 new netcdfAll uses Java logging, not slf4j.
- * Put both of these .jar files in the classpath for the compiler and for Java.
+ * Put it in the classpath for the compiler and for Java.
  *  
  * <p>To send emails, this program uses the JavaMail API 
  * and the JavaBeans Activation Framework extension or JAF (javax.activation).
@@ -135,7 +130,7 @@ public class NetCheck  {
         String2.setupLog(true, false, xmlFileName + ".log", 
             true, String2.logFileDefaultMaxSize); //append
         String2.log("*** Starting NetCheck " + 
-            Calendar2.getCurrentISODateTimeStringLocal() + "\n" +
+            Calendar2.getCurrentISODateTimeStringLocalTZ() + "\n" +
             "logFile=" + String2.logFileName() + "\n" +
             String2.standardHelpAboutMessage()); 
         HttpTest.verbose = verbose;
@@ -347,7 +342,7 @@ public class NetCheck  {
                 //do a test in a separate thread
                 NetCheckTest netCheckTest = (NetCheckTest)netCheckTests.get(i);
                 if (verbose) String2.log("\n" + netCheckTest.getTitle() + "    "  + 
-                    Calendar2.getCurrentISODateTimeStringLocal());
+                    Calendar2.getCurrentISODateTimeStringLocalTZ());
                 if (netCheckTest instanceof PauseTest) {
                     netCheckTest.test();
                     continue;
@@ -365,7 +360,7 @@ public class NetCheck  {
                 boolean wasStopped = false;
                 if (testThread.isAlive()) {
                     //if (verbose) String2.log("joinMillis=" + joinMillis + " trying to stop thread at " + 
-                    //    Calendar2.getCurrentISODateTimeStringLocal());
+                    //    Calendar2.getCurrentISODateTimeStringLocalTZ());
                     wasStopped = true;
                     testThread.interrupt();
                     testThread.join(5000); //wait 5 seconds more
@@ -460,7 +455,7 @@ public class NetCheck  {
 
             //send the emails
             String footer = "\nEnd of report (" + 
-                Calendar2.getCurrentISODateTimeStringLocal() + 
+                Calendar2.getCurrentISODateTimeStringLocalTZ() + 
                 ").\n";
             String2.log(footer);
             for (int i = 0; i < emailRecipients.size(); i++) {

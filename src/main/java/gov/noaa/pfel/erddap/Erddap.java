@@ -142,9 +142,18 @@ public class Erddap extends HttpServlet {
      */
     public static String plainFileTypes[] = {
         //no need for .csvp or .tsvp, because plainFileTypes never write units
-        ".csv", ".htmlTable", ".itx", ".json", ".mat", ".nc", ".tsv", ".xhtml"};
+        ".csv", ".htmlTable", ".itx", ".json", ".jsonlCSV", ".jsonlKVP", 
+        ".mat", ".nc", ".nccsv", ".tsv", ".xhtml"};
     public static String plainFileTypesString = String2.toCSSVString(plainFileTypes);
 
+    //version when new file types added
+    public final static String FILE_TYPES_124[] = 
+        //for old remote erddaps, make .png locally so pngInfo is available
+        {".csvp", ".tsvp", "odvTxt", ".png"};
+    public final static String FILE_TYPES_148[] = 
+        {".csv0", ".tsv0"};
+    public final static String FILE_TYPES_176[] = 
+        {".jsonlCSV", ".jsonlKVP", ".nccsv", ".nccsvMetadata"};
 
     // ************** END OF STATIC VARIABLES *****************************
 
@@ -235,6 +244,7 @@ public class Erddap extends HttpServlet {
         File2.deleteAllFiles(EDStatic.fullCacheDirectory,  true, false);  //in EDStatic, was true, true, but then subdirs created
         //delete cache subdirs other than starting with "_" (i.e., the dataset dirs, not _test)
         String tFD[] = (new File(EDStatic.fullCacheDirectory)).list();
+        StringBuilder rdErrors = new StringBuilder();
         for (int i = 0; i < tFD.length; i++) {
             String fd = tFD[i];
             if (fd != null && fd.length() > 0 && !fd.startsWith("_") && 
@@ -242,10 +252,14 @@ public class Erddap extends HttpServlet {
                 try {
                     RegexFilenameFilter.recursiveDelete(EDStatic.fullCacheDirectory + fd);
                 } catch (Throwable t) {
-                    String2.log("WARNING: " + MustBe.throwableToString(t));
+                    rdErrors.append("ERROR in recursiveDelete(" + EDStatic.fullCacheDirectory + fd + "):\n" + 
+                        MustBe.throwableToString(t));
                 }
             }
         }
+        if (rdErrors.length() > 0) 
+            EDStatic.email(EDStatic.emailEverythingToCsv, 
+                "Unable to completely clean " + EDStatic.fullCacheDirectory, rdErrors.toString());
 
         //copy (not rename!) subscriptionsV1.txt to preserve it 
         try {
@@ -457,7 +471,7 @@ public class Erddap extends HttpServlet {
             if (userQuery == null)
                 userQuery = "";
             String2.log("{{{{#" + requestNumber + " " +
-                Calendar2.getCurrentISODateTimeStringLocal() + " " + 
+                Calendar2.getCurrentISODateTimeStringLocalTZ() + " " + 
                 (loggedInAs == null? "(notLoggedIn)" : loggedInAs) + " " +
                 ipAddress + " " +
                 requestUrl + 
@@ -887,7 +901,7 @@ public class Erddap extends HttpServlet {
                     "<br><a rel=\"bookmark\" " + 
                     "href=\"" + tErddapUrl + "/" + EDStatic.fgdcXmlDirectory + 
                     "\">FGDC&nbsp;Web&nbsp;Accessible&nbsp;Folder&nbsp;(WAF)</a>\n" +
-                    "with <a rel=\"help\" href=\"http://www.fgdc.gov/standards/projects/FGDC-standards-projects/metadata/base-metadata/index_html\"\n" +
+                    "with <a rel=\"help\" href=\"https://www.fgdc.gov/standards/projects/FGDC-standards-projects/metadata/base-metadata/index_html\"\n" +
                     ">FGDC&#8209;STD&#8209;001&#8209;1998" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>";
                 String isoLink  =
@@ -1499,7 +1513,11 @@ public class Erddap extends HttpServlet {
                         "onclick='window.location.assign(\"" + 
                         loginUrl + "\")'") + //don't say succeeded. It only succeeds if user successfully signed into Google.
                     "</ol>\n" +
-                    tProblems);               
+                    tProblems + "\n" +
+                    "<p><b><a name=\"scripts\">Accessing Private Datasets via Scripts</a></b>\n" +
+                    "<p>For instructions on logging into ERDDAP and accessing private datasets via scripts, see\n" +
+                    "<br><a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/download/AccessToPrivateDatasets.html\">Access to Private Datasets in ERDDAP</a>.\n" +
+                    "\n");
 
                 } else {
                     //tell user he is logged in
@@ -1941,8 +1959,8 @@ writer.write(
             tEmailAddress = HtmlWidgets.validateIsSomethingNotTooLong(
                 "Email Address", "", tEmailAddress, 50, errorMsgSB);
             tTimestamp    = HtmlWidgets.validateIsSomethingNotTooLong(
-                "Timestamp", Calendar2.getCurrentISODateTimeStringLocal(), 
-                tTimestamp, 20, errorMsgSB);
+                "Timestamp", Calendar2.getCurrentISODateTimeStringLocalTZ(), 
+                tTimestamp, 26, errorMsgSB);
             if (griddedOption == 0 && tabularOption == 0) 
                 errorMsgSB.append( 
                 "<br>&bull; Error: Please specify (below) how your gridded or tabular data is stored.\n");
@@ -2068,16 +2086,22 @@ widgets.select("griddedOption", "", 1, griddedOptions, griddedOption, "") +
 "table, where there is a column for each type of data and a row for each observation.\n" +
 "This includes:\n" +
 "<ul>\n" +
-"<li>All data that is currently stored in a database.\n" +
-"  <br>(See <a rel=\"help\" href=\"#databases\">Data in Databases</a>\n" +
-"  below for more information.)\n" +
+"<li><a name=\"databases\">Data</a> that is currently stored in a relational database.\n" +
+"  <br>Please read the information about the\n" +
+"  <a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#EDDTableFromDatabase\">EDDTableFromDatabase</a>\n" +
+"  dataset type in ERDDAP, especially the initial ~2 screens of information which\n" +
+"  talk about the need to create a denormalized table. That may sound crazy. Please\n" +
+"  trust enough to read the rationale for this.\n" +
+"  <br>&nbsp;\n" +
 "<li>All <i>in situ</i> data.\n" +
 "  <br>Examples: a time series from an instrument or several similar instruments,\n" +
 "  profile data from a CTD or a group of CTD's,\n" +
 "  or data collected during a ship's cruise (the similar cuises over several years).\n" +
-"<li>Non-geospatial data that can be represented as a table of data,\n" +
+"  <br>&nbsp;\n" +
+"<li>Non-geospatial data that can be represented as a table of data.\n" +
 "  <br>Examples: data from a laboratory experiment, genetic sequence data,\n" +
 "  <br>or a list of bibliographic references.\n" +
+"  <br>&nbsp;\n" +
 "<li>Collections of other types of files (for example, image or audio files).\n" +
 "  <br>ERDDAP can present the file names in a table and let users\n" +
 "  view or download the files.\n" +
@@ -2106,121 +2130,6 @@ writer.write(
 "Click\n" + 
 widgets.button("submit", "Submit", "", "Submit", "") +
 "to send this information to the ERDDAP administrator and move on to part 2 (of 4).\n" +
-"\n");
-
-//Data in Databases
-writer.write(
-"<br>&nbsp;" +
-"<hr>\n" + 
-"<h2><a name=\"databases\"><font size=\"3\">Additional information about<br></font>Data in Databases</a></h2>\n" +
-"If your data is in a database,\n" +
-"you need to make one,\n" +
-"  <a rel=\"help\" href=\"https://en.wikipedia.org/wiki/Denormalization\">denormalized<img\n" + 
-"    src=\"images/external.png\" align=\"bottom\" alt=\" (external link)\" \n" +
-"    title=\"This link to an external web site does not constitute an endorsement.\"/></a>\n" +
-"table or\n" +
-"  <a rel=\"help\" href=\"https://en.wikipedia.org/wiki/View_(SQL)\">view<img\n" + 
-"    src=\"images/external.png\" align=\"bottom\" alt=\" (external link)\" \n" +
-"    title=\"This link to an external web site does not constitute an endorsement.\"/></a>\n" +
-"with all of the data that you want to make available as one dataset in ERDDAP.\n" +
-"For large, complex databases, it may make sense to separate out several chunks\n" +
-"as denormalized tables,\n" +
-"each with a different type of data, which will become separate datasets in ERDDAP.\n" +
-"Talk this over with the administrator of this ERDDAP (<tt>" +
-    XML.encodeAsHTML(SSR.getSafeEmailAddress(EDStatic.adminEmail)) + "</tt>).\n" +
-"\n" +
-"<p>Making a denormalized table may sound like a crazy idea to you.\n" +
-"Please trust us. The denormalized table solves several problems:\n" +
-"<ul>\n" +
-"<li>It's vastly easier for users.\n" +
-"  <br>When ERDDAP presents the dataset as one, simple, denormalized table,\n" +
-"  it is very easy for anyone to understand the data. Most users have never\n" +
-"  heard of normalized tables, and very few understand\n" +
-"  keys, foreign keys, or table joins,\n" +
-"  and they almost certainly don't know the details of the different types of joins,\n" +
-"  or how to specify the SQL to do a join (or multiple joins). Using a denormalized\n" +
-"  table avoids all those problems.  This reason alone justifies the use of a\n" +
-"  denormalized table for the presentation of the data to ERDDAP users.\n" +
-"  <br>&nbsp;\n" +
-"<li>You can make changes for ERDDAP without changing your tables.\n" +
-"  <br>ERDDAP has a few requirements that may be different from how you have set\n" +
-"  up your database.\n" +
-"  <br>For example, ERDDAP requires that timestamp data be stored in 'timestamp\n" +
-"  with timezone' fields.\n" +
-"  <br>By making a separate table/view for ERDDAP, you can make these changes\n" +
-"  when you make the denormalized table for ERDDAP.\n" +
-"  Thus, you don't have to make any changes to your tables.\n" +
-"  <br>&nbsp;\n" +
-"<li>ERDDAP will recreate some of the structure of the normalized tables.\n" +
-"  <br>You can specify which columns of data come from the 'outer' tables and therefore\n" +
-"  have a limited number of distinct values.  ERDDAP will collect all of the\n" +
-"  distinct values in each of these columns\n" +
-"  and present them to users in drop-down lists.\n" +
-"  <br>&nbsp;\n" +
-"<li>A denormalized table makes the data hand-off from you to the ERDDAP\n" +
-"  administrator easy.\n" +
-"  <br>You're the expert for this dataset,\n" +
-"  so it makes sense that you make the decisions\n" +
-"  about which tables and which columns to join and how to join them.\n" +
-"  So you don't have to hand us several tables and detailed instructions for\n" +
-"  several joins, you just have to give us access to the denormalized table.\n" +
-"  <br>&nbsp;\n" +
-"<li>A denormalized table allows for efficient access to the data.\n" +
-"  <br>The denormalized form is usually faster to access than the normalized form.\n" +
-"  Joins can be slow. Multiple joins can be very slow.\n" +
-"</ul>\n" +
-"In order to get the data from the database into ERDDAP, there are three options:\n" +
-"<ul>\n" +
-"<li>Recommended Option:\n" +
-"  <br>You can create a comma- or tab-separated-value file with\n" +
-"  the data from the denormalized table.\n" +
-"  <br>If the dataset is huge, then it makes sense to create several files,\n" +
-"  each with a cohesive subset of the denormalized table\n" +
-"  (for example, data from a smaller time range).\n" +
-"  <p>The big advantage here is that ERDDAP will be able to handle user requests\n" +
-"  for data without any further effort by your database.\n" +
-"  So ERDDAP won't be a burden on your database or a security risk.\n" +
-"  This is the best option under almost all circumstances because ERDDAP can usually\n" +
-"  get data from files faster than from a database\n" +
-"  (if we convert the .csv files to .ncCF files). (Part of the reason is that\n" +
-"  ERDDAP+files is a read-only system and doesn't have to deal with making changes\n" +
-"  while providing\n" +
-"  <a rel=\"help\" href=\"https://en.wikipedia.org/wiki/ACID\">ACID<img\n" + 
-"    src=\"images/external.png\" align=\"bottom\" alt=\" (external link)\" \n" +
-"    title=\"This link to an external web site does not constitute an endorsement.\"/></a>\n" +
-"  (Atomicity, Consistency, Isolation, Durability).)\n" +
-"  Also, you probably won't need a separate server since we can store the data\n" +
-"  on one of our RAIDs and access it with an existing ERDDAP on an existing server.\n" +
-"<li>Okay Option:\n" +
-"  <br>You set up a new database on a different computer with just the\n" +
-"  denormalized table.\n" +
-"  <br>Since that database can be a free and open source database like PostgreSQL,\n" +
-"  this option needn't cost a lot.\n" +
-"  <p>The big advantage here are that ERDDAP will be able to handle user requests\n" +
-"  for data without any further effort by your current database.\n" +
-"  So ERDDAP won't be a burden on your current database.\n" +
-"  This also eliminates a lot of security concerns since ERDDAP will not have\n" +
-"  access to your current database.\n" +
-"<li>Discouraged Option:\n" +
-"  <br>We can connect ERDDAP to your current database.\n" +
-"  <br>To do this, you need to:\n" +
-"  <ul>\n" +
-"  <li>Create a separate table or view with the denormalized table of data.\n" +
-"  <li>Create an \"erddap\" user who has read-only access to only the denormalized table(s).\n" +
-"    <br>&nbsp;\n" +
-"  </ul>\n" +
-"  This is an option if the data changes very frequently and you want to give\n" +
-"  ERDDAP users instant access to those changes; however, even so,\n" +
-"  it may make sense to use the file option above and periodically\n" +
-"  (every 30 minutes?) replace the file that has today's data.\n" +
-"  <br>The huge disadvantages of this approach are that ERDDAP user requests will\n" +
-"  probably place an unbearably large burden on your database and that\n" +
-"  the ERDDAP connection is a security risk (although we can minimize/manage the risk).\n" +
-"</ul>\n" +
-"When you talk with the administrator of this ERDDAP (<tt>" +
-    XML.encodeAsHTML(SSR.getSafeEmailAddress(EDStatic.adminEmail)) + "</tt>),\n" +
-"you can discuss which of these options\n" +
-"to pursue and how to handle the details.\n" +
 "\n");
 
 //the end of the overall table that constrains the width of the text
@@ -2327,8 +2236,8 @@ writer.write(widgets.endForm());
             tEmailAddress = HtmlWidgets.validateIsSomethingNotTooLong(
                 "Email Address", "?", tEmailAddress, 50, null);
             tTimestamp    = HtmlWidgets.validateIsSomethingNotTooLong(
-                "Timestamp", Calendar2.getCurrentISODateTimeStringLocal() + "?", 
-                tTimestamp, 20, null);
+                "Timestamp", Calendar2.getCurrentISODateTimeStringLocalTZ() + "?", 
+                tTimestamp, 26, null);
 
             //required
             tTitle          = HtmlWidgets.validateIsSomethingNotTooLong("title",         "", tTitle,             80, errorMsgSB);
@@ -2360,6 +2269,13 @@ writer.write(widgets.endForm());
             boolean isSubmission = "Submit".equals(request.getParameter("Submit"));
             if (isSubmission && errorMsgSB.length() == 0) {
                 //convert the info into psuedo datasets.xml
+                String tcdmType = cdmDataTypes[tCdmDataType]; //Grid, Point, Profile, TimeSeries, TimeSeriesProfile, Trajectory, TrajectoryProfile, Other
+                HashSet<String> keywordHS = new HashSet();
+                EDD.chopUpAndAdd(String2.replaceAll(tInstitution, '/', ' '), keywordHS);
+                EDD.chopUpAndAdd(String2.replaceAll(tTitle,       '/', ' '), keywordHS);
+                EDD.cleanSuggestedKeywords(keywordHS);
+                StringArray tKeywords = new StringArray(keywordHS.iterator()); 
+                tKeywords.sortIgnoreCase();
                 String content = 
 "Data Provider Form - Part 2\n" + //important! Bob's erd.data gmail filter looks for this
 "  from " + fromInfo + "\n" +
@@ -2367,8 +2283,13 @@ writer.write(widgets.endForm());
 "\n" +
 "    <addAttributes>\n" +
 "        <att name=\"acknowledgement\">" + XML.encodeAsXML(tAcknowledgement)           + "</att>\n" +
-"        <att name=\"cdm_data_type\">"   + XML.encodeAsXML(cdmDataTypes[tCdmDataType]) + "</att>\n" +
-"        <att name=\"cdm_timeseries|trajectory|profile_variables\">???</att>\n" +
+"        <att name=\"cdm_data_type\">"   + XML.encodeAsXML(tcdmType) + "</att>\n" +
+(tcdmType.indexOf("TimeSeries") >= 0? 
+"        <att name=\"cdm_timeseries_variables\">???</att>\n" : "") +
+(tcdmType.indexOf("Trajectory") >= 0? 
+"        <att name=\"cdm_trajectory_variables\">???</att>\n" : "") +
+(tcdmType.indexOf("Profile") >= 0? 
+"        <att name=\"cdm_profile_variables\">???</att>\n" : "") +
 "        <att name=\"subsetVariables\">???</att>\n" +
 "        <att name=\"comment\">"         + XML.encodeAsXML(tComment)                   + "</att>\n" +
 "        <att name=\"Conventions\">ACDD-1.3, COARDS, CF-1.6</att>\n" +
@@ -2380,7 +2301,7 @@ writer.write(widgets.endForm());
 "        <att name=\"id\">"              + XML.encodeAsXML(tID)                        + "</att>\n" +
 "        <att name=\"infoUrl\">"         + XML.encodeAsXML(tInfoUrl)                   + "</att>\n" +
 "        <att name=\"institution\">"     + XML.encodeAsXML(tInstitution)               + "</att>\n" +
-"        <!-- att name=\"keywords\"></att -->\n" +
+"        <att name=\"keywords\">"        + XML.encodeAsXML(tKeywords.toString())       + "</att>\n" +
 "        <att name=\"license\">"         + XML.encodeAsXML(tLicense)                   + "</att>\n" +
 "        <att name=\"naming_authority\">"+ XML.encodeAsXML(tNamingAuthority)           + "</att>\n" +
 "        <att name=\"product_version\">" + XML.encodeAsXML(tProductVersion)            + "</att>\n" +
@@ -2581,7 +2502,7 @@ XML.encodeAsHTML(tAcknowledgement) +  //encoding is important for security
 "  <td>&nbsp;" + EDStatic.htmlTooltipImage(tLoggedInAs, 
     "Optional: This is a list of the actions (one per line) which led to the creation of this data." +
     "<br>Ideally, each line includes a timestamp and a description of the action. (&lt;=500 characters) For example," + 
-    "<br><tt>Datafiles are downloaded ASAP from http://oceandata.sci.gsfc.nasa.gov/MODISA/L3SMI/ to NOAA NMFS SWFSC ERD." +
+    "<br><tt>Datafiles are downloaded ASAP from https://oceandata.sci.gsfc.nasa.gov/MODISA/L3SMI/ to NOAA NMFS SWFSC ERD." +
     "<br>NOAA NMFS SWFSC ERD (erd.data@noaa.gov) uses NCML to add the time dimension and slightly modify the metadata.</tt>") + "&nbsp;\n" +
 "  <td><textarea name=\"history\" cols=\"80\" rows=\"6\" maxlength=\"500\" wrap=\"soft\" >" +
 XML.encodeAsHTML(tHistory) +  //encoding is important for security
@@ -2789,8 +2710,8 @@ writer.write(widgets.endForm());
             tEmailAddress = HtmlWidgets.validateIsSomethingNotTooLong(
                 "Email Address", "?", tEmailAddress, 50, null);
             tTimestamp    = HtmlWidgets.validateIsSomethingNotTooLong(
-                "Timestamp", Calendar2.getCurrentISODateTimeStringLocal() + "?", 
-                tTimestamp, 20, null);
+                "Timestamp", Calendar2.getCurrentISODateTimeStringLocalTZ() + "?", 
+                tTimestamp, 26, null);
 
             for (int var = 1; var <= nVars; var++) {     
                 tSourceName[var] = var == 1?
@@ -3130,8 +3051,8 @@ writer.write(widgets.endForm());
             tEmailAddress = HtmlWidgets.validateIsSomethingNotTooLong(
                 "Email Address", "?", tEmailAddress, 50, null);
             tTimestamp    = HtmlWidgets.validateIsSomethingNotTooLong(
-                "Timestamp", Calendar2.getCurrentISODateTimeStringLocal() + "?", 
-                tTimestamp, 20, null);
+                "Timestamp", Calendar2.getCurrentISODateTimeStringLocalTZ() + "?", 
+                tTimestamp, 26, null);
             tOtherComments = HtmlWidgets.validateNotNullNotTooLong(
                 "Other Comments", "", tOtherComments, 500, errorMsgSB);
             if (errorMsgSB.length() > 0)
@@ -3275,8 +3196,8 @@ writer.write(widgets.endForm());
             tEmailAddress = HtmlWidgets.validateIsSomethingNotTooLong(
                 "Email Address", "?", tEmailAddress, 50, null);
             tTimestamp    = HtmlWidgets.validateIsSomethingNotTooLong(
-                "Timestamp", Calendar2.getCurrentISODateTimeStringLocal() + "?", 
-                tTimestamp, 20, null);
+                "Timestamp", Calendar2.getCurrentISODateTimeStringLocalTZ() + "?", 
+                tTimestamp, 26, null);
 
             //write the HTML
             out = getHtmlOutputStream(request, response);
@@ -3400,7 +3321,7 @@ writer.write(
                 "  (in this case, to get data, graphs, and information about datasets).\n" +
                 "</ul>\n" +
                 "For every ERDDAP web page with a form that you as a human with a browser can use, there is a\n" +
-                "<br>corresponding ERDDAP web service that is designed to be easy for computer programs to use.\n" +
+                "<br>corresponding ERDDAP web service that is designed to be easy for computer programs and scripts to use.\n" +
                 "For example, humans can use this URL to do a Full Text Search for interesting datasets:\n" +
                 "<br><a href=\"" + htmlQueryUrl + "\">" + htmlQueryUrl + "</a>\n" +
                 "<br>By changing the file extension in the URL from .html to .json:\n" +
@@ -3410,7 +3331,7 @@ writer.write(
                 "<a rel=\"help\" href=\"http://www.json.org/\">JSON" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>.\n" +
                 "\n" +
-                "<p><b>Build Things on Top of ERDDAP</b>\n" +
+                "<p><b><a name=\"BuildThings\">Build Things</a> on Top of ERDDAP</b>\n" +
                 "<br>There are many features in ERDDAP that can be used by computer programs or scripts\n" +
                 "that you write. You can use them to build other web applications or web services on\n" +
                 "top of ERDDAP, making ERDDAP do most of the work!\n" +
@@ -3420,7 +3341,7 @@ writer.write(
                 "Your system can get data, graphs, and other information from ERD's ERDDAP or from\n" +
                 "other ERDDAP installations, or you can \n" +
                 //setup always from coastwatch's erddap 
-                "  <a rel=\"help\" href=\"http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html\">set up your own ERDDAP server</a>,\n" + 
+                "  <a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html\">set up your own ERDDAP server</a>,\n" + 
                 "  which can be\n" +
                 "publicly accessible or just privately accessible.\n" +
                 "\n" +
@@ -3500,7 +3421,7 @@ writer.write(
                     "(<a rel=\"help\" href=\"https://en.wikipedia.org/wiki/Comma-separated_values\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "<li>.htmlTable - an .html web page with the data in a table.\n" +
-                    "(<a rel=\"help\" href=\"http://www.w3schools.com/html/html_tables.asp\">more&nbsp;info" +
+                    "(<a rel=\"help\" href=\"https://www.w3schools.com/html/html_tables.asp\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "<li>.itx - an Igor Text File with a wave for each column of data.\n" +
                     "(<a rel=\"help\" href=\"http://www.wavemetrics.net/doc/igorman/II-09%20Data%20Import%20Export.pdf\">more&nbsp;info" +
@@ -3509,20 +3430,29 @@ writer.write(
                     "(<a rel=\"help\" href=\"http://www.json.org/\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a> or\n" +
                     "<a rel=\"help\" href=\"" + tErddapUrl + "/tabledap/documentation.html#json\">ERDDAP-specific info</a>)\n" +
+                "<li>.jsonlCSV - a \"Better than CSV\" JSON Lines file.\n" +
+                    "(<a rel=\"help\" href=\"http://jsonlines.org/\">more&nbsp;info" +
+                    EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
+                "<li>.jsonlKVP - a JSON Lines file with Key:Value pairs.\n" +
+                    "(<a rel=\"help\" href=\"http://jsonlines.org/\">more&nbsp;info" +
+                    EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "<li>.mat - a MATLAB binary file.\n" +
-                    "(<a rel=\"help\" href=\"http://www.mathworks.com/\">more&nbsp;info" +
+                    "(<a rel=\"help\" href=\"https://www.mathworks.com/\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "<li>.nc - a flat, table-like, NetCDF-3 binary file.\n" +
-                    "(<a rel=\"help\" href=\"http://www.unidata.ucar.edu/software/netcdf/\">more&nbsp;info" +
+                    "(<a rel=\"help\" href=\"https://www.unidata.ucar.edu/software/netcdf/\">more&nbsp;info" +
+                    EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
+                "<li>.nccsv - a flat, table-like, NetCDF-like, ASCII CSV file.\n" +
+                    "(<a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/downloads/NCCSV.html\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "<li>.tsv - a tab-separated ASCII text table.\n" +
                     "(<a rel=\"help\" href=\"http://www.cs.tut.fi/~jkorpela/TSV.html\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "<li>.xhtml - an XHTML (XML) file with the data in a table.\n" +
-                    "(<a rel=\"help\" href=\"http://www.w3schools.com/html/html_tables.asp\">more&nbsp;info" +
+                    "(<a rel=\"help\" href=\"https://www.w3schools.com/html/html_tables.asp\">more&nbsp;info" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>)\n" +
                 "</ul>\n" +
-                "In every results table:\n" +
+                "In every results table format (except .jsonlKVP, where column names are on every row):\n" +
                 "<ul>\n" +
                 "<li>Each column has a column name and one type of information.\n" +
                 "<li>The first row of the table has the column names.\n" +
@@ -3656,7 +3586,7 @@ writer.write(
             writer.write(
                 "  <br>&nbsp;\n" +
                 "  </ul>\n" +
-                "<li>Griddap and tabledap have many web services that you can use.\n" +
+                "<li><a name=\"GriddapAndTabledap\">Griddap and tabledap</a> have many web services that you can use.\n" +
                 "  <ul>\n" +
                 "  <li>The Data Access Forms are just simple web pages to generate URLs which\n" +
                 "    request <b>data</b> (for example, satellite and buoy data).  The data can be in any of\n" +
@@ -3698,12 +3628,12 @@ writer.write(
                 "    you can use a tabledap data request to request\n" +
                 "    specific columns and rows which match the constraints, and you can\n" +
                 "    get the response in whichever reponse file type you prefer,\n" +
-                "    for example, .html, .xhtml, .csv, .json.\n" +
+                "    for example, .html, .xhtml, .csv, .json, .jsonlCSV, or .jsonlKVP.\n" +
                 "    <br>&nbsp;\n" +
                 "  </ul>\n");
             if (EDStatic.sosActive || EDStatic.wcsActive || EDStatic.wmsActive) {
                 writer.write(
-                "<li>ERDDAP's other protocols also have web services that you can use.\n" +
+                "<li><a name=\"OtherProtocols\">ERDDAP's other protocols</a> also have web services that you can use.\n" +
                 "  <br>See ERDDAP's\n" +
                 "  <ul>\n");
                 if (EDStatic.sosActive) writer.write(
@@ -3717,7 +3647,7 @@ writer.write(
                     "    </ul>\n");
             }
             writer.write(
-                "<li>ERDDAP offers \n" +
+                "<li><a name=\"subscriptions\">ERDDAP</a> offers \n" +
                 "    <a rel=\"help\" href=\"" + tErddapUrl + "/information.html#subscriptions\">RSS subscriptions</a>,\n" +
                 "    so that your computer program find out if a\n" +
                 "  dataset has changed.\n" +
@@ -3754,7 +3684,22 @@ writer.write(
                 "ERDDAP on your own server (publicly accessible or not) to serve your own data. Your Java\n" +
                 "programs can get data from that copy of ERDDAP. See\n" +
                 //setup.html always from coastwatch's erddap
-                "  <a rel=\"help\" href=\"http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html\">Set Up Your Own ERDDAP</a>.\n");
+                "  <a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html\">Set Up Your Own ERDDAP</a>.\n");
+
+            //login
+            writer.write(
+                "<h2><a name=\"login\">Log in to access private datasets.</a></h2>\n" +
+                "Many ERDDAP installations don't have authentication enabled and thus\n" +
+                "<br>don't provide any way for users to login, nor do they have any private datasets.\n" +
+                "<p>Some ERDDAP installations do have authentication enabled.\n" +
+                "<br>Currently, ERDDAP only supports authentication via Google-managed email accounts,\n" +
+                "<br>which includes email accounts at NOAA and many universities.\n" +
+                "<br>If an ERDDAP has authentication enabled, anyone with a Google-managed email account\n" +
+                "<br>can log in, but they will only have access to the private datasets\n" +
+                "<br>that the ERDDAP administrator has explicitly authorized them to access.\n" +
+                "<br>For instructions on logging into ERDDAP from a browser or via a script, see\n" +
+                "<br><a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/download/AccessToPrivateDatasets.html\">Access to Private Datasets in ERDDAP</a>.\n" +
+                "\n");
 
             //erddap version
             writer.write(
@@ -3815,8 +3760,8 @@ writer.write(
         //beginning
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, "sitemap", ".xml", ".xml");
-        OutputStream out = outSource.outputStream("UTF-8");
-        Writer writer = new OutputStreamWriter(out, "UTF-8");
+        OutputStream out = outSource.outputStream(String2.UTF_8);
+        Writer writer = new OutputStreamWriter(out, String2.UTF_8);
         writer.write(
             "<?xml version='1.0' encoding='UTF-8'?>\n" +
             //this is their simple example
@@ -4053,8 +3998,8 @@ writer.write(
                 OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                     request, response, "version", //fileName is not used
                     ".txt", ".txt");
-                OutputStream out = outSource.outputStream("ISO-8859-1");
-                Writer writer = new OutputStreamWriter(out, "ISO-8859-1");
+                OutputStream out = outSource.outputStream(String2.ISO_8859_1);
+                Writer writer = new OutputStreamWriter(out, String2.ISO_8859_1);
                 writer.write( 
                     "Core Version: "   + EDStatic.dapVersion    + OpendapHelper.EOL + //see EOL definition for comments
                     "Server Version: " + EDStatic.serverVersion + OpendapHelper.EOL +
@@ -4084,10 +4029,10 @@ writer.write(
                 OutputStreamSource outputStreamSource = 
                     new OutputStreamFromHttpResponse(request, response, 
                         "help", ".html", ".html");
-                OutputStream out = outputStreamSource.outputStream("ISO-8859-1");
+                OutputStream out = outputStreamSource.outputStream(String2.ISO_8859_1);
                 Writer writer = new OutputStreamWriter(
                     //DAP 2.0 section 3.2.3 says US-ASCII (7bit), so might as well go for compatible common 8bit
-                    out, "ISO-8859-1");
+                    out, String2.ISO_8859_1);
                 writer.write(EDStatic.startHeadHtml(tErddapUrl, protocol + " Help"));
                 writer.write("\n</head>\n");
                 writer.write(EDStatic.startBodyHtml(loggedInAs));
@@ -4216,16 +4161,19 @@ writer.write(
             //  are for this server and the reponses can be handled quickly.
             if (dataset instanceof FromErddap) {
                 FromErddap fromErddap = (FromErddap)dataset;
-                double sourceVersion = fromErddap.sourceErddapVersion();
+                int sourceVersion = fromErddap.intSourceErddapVersion();
                 //some requests are handled locally...
-                if (fileTypeName.equals(".das") || 
+                if (fromErddap.redirect() == false ||
+                    fileTypeName.equals(".das") || 
                     fileTypeName.equals(".dds") || 
                     fileTypeName.equals(".html") || 
                     fileTypeName.equals(".graph") ||
                     fileTypeName.endsWith("ngInfo") ||  //pngInfo EDD.readPngInfo makes local file in all cases
                     fileTypeName.endsWith("dfInfo") ||  //pdfInfo
-                    //for old remote erddaps, make .png locally so pngInfo is available
-                    (fileTypeName.equals(".png") && sourceVersion <= 1.22) ||
+                    (sourceVersion < 124 && String2.indexOf(FILE_TYPES_124, fileTypeName) >= 0) ||
+                    (sourceVersion < 148 && String2.indexOf(FILE_TYPES_148, fileTypeName) >= 0) ||
+                    (sourceVersion < 174 && fileTypeName.equals(".itx")) ||
+                    (sourceVersion < 176 && String2.indexOf(FILE_TYPES_176, fileTypeName) >= 0) ||
                     fileTypeName.equals(".subset")) { 
                     //handle locally
                 } else {
@@ -4326,8 +4274,8 @@ writer.write(
                 OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                     request, response, "error", //fileName is not used
                     fileTypeName, fileTypeName);
-                OutputStream out = outSource.outputStream("ISO-8859-1");
-                Writer writer = new OutputStreamWriter(out, "ISO-8859-1");
+                OutputStream out = outSource.outputStream(String2.ISO_8859_1);
+                Writer writer = new OutputStreamWriter(out, String2.ISO_8859_1);
 
                 //see DAP 2.0, 7.2.4  for error structure               
                 //see dods.dap.DODSException for codes.  I don't know (here), so use 3=Malformed Expr
@@ -4342,6 +4290,7 @@ writer.write(
                         "\" ;\n" +
                     "} ; "); //thredds has final ";"; spec doesn't
                 String2.log(String2.ERROR + " message sent to user: " + error);
+                String2.log(MustBe.throwableToString(t));
 
                 //essential
                 writer.flush();
@@ -4431,8 +4380,8 @@ writer.write(
             return;
         }
 
-        //get the datasetID
-        String endOfRequestUrl = requestUrl.substring(datasetIDStartsAt);
+        //get the datasetID          percentDecode because there can be spaces (%20) in dir and file names
+        String endOfRequestUrl = SSR.percentDecode(requestUrl.substring(datasetIDStartsAt));
         //remove nextPath, e.g., after first / in datasetID/someDir/someSubDir
         String id = endOfRequestUrl;
         String nextPath = ""; 
@@ -4832,6 +4781,10 @@ writer.write(
             String2.noLongLinesAtSpace(description, 90, "<br>");
 
         //you can't use noLongLinesAtSpace for fear of  "<a <br>href..."
+        if (protocol.equals("tabledap"))
+            description += "\n<br>" + 
+                MessageFormat.format(EDStatic.tabledapVideoIntro, tErddapUrl) +
+                "\n";
         if (!protocol.equals("sos"))
             description += "\n<br>" + 
                 MessageFormat.format(EDStatic.seeProtocolDocumentation,
@@ -5031,8 +4984,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
         if (part1.equals(EDDTable.sosPhenomenaDictionaryUrl) && urlEndParts.length == 2) {
             OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                 request, response, "sos_" + eddTable.datasetID() + "_phenomenaDictionary", ".xml", ".xml");
-            OutputStream out = outSource.outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+            OutputStream out = outSource.outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
             eddTable.sosPhenomenaDictionary(writer);
             if (out instanceof ZipOutputStream) ((ZipOutputStream)out).closeEntry();
             out.close(); 
@@ -5050,13 +5003,16 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
         //  will be different.
         //if eddTable instanceof EDDTableFromErddap, redirect the request
         /*if (eddTable instanceof EDDTableFromErddap && userQuery != null) {
-            //http://coastwatch.pfeg.noaa.gov/erddap/tabledap/erdGlobecBottle
-            String tUrl = ((EDDTableFromErddap)eddTable).getNextLocalSourceErddapUrl();
-            tUrl = String2.replaceAll(tUrl, "/tabledap/", "/sos/") + "/" + EDDTable.sosServer + 
-                "?" + userQuery;
-            if (verbose) String2.log("redirected to " + tUrl);
-            sendRedirect(response, tUrl);  
-            return;
+            EDDTableFromErddap fromErddap = (EDDTableFromErddap)eddTable;
+            if (fromErddap.redirect()) {
+                //http://coastwatch.pfeg.noaa.gov/erddap/tabledap/erdGlobecBottle
+                String tUrl = fromErddap.getNextLocalSourceErddapUrl();
+                tUrl = String2.replaceAll(tUrl, "/tabledap/", "/sos/") + "/" + EDDTable.sosServer + 
+                    "?" + userQuery;
+                if (verbose) String2.log("redirected to " + tUrl);
+                sendRedirect(response, tUrl);  
+                return;
+            }
         }*/
 
         //note that isAccessibleTo(loggedInAs) and accessibleViaSOS are checked above
@@ -5081,8 +5037,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 //e.g., ?service=SOS&request=GetCapabilities
                 OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                     request, response, "sos_" + eddTable.datasetID() + "_capabilities", ".xml", ".xml");
-                OutputStream out = outSource.outputStream("UTF-8");
-                Writer writer = new OutputStreamWriter(out, "UTF-8");
+                OutputStream out = outSource.outputStream(String2.UTF_8);
+                Writer writer = new OutputStreamWriter(out, String2.UTF_8);
                 eddTable.sosGetCapabilities(queryMap, writer, loggedInAs); 
                 writer.flush();
                 if (out instanceof ZipOutputStream) ((ZipOutputStream)out).closeEntry();
@@ -5144,8 +5100,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 String fileName = "sosSensor_" + eddTable.datasetID() + "_" + shortName;
                 OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                     request, response, fileName, ".xml", ".xml");
-                OutputStream out = outSource.outputStream("UTF-8");
-                Writer writer = new OutputStreamWriter(out, "UTF-8");
+                OutputStream out = outSource.outputStream(String2.UTF_8);
+                Writer writer = new OutputStreamWriter(out, String2.UTF_8);
                 eddTable.sosDescribeSensor(loggedInAs, shortName, writer);
                 writer.flush();
                 if (out instanceof ZipOutputStream) ((ZipOutputStream)out).closeEntry();
@@ -5204,8 +5160,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
             OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                 request, response, "ExceptionReport", //fileName is not used
                 ".xml", ".xml");
-            OutputStream out = outSource.outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+            OutputStream out = outSource.outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             //for now, mimic oostethys  (ndbcSOS often doesn't throw exceptions)
             //exceptionCode options are from OGC 06-121r3  section 8
@@ -5244,6 +5200,7 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 "  </Exception>\n" +
                 "</ExceptionReport>\n");
             String2.log(String2.ERROR + " message sent to user: " + error);
+            String2.log(MustBe.throwableToString(t));
 
             //essential
             writer.flush();
@@ -5302,7 +5259,7 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
     /**
      * Process a WCS request.
      * This WCS service is intended to simulate the THREDDS WCS service (version 1.0.0).
-     * See http://www.unidata.ucar.edu/software/thredds/current/tds/reference/WCS.html
+     * See https://www.unidata.ucar.edu/software/thredds/current/tds/reference/WCS.html
      * O&M document(?) says that query names are case insensitive, but query values are case sensitive.
      * Background info: http://www.opengeospatial.org/projects/groups/sensorweb     
      *
@@ -5405,11 +5362,14 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
 
         //if eddGrid instanceof EDDGridFromErddap, redirect the request
         if (eddGrid instanceof EDDGridFromErddap && userQuery != null) {
-            //http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMHchla8day
-            String tUrl = ((EDDGridFromErddap)eddGrid).getPublicSourceErddapUrl();
-            sendRedirect(response, String2.replaceAll(tUrl, "/griddap/", "/wcs/") + 
-                "/" + EDDGrid.wcsServer + "?" + userQuery);
-            return;
+            EDDGridFromErddap fromErddap = (EDDGridFromErddap)eddGrid;
+            if (fromErddap.redirect()) {
+                //http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMHchla8day
+                String tUrl = fromErddap.getPublicSourceErddapUrl();
+                sendRedirect(response, String2.replaceAll(tUrl, "/griddap/", "/wcs/") + 
+                    "/" + EDDGrid.wcsServer + "?" + userQuery);
+                return;
+            }
         }
 
         try {
@@ -5435,8 +5395,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                     request, response, "wcs_" + eddGrid.datasetID() + "_capabilities", 
                     ".xml", ".xml");
-                OutputStream out = outSource.outputStream("UTF-8");
-                Writer writer = new OutputStreamWriter(out, "UTF-8");
+                OutputStream out = outSource.outputStream(String2.UTF_8);
+                Writer writer = new OutputStreamWriter(out, String2.UTF_8);
                 eddGrid.wcsGetCapabilities(loggedInAs, tVersion, writer); 
                 writer.flush();
                 if (out instanceof ZipOutputStream) ((ZipOutputStream)out).closeEntry();
@@ -5448,8 +5408,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                     request, response, "wcs_" + eddGrid.datasetID()+ "_" + tCoverage, 
                     ".xml", ".xml");
-                OutputStream out = outSource.outputStream("UTF-8");
-                Writer writer = new OutputStreamWriter(out, "UTF-8");
+                OutputStream out = outSource.outputStream(String2.UTF_8);
+                Writer writer = new OutputStreamWriter(out, String2.UTF_8);
                 eddGrid.wcsDescribeCoverage(loggedInAs, tVersion, tCoverage, writer);
                 writer.flush();
                 if (out instanceof ZipOutputStream) ((ZipOutputStream)out).closeEntry();
@@ -5503,8 +5463,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
             OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                 request, response, "error", //fileName is not used
                 ".xml", ".xml");
-            OutputStream out = outSource.outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+            OutputStream out = outSource.outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             //???needs work, see Annex A of 1.0.0 specification
             //this is based on mapserver's exception  (thredds doesn't have xmlns...)
@@ -5520,6 +5480,7 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 "  </ServiceException>\n" +
                 "</ServiceExceptionReport>\n");
             String2.log(String2.ERROR + " message sent to user: " + error);
+            String2.log(MustBe.throwableToString(t));
 
             //essential
             writer.flush();
@@ -5683,26 +5644,28 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
 
             if (endEnd.equals(EDD.WMS_SERVER)) {
                 //if eddGrid instanceof EDDGridFromErddap, redirect the request
-                if (eddGrid instanceof EDDGridFromErddap && 
-                    //earlier versions of wms work ~differently
-                    ((EDDGridFromErddap)eddGrid).sourceErddapVersion() >= 1.23 && 
-                    userQuery != null) {
-                    //http://coastwatch.pfeg.noaa.gov/erddap/wms/erdMHchla8day/request?
-                    //EXCEPTIONS=INIMAGE&VERSION=1.3.0&SRS=EPSG%3A4326&LAYERS=erdMHchla8day
-                    //%3Achlorophyll&TIME=2010-07-24T00%3A00%3A00Z&ELEVATION=0.0
-                    //&TRANSPARENT=true&BGCOLOR=0x808080&FORMAT=image%2Fpng&SERVICE=WMS
-                    //&REQUEST=GetMap&STYLES=&BBOX=307.2,-90,460.8,63.6&WIDTH=256&HEIGHT=256
+                if (eddGrid instanceof EDDGridFromErddap) {
                     EDDGridFromErddap fe = (EDDGridFromErddap)eddGrid;
-                    //tUrl  e.g. http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMhchla8day
-                    String tUrl = fe.getPublicSourceErddapUrl();
-                    String sourceDatasetID = File2.getNameNoExtension(tUrl);
-                    //!this is good but imperfect because fe.datasetID %3A may be part of some other part of the request
-                    //handle percent encoded or not
-                    String tQuery = String2.replaceAll(userQuery, fe.datasetID() + "%3A", sourceDatasetID + "%3A");
-                    tQuery =        String2.replaceAll(tQuery,    fe.datasetID() + ":",   sourceDatasetID + ":");
-                    sendRedirect(response, String2.replaceAll(tUrl, "/griddap/", "/wms/") + "/" + EDD.WMS_SERVER + 
-                        "?" + tQuery);
-                    return;
+                    if (fe.redirect() &&
+                        //earlier versions of wms work ~differently
+                        fe.sourceErddapVersion() >= 1.23 && 
+                        userQuery != null) {
+                        //http://coastwatch.pfeg.noaa.gov/erddap/wms/erdMHchla8day/request?
+                        //EXCEPTIONS=INIMAGE&VERSION=1.3.0&SRS=EPSG%3A4326&LAYERS=erdMHchla8day
+                        //%3Achlorophyll&TIME=2010-07-24T00%3A00%3A00Z&ELEVATION=0.0
+                        //&TRANSPARENT=true&BGCOLOR=0x808080&FORMAT=image%2Fpng&SERVICE=WMS
+                        //&REQUEST=GetMap&STYLES=&BBOX=307.2,-90,460.8,63.6&WIDTH=256&HEIGHT=256
+                        //tUrl  e.g. http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdMhchla8day
+                        String tUrl = fe.getPublicSourceErddapUrl();
+                        String sourceDatasetID = File2.getNameNoExtension(tUrl);
+                        //!this is good but imperfect because fe.datasetID %3A may be part of some other part of the request
+                        //handle percent encoded or not
+                        String tQuery = String2.replaceAll(userQuery, fe.datasetID() + "%3A", sourceDatasetID + "%3A");
+                        tQuery =        String2.replaceAll(tQuery,    fe.datasetID() + ":",   sourceDatasetID + ":");
+                        sendRedirect(response, String2.replaceAll(tUrl, "/griddap/", "/wms/") + "/" + EDD.WMS_SERVER + 
+                            "?" + tQuery);
+                        return;
+                    }
                 }
 
                 doWmsRequest(request, response, loggedInAs, tDatasetID, userQuery); 
@@ -5774,8 +5737,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
             OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                 request, response, "error", //fileName is not used
                 ".xml", ".xml");
-            OutputStream out = outSource.outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+            OutputStream out = outSource.outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             //see WMS 1.3.0 spec, section H.2
             String error = MustBe.getShortErrorMessage(t);
@@ -5790,6 +5753,7 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
 ">" + XML.encodeAsXML(error) + "</ServiceException>\n" + 
 "</ServiceExceptionReport>\n");
             String2.log(String2.ERROR + " message sent to user: " + error);
+            String2.log(MustBe.throwableToString(t));
 
             //essential
             writer.flush();
@@ -5843,7 +5807,7 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
         try {
             String likeThis = "<a href=\"" + tErddapUrl + "/wms/" + EDStatic.wmsSampleDatasetID + 
                      "/index.html\">like this</a>";
-            String makeAGraphRef = "<a rel=\"help\" href=\"http://coastwatch.pfeg.noaa.gov/erddap/images/embed.html\">" +
+            String makeAGraphRef = "<a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/images/embed.html\">" +
                 EDStatic.mag + "</a>\n";
             String datasetListRef = 
                 "<p>See the <a rel=\"bookmark\" href=\"" + tErddapUrl + 
@@ -6128,7 +6092,23 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
             //notes
             writer.write(
                 "<h3><a name=\"notes\">Notes</a></h3>\n" +
-                "<ul>\n" +            
+                "<ul>\n" +     
+                //These WMS requirements are also in setupDatasetXml.
+                "<li><a name=\"DatasetRequirements\"><b>Dataset Requirements:</b></a> The main requirements for a variable to be accessible via\n" +
+                "  <br>ERDDAP's WMS server are:\n" +
+                "  <ul>\n" +
+                "  <li>The dataset must be an EDDGrid... dataset.\n" +
+                "  <li>The data variable MUST be a gridded variable.\n" +
+                "  <li>The data variable MUST have longitude and latitude axis variables. (Other axis variables\n" +
+                "    <br>are OPTIONAL.)\n" +
+                "  <li>There MUST be some longitude values between -180 and 180.\n" +
+                "  <li>The\n" +
+                "    <a rel=\"help\" \n" +
+                "    href=\"https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#colorBar\" \n" +
+                "    >colorBarMinimum and colorBarMaximum attributes</a>\n" +
+                "     MUST be specified. (Other color bar\n" +
+                "    <br>attributes are OPTIONAL.)\n" +
+                "  </ul>\n" +
                 "<li><b>Grid data layers:</b> In ERDDAP's WMS, all data variables in grid datasets that use\n" +
                 "  <br>longitude and latitude dimensions are available via WMS.\n" +
                 "  <br>Each such variable is available as a WMS layer, with the name <i>datasetID</i>" + 
@@ -6300,49 +6280,55 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                     EDStatic.sendHttpUnauthorizedError(loggedInAs, response, mainDatasetID,
                         false);
                     return;
-                } else if (eddGrid instanceof EDDGridFromErddap &&
-                    //earlier versions of wms work ~differently
-                    ((EDDGridFromErddap)eddGrid).sourceErddapVersion() >= 1.23) {
-                    //Redirect to remote erddap if request is from one dataset's wms and it's an EDDGridFromErddap.
-                    //tUrl e.g., http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdBAssta5day
-                    String tUrl = ((EDDGridFromErddap)eddGrid).getPublicSourceErddapUrl();
-                    int gPo = tUrl.indexOf("/griddap/");
-                    if (gPo >= 0) {
-                        String rDatasetID = tUrl.substring(gPo + "/griddap/".length()); //rDatasetID is at end of tUrl
-                        tUrl = String2.replaceAll(tUrl, "/griddap/", "/wms/");
-                        StringBuilder etUrl = new StringBuilder(tUrl + "/" + EDD.WMS_SERVER + "?");
+                } else if (eddGrid instanceof EDDGridFromErddap) {
+                    EDDGridFromErddap fromErddap = (EDDGridFromErddap)eddGrid;
+                    if (fromErddap.redirect() && 
+                        //earlier versions of wms work ~differently
+                        fromErddap.sourceErddapVersion() >= 1.23) {
+                        //Redirect to remote erddap if request is from one dataset's wms and it's an EDDGridFromErddap.
+                        //tUrl e.g., http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdBAssta5day
+                        String tUrl = fromErddap.getPublicSourceErddapUrl();
+                        int gPo = tUrl.indexOf("/griddap/");
+                        if (gPo >= 0) {
+                            String rDatasetID = tUrl.substring(gPo + "/griddap/".length()); //rDatasetID is at end of tUrl
+                            tUrl = String2.replaceAll(tUrl, "/griddap/", "/wms/");
+                            StringBuilder etUrl = new StringBuilder(tUrl + "/" + EDD.WMS_SERVER + "?");
 
-                        //change request's layers=mainDatasetID:var,mainDatasetID:var 
-                        //              to layers=rDatasetID:var,rDatasetID:var
-                        if (userQuery != null) {    
-                            String qParts[] = Table.getDapQueryParts(userQuery); //decoded.  always at least 1 part (may be "")
-                            for (int qpi = 0; qpi < qParts.length; qpi++) {
-                                if (qpi > 0) etUrl.append('&');
+                            //change request's layers=mainDatasetID:var,mainDatasetID:var 
+                            //              to layers=rDatasetID:var,rDatasetID:var
+                            if (userQuery != null) {    
+                                String qParts[] = Table.getDapQueryParts(userQuery); //decoded.  always at least 1 part (may be "")
+                                for (int qpi = 0; qpi < qParts.length; qpi++) {
+                                    if (qpi > 0) etUrl.append('&');
 
-                                //this use of replaceAll is perhaps not perfect but very close...
-                                //percentDecode parts, so EDD.WMS_SEPARATOR and other chars won't be encoded
-                                String part = qParts[qpi]; 
-                                int epo = part.indexOf('=');
-                                if (epo >= 0) {
-                                    part = String2.replaceAll(part, 
-                                        "=" + mainDatasetID + EDD.WMS_SEPARATOR, 
-                                        "=" + rDatasetID    + EDD.WMS_SEPARATOR);
-                                    part = String2.replaceAll(part, 
-                                        "," + mainDatasetID + EDD.WMS_SEPARATOR, 
-                                        "," + rDatasetID    + EDD.WMS_SEPARATOR);
-                                    //encodedKey = encodedValue
-                                    etUrl.append(SSR.minimalPercentEncode(part.substring(0, epo)) + "=" +
-                                                 SSR.minimalPercentEncode(part.substring(epo + 1)));
-                                } else {
-                                    etUrl.append(qParts[qpi]); //SSR.minimalPercentEncode?
+                                    //this use of replaceAll is perhaps not perfect but very close...
+                                    //percentDecode parts, so EDD.WMS_SEPARATOR and other chars won't be encoded
+                                    String part = qParts[qpi]; 
+                                    int epo = part.indexOf('=');
+                                    if (epo >= 0) {
+                                        part = String2.replaceAll(part, 
+                                            "=" + mainDatasetID + EDD.WMS_SEPARATOR, 
+                                            "=" + rDatasetID    + EDD.WMS_SEPARATOR);
+                                        part = String2.replaceAll(part, 
+                                            "," + mainDatasetID + EDD.WMS_SEPARATOR, 
+                                            "," + rDatasetID    + EDD.WMS_SEPARATOR);
+                                        //encodedKey = encodedValue
+                                        etUrl.append(SSR.minimalPercentEncode(part.substring(0, epo)) + "=" +
+                                                     SSR.minimalPercentEncode(part.substring(epo + 1)));
+                                    } else {
+                                        etUrl.append(qParts[qpi]); //SSR.minimalPercentEncode?
+                                    }
                                 }
                             }
+                            sendRedirect(response, etUrl.toString()); 
+                            return;
+                        } else {
+                            String2.log(EDStatic.errorInternal + "\"/griddap/\" should have been in " +
+                                "EDDGridFromErddap.getNextLocalSourceErddapUrl()=" + tUrl + " .");
+                            //fall through
                         }
-                        sendRedirect(response, etUrl.toString()); 
-                        return;
-                    } else String2.log(EDStatic.errorInternal + "\"/griddap/\" should have been in " +
-                        "EDDGridFromErddap.getNextLocalSourceErddapUrl()=" + tUrl + " .");
-                }
+                    } //else fall through
+                }     //else fall through
             }
             EDStatic.tally.add("WMS doWmsGetMap (since last daily report)", mainDatasetID);
             EDStatic.tally.add("WMS doWmsGetMap (since startup)", mainDatasetID);
@@ -6702,13 +6688,16 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 String palette = tDataVariable.combinedAttributes().getString("colorBarPalette"); 
                 if (String2.indexOf(EDStatic.palettes, palette) < 0)
                     palette = Math2.almostEqual(3, -minData, maxData)? "BlueWhiteRed" : "Rainbow"; 
+                int nSections = tDataVariable.combinedAttributes().getInt("colorBarNSections"); 
+                if (nSections > 100)
+                    nSections = -1;
                 boolean paletteContinuous = String2.parseBoolean( //defaults to true
                     tDataVariable.combinedAttributes().getString("colorBarContinuous")); 
                 String scale = tDataVariable.combinedAttributes().getString("colorBarScale"); 
                 if (String2.indexOf(EDV.VALID_SCALES, scale) < 0)
                     scale = "Linear";
                 String cptFullName = CompoundColorMap.makeCPT(EDStatic.fullPaletteDirectory, 
-                    palette, scale, minData, maxData, -1, paletteContinuous, 
+                    palette, scale, minData, maxData, nSections, paletteContinuous, 
                     EDStatic.fullCptCacheDirectory);
 
                 //draw the data on the map
@@ -6760,6 +6749,7 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
                 //since handled here 
                 String msg = MustBe.getShortErrorMessage(t);
                 String2.log(String2.ERROR + " message sent to user in image: " + msg);
+                String2.log(MustBe.throwableToString(t));
 
                 //make image
                 BufferedImage bufferedImage = new BufferedImage(width, height, 
@@ -6869,8 +6859,8 @@ Spec questions? Ask Jeff DLb (author of WMS spec!): Jeff.deLaBeaujardiere@noaa.g
         //return capabilities xml
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, "Capabilities", ".xml", ".xml");
-        OutputStream out = outSource.outputStream("UTF-8");
-        Writer writer = new OutputStreamWriter(out, "UTF-8");
+        OutputStream out = outSource.outputStream(String2.UTF_8);
+        Writer writer = new OutputStreamWriter(out, String2.UTF_8);
         String wmsUrl = tErddapUrl + "/wms/" + tDatasetID + "/" + EDD.WMS_SERVER;
         //see the WMS 1.1.0, 1.1.1, and 1.3.0 specification for details 
         //This based example in Annex H.
@@ -7390,6 +7380,7 @@ writer.write(
 
         if (!EDStatic.wmsActive)
             throw new SimpleException(MessageFormat.format(EDStatic.disabled, "WMS"));
+        boolean olActive = EDStatic.openLayersActive;
 
         String tErddapUrl = EDStatic.erddapUrl(loggedInAs);
         if (!tVersion.equals("1.1.0") &&
@@ -7463,6 +7454,8 @@ writer.write(
         double maxX = gaa[loni].destinationMax();
         double minY = gaa[lati].destinationMin();
         double maxY = gaa[lati].destinationMax();
+        double avgX2 = 2 * Math.abs(gaa[loni].averageSpacing());
+        double avgY2 = 2 * Math.abs(gaa[lati].averageSpacing());
         double xRange = maxX - minX;
         double yRange = maxY - minY;
         double centerX = (minX + maxX) / 2;
@@ -7478,7 +7471,9 @@ writer.write(
             "  function init(){\n" +
             "    var options = {\n" +
             "      minResolution: \"auto\",\n" +
-            "      minExtent: new OpenLayers.Bounds(-1, -1, 1, 1),\n" +
+            "      minExtent: new OpenLayers.Bounds(" +
+                -avgX2 + ", " + -avgY2 + ", " + 
+                 avgX2 + ", " +  avgY2 + "),\n" +
             "      maxResolution: \"auto\",\n" +
             "      maxExtent: new OpenLayers.Bounds(" + 
                 //put buffer space around data
@@ -7557,7 +7552,10 @@ writer.write(
             "          bgcolor:'0x808080', format:'image/png', transparent:'true'} );\n" +
             "    LakesAndRivers.isBaseLayer=false;\n" +
             "    LakesAndRivers.setVisibility(false);\n" +
-            "\n" +
+            "\n");
+
+        if (EDStatic.politicalBoundariesActive) {
+            scripts.append(
             "    var Nations = new OpenLayers.Layer.WMS( \"National Boundaries\",\n" +
             "        \"" + requestUrl + "?\", \n" +
             "        {" + exceptions + "version:'" + tVersion + "', srs:'EPSG:4326', layers:'Nations', \n" +
@@ -7571,13 +7569,16 @@ writer.write(
             "    States.isBaseLayer=false;\n" +
             "    States.setVisibility(false);\n" +
             "\n");
+        }
 
         scripts.append(
             "    map.addLayers([Land"); //, jplLayer");
         for (int v = 0; v < nLayers; v++) 
             scripts.append(", vLayer[" + v + "]");
 
-        scripts.append(", LandMask, Coastlines, LakesAndRivers, Nations, States]);\n" +  
+        scripts.append(", LandMask, Coastlines, LakesAndRivers" +
+            (EDStatic.politicalBoundariesActive? ", Nations, States" : "") +
+            "]);\n" +  
             "    map.addControl(new OpenLayers.Control.LayerSwitcher());\n" +
             "    map.zoomToMaxExtent();\n" +
             "  }\n");
@@ -7596,6 +7597,8 @@ writer.write(
 
         scripts.append(
             "</script>\n");
+        if (!olActive) 
+            scripts.setLength(0);
 
         //*** html head
         OutputStream out = getHtmlOutputStream(request, response);
@@ -7607,7 +7610,9 @@ writer.write(
             "</head>\n");
 
         //*** html body
-        String tBody = String2.replaceAll(EDStatic.startBodyHtml(loggedInAs), "<body", "<body onLoad=\"init()\"");
+        String tBody = EDStatic.startBodyHtml(loggedInAs);
+        if (olActive)
+            tBody = String2.replaceAll(tBody, "<body", "<body onLoad=\"init()\"");
         String makeAGraphRef = "<a href=\"" + tErddapUrl + "/griddap/" + tDatasetID + ".graph\">" +
             EDStatic.mag + "</a>";
         writer.write(
@@ -7620,101 +7625,108 @@ writer.write(
                 queryString = "";
             eddGrid.writeHtmlDatasetInfo(loggedInAs, writer, true, true, true, true, 
                 queryString, "");
-            writer.write(HtmlWidgets.ifJavaScriptDisabled + "\n");
-            writer.write(
-                "&nbsp;\n" + //necessary for the blank line before start of form (not <p>)
-                "<form name=\"f1\" action=\"\">\n" +
-                "<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\">\n" +
-                "  <tr>\n" +
-                "    <td colspan=\"2\">" +
-                    String2.replaceAll(
-                        String2.replaceAll(EDStatic.wmsInstructions, "&wmsVersion;", tVersion),
-                        "&erddapUrl;", tErddapUrl) + 
-                    "</td>\n" +
-                "  </tr>\n" 
-                );
+            if (olActive) {
+                writer.write(HtmlWidgets.ifJavaScriptDisabled + "\n");
+                writer.write(
+                    "&nbsp;\n" + //necessary for the blank line before start of form (not <p>)
+                    "<form name=\"f1\" action=\"\">\n" +
+                    "<table border=\"0\" cellspacing=\"0\" cellpadding=\"0\">\n" +
+                    "  <tr>\n" +
+                    "    <td colspan=\"2\">" +
+                        String2.replaceAll( //these are actually OpenLayers instructions
+                            String2.replaceAll(EDStatic.wmsInstructions, "&wmsVersion;", tVersion),
+                            "&erddapUrl;", tErddapUrl) + 
+                        "</td>\n" +
+                    "  </tr>\n" 
+                    );
 
-            //a select widget for each axis (but not for lon or lat)
-            StringBuilder tAxisConstraints = new StringBuilder();
-            for (int gai = 0; gai < gaa.length; gai++) {
-                if (gai == loni || gai == lati) {
-                    tAxisConstraints.append("[]");
-                    continue;
-                }
-                int nOptions = options[gai].length;
-                int nOptionsM1 = nOptions - 1;
-                writer.write(   
-                "  <tr align=\"left\">\n" +
-                "    <td>" + tgaNames[gai] + ":&nbsp;</td>\n" + //2012-12-28 was gaa[gai].destinationName()
-                "    <td width=\"95%\" align=\"left\">");
+                //a select widget for each axis (but not for lon or lat)
+                
+                StringBuilder tAxisConstraints = new StringBuilder();
+                for (int gai = 0; gai < gaa.length; gai++) {
+                    if (gai == loni || gai == lati) {
+                        tAxisConstraints.append("[]");
+                        continue;
+                    }
+                    int nOptions = options[gai].length;
+                    int nOptionsM1 = nOptions - 1;
+                    writer.write(   
+                    "  <tr align=\"left\">\n" +
+                    "    <td>" + tgaNames[gai] + ":&nbsp;</td>\n" + //2012-12-28 was gaa[gai].destinationName()
+                    "    <td width=\"95%\" align=\"left\">");
 
-                //one value: display it
-                if (nOptions <= 1) {
-                    tAxisConstraints.append("[0]");
+                    //one value: display it
+                    if (nOptions <= 1) {
+                        tAxisConstraints.append("[0]");
+                        writer.write(
+                            options[gai][0] + //numeric or time so don't need XML.encodeAsHTML
+                            "</td>\n");
+                        continue;
+                    }
+
+                    //many values: select
                     writer.write(
-                        options[gai][0] + //numeric or time so don't need XML.encodeAsHTML
-                        "</td>\n");
-                    continue;
+                    "      <table cellspacing=\"0\" cellpadding=\"0\">\n" +
+                    "        <tr>\n" +
+                    "          <td><select name=\"" + tgaNames[gai] + "\" size=\"1\" title=\"\" " +
+                    "onChange=\"update" + tgaNames[gai] + "()\" >\n");
+                    tAxisConstraints.append("[" + nOptionsM1 + "]"); //not ideal; legend not updated by user choice
+
+                    for (int i = 0; i < nOptions; i++) 
+                        writer.write("<option" + 
+                            (i == nOptionsM1? " selected=\"selected\"" : "") + //initial selection
+                            ">" + options[gai][i] + "</option>\n"); //numeric or time so don't need XML.encodeAsHTML
+                    writer.write(
+                    "            </select></td>\n");
+
+                    String axisSelectedIndex = "document.f1." + tgaNames[gai] + ".selectedIndex"; //var name can't have internal "." or "-"
+                    writer.write(
+                    "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "arrowLL.gif\"  \n" +
+                    "            title=\"Select the first item.\"   alt=\"&larr;\" \n" +
+                    "            onMouseUp=\"" + axisSelectedIndex + "=0; update" + tgaNames[gai] + 
+                        "();\" ></td>\n" +
+                    "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "minus.gif\"\n" +
+                    "            title=\"Select the previous item.\"   alt=\"-\" \n" +
+                    "            onMouseUp=\"" + axisSelectedIndex + "=Math.max(0, " +
+                        axisSelectedIndex + "-1); update" + tgaNames[gai] + "();\" ></td>\n" +
+                    "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "plus.gif\"  \n" +
+                    "            title=\"Select the next item.\"   alt=\"+\" \n" +
+                    "            onMouseUp=\"" + axisSelectedIndex + "=Math.min(" + nOptionsM1 + 
+                       ", " + axisSelectedIndex + "+1); update" + tgaNames[gai] + "();\" ></td>\n" +
+                    "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "arrowRR.gif\" \n" +
+                    "            title=\"Select the last item.\"   alt=\"&rarr;\" \n" +
+                    "            onMouseUp=\"" + axisSelectedIndex + "=" + nOptionsM1 + 
+                        "; update" + tgaNames[gai] + "();\" ></td>\n" +
+                    "        </tr>\n" +
+                    "      </table>\n"); //end of <select> table
+
+                    writer.write(
+                    "    </td>\n" +
+                    "  </tr>\n");
+                } //end of gai loop
+
+                writer.write(
+                    "</table>\n" +
+                    "</form>\n" +
+                    "\n" +
+                    "&nbsp;\n" + //necessary for the blank line before div (not <p>)
+                    "<div style=\"width:600px; height:300px\" id=\"map\"></div>\n" +
+                    "\n");
+
+                //legend for each data var with colorbar info
+                for (int dv = 0; dv < nVars; dv++) {
+                    if (!dva[dv].hasColorBarMinMax())
+                        continue;
+                    writer.write("<p><img src=\"" + XML.encodeAsHTMLAttribute(tErddapUrl + 
+                            "/griddap/" + tDatasetID + ".png?" + dva[dv].destinationName() + 
+                            tAxisConstraints.toString() + "&.legend=Only") +
+                        "\" alt=\"The legend.\" title=\"The legend. This colorbar is always relevant for " +
+                        dva[dv].destinationName() + ", even if the other settings don't match.\"/>\n");
                 }
-
-                //many values: select
-                writer.write(
-                "      <table cellspacing=\"0\" cellpadding=\"0\">\n" +
-                "        <tr>\n" +
-                "          <td><select name=\"" + tgaNames[gai] + "\" size=\"1\" title=\"\" " +
-                "onChange=\"update" + tgaNames[gai] + "()\" >\n");
-                tAxisConstraints.append("[" + nOptionsM1 + "]"); //not ideal; legend not updated by user choice
-
-                for (int i = 0; i < nOptions; i++) 
-                    writer.write("<option" + 
-                        (i == nOptionsM1? " selected=\"selected\"" : "") + //initial selection
-                        ">" + options[gai][i] + "</option>\n"); //numeric or time so don't need XML.encodeAsHTML
-                writer.write(
-                "            </select></td>\n");
-
-                String axisSelectedIndex = "document.f1." + tgaNames[gai] + ".selectedIndex"; //var name can't have internal "." or "-"
-                writer.write(
-                "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "arrowLL.gif\"  \n" +
-                "            title=\"Select the first item.\"   alt=\"&larr;\" \n" +
-                "            onMouseUp=\"" + axisSelectedIndex + "=0; update" + tgaNames[gai] + 
-                    "();\" ></td>\n" +
-                "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "minus.gif\"\n" +
-                "            title=\"Select the previous item.\"   alt=\"-\" \n" +
-                "            onMouseUp=\"" + axisSelectedIndex + "=Math.max(0, " +
-                    axisSelectedIndex + "-1); update" + tgaNames[gai] + "();\" ></td>\n" +
-                "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "plus.gif\"  \n" +
-                "            title=\"Select the next item.\"   alt=\"+\" \n" +
-                "            onMouseUp=\"" + axisSelectedIndex + "=Math.min(" + nOptionsM1 + 
-                   ", " + axisSelectedIndex + "+1); update" + tgaNames[gai] + "();\" ></td>\n" +
-                "          <td><img src=\"" + EDStatic.imageDirUrl(loggedInAs) + "arrowRR.gif\" \n" +
-                "            title=\"Select the last item.\"   alt=\"&rarr;\" \n" +
-                "            onMouseUp=\"" + axisSelectedIndex + "=" + nOptionsM1 + 
-                    "; update" + tgaNames[gai] + "();\" ></td>\n" +
-                "        </tr>\n" +
-                "      </table>\n"); //end of <select> table
-
-                writer.write(
-                "    </td>\n" +
-                "  </tr>\n");
-            } //end of gai loop
-
-            writer.write(
-                "</table>\n" +
-                "</form>\n" +
-                "\n" +
-                "&nbsp;\n" + //necessary for the blank line before div (not <p>)
-                "<div style=\"width:600px; height:300px\" id=\"map\"></div>\n" +
-                "\n");
-
-            //legend for each data var with colorbar info
-            for (int dv = 0; dv < nVars; dv++) {
-                if (!dva[dv].hasColorBarMinMax())
-                    continue;
-                writer.write("<p><img src=\"" + XML.encodeAsHTMLAttribute(tErddapUrl + 
-                        "/griddap/" + tDatasetID + ".png?" + dva[dv].destinationName() + 
-                        tAxisConstraints.toString() + "&.legend=Only") +
-                    "\" alt=\"The legend.\" title=\"The legend. This colorbar is always relevant for " +
-                    dva[dv].destinationName() + ", even if the other settings don't match.\"/>\n");
+            } else { //olActive = false
+                writer.write("\n<p><font class=\"warningColor\">" +
+                    MessageFormat.format(EDStatic.noXxxBecause, "OpenLayers", 
+                        MessageFormat.format(EDStatic.noXxxNotActive, "OpenLayers")) + "</font>\n\n");
             }
 
             //flush
@@ -8043,7 +8055,7 @@ writer.write(
                         (isFgdc? ".fgdc" : ".iso19115"), ".xml");
                     doTransfer(request, response, tDir, 
                         tErddapUrl + "/" + File2.getDirectory(endOfRequest), fileName,
-                        outSource.outputStream("UTF-8", File2.length(tDir + fileName))); 
+                        outSource.outputStream(String2.UTF_8, File2.length(tDir + fileName))); 
                     return;
                 }
             } else {
@@ -9022,7 +9034,7 @@ breadCrumbs + endBreadCrumbs +
             ext.equals(".js")  || ext.equals(".json") || ext.equals(".kml") || 
             ext.equals(".pdf") || ext.equals(".tsv") || 
             ext.equals(".txt") || ext.equals(".xml")? 
-            "UTF-8" : //an assumption, the most universal solution
+            String2.UTF_8 : //an assumption, the most universal solution
             "";
 
         //Set expires header for things that don't change often.
@@ -9100,7 +9112,7 @@ breadCrumbs + endBreadCrumbs +
         }
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, name, "custom:application/rss+xml", ".rss"); 
-        OutputStream outputStream = outSource.outputStream("UTF-8"); 
+        OutputStream outputStream = outSource.outputStream(String2.UTF_8); 
         outputStream.write(rssAr);
         outputStream.close();
     }
@@ -9119,7 +9131,7 @@ breadCrumbs + endBreadCrumbs +
         //generate text response
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, "setDatasetFlag", ".txt", ".txt");
-        OutputStream out = outSource.outputStream("UTF-8");
+        OutputStream out = outSource.outputStream(String2.UTF_8);
         Writer writer = new OutputStreamWriter(out); 
 
         //look at the request
@@ -9167,7 +9179,7 @@ breadCrumbs + endBreadCrumbs +
         //generate text response
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, "version", ".txt", ".txt");
-        OutputStream out = outSource.outputStream("UTF-8");
+        OutputStream out = outSource.outputStream(String2.UTF_8);
         Writer writer = new OutputStreamWriter(out); 
         writer.write("ERDDAP_version=" + EDStatic.erddapVersion + "\n");
 
@@ -9563,10 +9575,10 @@ breadCrumbs + endBreadCrumbs +
                 "<h2><a name=\"alternatives\">Alternatives to Slide Sorter</a></h2>\n" +
                 "<ul>\n" +
                 "<li>Web page authors can \n" +
-                "  <a rel=\"help\" href=\"http://coastwatch.pfeg.noaa.gov/erddap/images/embed.html\">embed a graph with the latest data in a web page</a> \n" +
+                "  <a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/images/embed.html\">embed a graph with the latest data in a web page</a> \n" +
                 "  using HTML &lt;img&gt; tags.\n" +
                 //"<li>Anyone can use or make \n" +
-                //"  <a rel=\"help\" href=\"http://coastwatch.pfeg.noaa.gov/erddap/images/gadgets/GoogleGadgets.html\">Google " +
+                //"  <a rel=\"help\" href=\"https://coastwatch.pfeg.noaa.gov/erddap/images/gadgets/GoogleGadgets.html\">Google " +
                 //  "Gadgets</a> to display graphs of the latest data.\n" +
                 "</ul>\n" +
                 "\n");
@@ -9810,6 +9822,7 @@ breadCrumbs + endBreadCrumbs +
                     writeErrorHtml(writer, request, error);
                 writer.write(getSearchFormHtml(request, loggedInAs, "<h2>", "</h2>", searchFor));
                 String2.log(String2.ERROR + " message sent to user: " + error);
+                String2.log(MustBe.throwableToString(t));
 
                 //writer.write(
                 //    "<p>&nbsp;<hr>\n" +
@@ -9929,8 +9942,8 @@ breadCrumbs + endBreadCrumbs +
             OutputStream out = (new OutputStreamFromHttpResponse(
                 request, response, "OpenSearchDescription", 
                     "custom:application/opensearchdescription+xml", ".xml")).
-                outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
             String template = "?searchTerms={searchTerms}&#x26;page={startPage?}" +
                               "&#x26;itemsPerPage={count?}";
             writer.write(  
@@ -10048,8 +10061,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             OutputStreamSource outSource = new OutputStreamFromHttpResponse(
                 request, response, "OpenSearchResults", 
                     "custom:application/atom+xml", ".xml"); 
-            OutputStream out = outSource.outputStream("UTF-8"); 
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+            OutputStream out = outSource.outputStream(String2.UTF_8); 
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
             long lastMajorLoadMillis = runLoadDatasets.lastMajorLoadDatasetsStopTimeMillis;
             if (lastMajorLoadMillis == 0)
                 lastMajorLoadMillis = runLoadDatasets.lastMajorLoadDatasetsStartTimeMillis;
@@ -10140,8 +10153,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
         //*** else return results as RSS 
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, "OpenSearchResults", "custom:application/rss+xml", ".xml"); 
-        OutputStream out = outSource.outputStream("UTF-8"); 
-        Writer writer = new OutputStreamWriter(out, "UTF-8");
+        OutputStream out = outSource.outputStream(String2.UTF_8); 
+        Writer writer = new OutputStreamWriter(out, String2.UTF_8);
         writer.write(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
         "<rss version=\"2.0\" \n" +
@@ -12086,7 +12099,9 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             tEmail = ""; //Security: if it was bad, don't show it in form (could be malicious java script)
         }
 
-        if (tAction.length() > Subscriptions.ACTION_LENGTH) {
+        if (tAction.length() == 0) {
+            //no action is fine
+        } else if (tAction.length() > Subscriptions.ACTION_LENGTH) {
             trouble += "<li><font class=\"warningColor\">" + EDStatic.subscriptionUrlTooLong + "</font>\n";
             tAction = ""; //Security: if it was bad, don't show it in form (could be malicious java script)
         } else if (tAction.length() <= 10 || 
@@ -12790,8 +12805,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
             //respond to a valid request
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                "ConvertFipsCounty", ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                "ConvertFipsCounty", ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             if (toCode) 
                 writer.write(answerCode);
@@ -12990,8 +13005,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
             //respond to a valid request
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                "ConvertOceanicAtmosphericAcronym", ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                "ConvertOceanicAtmosphericAcronym", ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             if (toAcronym) 
                 writer.write(answerAcronym);
@@ -13191,8 +13206,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
             //respond to a valid request
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                "ConvertOceanicAtmosphericVariableName", ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                "ConvertOceanicAtmosphericVariableName", ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             if (toVariableName) 
                 writer.write(answerVariableName);
@@ -13381,8 +13396,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
             //respond to a valid request
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                "ConvertKeywords", ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                "ConvertKeywords", ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             if (toCF) 
                 writer.write(answerCF);
@@ -13491,7 +13506,7 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
                 "<li>View/download the entire GCMD Science Keywords list in these file types: " +
                 plainLinkExamples(tErddapUrl, "/convert/keywordsGcmd", "") +
-                "  <br>Source: <a rel=\"bookmark\" href=\"http://gcmd.nasa.gov/Resources/valids/archives/keyword_list.html\">the version dated 2008-02-05" +
+                "  <br>Source: <a rel=\"bookmark\" href=\"https://wiki.earthdata.nasa.gov/display/CMR/GCMD+Keyword+Access\">the version dated 2008-02-05" +
                     EDStatic.externalLinkHtml(tErddapUrl) + "</a>.\n" +
                 "    The requested citation is<tt>\n" +
                 "  <br>Olsen, L.M., G. Major, K. Shein, J. Scialdone, R. Vogel, S. Leicester,\n" +
@@ -13618,8 +13633,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
             //respond to a valid request
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                "ConvertTime", ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                "ConvertTime", ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             if (toNumeric) 
                 writer.write(answerN);
@@ -13779,8 +13794,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
             //respond to a valid request
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                "ConvertUnits", ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                "ConvertUnits", ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
             if (tUdunits.length() > 0) 
                 writer.write(rUcum);
@@ -13938,7 +13953,7 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             new OutputStreamFromHttpResponse(request, response, 
                 fileName, fileType, ".json");
         return new BufferedWriter(new OutputStreamWriter(
-            outputStreamSource.outputStream("UTF-8"), "UTF-8"));
+            outputStreamSource.outputStream(String2.UTF_8), String2.UTF_8));
     }
     
     /**
@@ -13954,7 +13969,7 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
         OutputStreamSource outSource = new OutputStreamFromHttpResponse(
             request, response, "index", ".html", ".html");
-        return outSource.outputStream("UTF-8");
+        return outSource.outputStream(String2.UTF_8);
     }
 
     /**
@@ -13983,7 +13998,7 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
     Writer getHtmlWriter(String loggedInAs, String addToTitle, String addToHead, 
         OutputStream out) throws Throwable {
 
-        Writer writer = new OutputStreamWriter(out, "UTF-8");
+        Writer writer = new OutputStreamWriter(out, String2.UTF_8);
 
         //write the information for this protocol (dataset list table and instructions)
         String tErddapUrl = EDStatic.erddapUrl(loggedInAs);
@@ -14698,21 +14713,6 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             //only title, summary, institution, id are always accessible if !listPrivateDatasets
             String tTitle = edd.title();
             plainTitleCol.add(tTitle);
-            /*if (tTitle.length() > EDStatic.TITLE_DOT_LENGTH) 
-                titleCol.add(
-                    "<table style=\"border:0px;\" width=\"100%\" cellspacing=\"0\" cellpadding=\"2\">\n" +
-                    "<tr>\n" +
-                    //45 + 45 + 5 (for " ... ") = EDStatic.TITLE_DOT_LENGTH
-                    "  <td nowrap style=\"border:0px; padding:0px\" >" + 
-                        XML.encodeAsHTML(tTitle.substring(0, 45)) + " ...&nbsp;</td>\n" +
-                    //length of [time][depth][latitude][longitude] is 34, some are longer
-                    "  <td nowrap style=\"border:0px; padding:0px\" align=\"right\">" + 
-                        XML.encodeAsHTML(tTitle.substring(tTitle.length() - 45)) + " " + 
-                        EDStatic.htmlTooltipImage(loggedInAs, XML.encodeAsPreHTML(tTitle, 100)) +
-                        "</td>\n" +
-                    "</tr>\n" +
-                    "</table>\n");
-            else titleCol.add(XML.encodeAsHTML(tTitle)); */
             String ttTitle = String2.noLongLines(tTitle, EDStatic.TITLE_DOT_LENGTH, ""); //insert newlines
             ttTitle = XML.encodeAsHTML(ttTitle); //newlines intact
             ttTitle = String2.replaceAll(ttTitle, "\n", "<br>");
@@ -14816,6 +14816,28 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             }
             TableWriterJson.writeAllAndFinish(null, null, table, outSource, jsonp, false); //writeUnits
 
+        } else if (fileTypeName.equals(".jsonlCSV")) {
+            //did query include &.jsonp= ?
+            String parts[] = Table.getDapQueryParts(request.getQueryString()); //decoded
+            String jsonp = String2.stringStartsWith(parts, ".jsonp="); //may be null
+            if (jsonp != null) {
+                jsonp = jsonp.substring(7);
+                if (!String2.isJsonpNameSafe(jsonp))
+                    throw new SimpleException(EDStatic.errorJsonpFunctionName);
+            }
+            TableWriterJsonl.writeAllAndFinish(null, null, table, outSource, false, jsonp); //writeKVP=false
+
+        } else if (fileTypeName.equals(".jsonlKVP")) {
+            //did query include &.jsonp= ?
+            String parts[] = Table.getDapQueryParts(request.getQueryString()); //decoded
+            String jsonp = String2.stringStartsWith(parts, ".jsonp="); //may be null
+            if (jsonp != null) {
+                jsonp = jsonp.substring(7);
+                if (!String2.isJsonpNameSafe(jsonp))
+                    throw new SimpleException(EDStatic.errorJsonpFunctionName);
+            }
+            TableWriterJsonl.writeAllAndFinish(null, null, table, outSource, true, jsonp);  //writeKVP=true
+
         } else if (fileTypeName.equals(".csv")) {
             TableWriterSeparatedValue.writeAllAndFinish(null, null, table, outSource,
                 ",", true, true, '0', "NaN"); //separator, quoted, writeColumnNames, writeUnits
@@ -14857,6 +14879,9 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             //if simpleDelete fails, cache cleaning will delete it later
             File2.simpleDelete(EDStatic.fullPlainFileNcCacheDirectory + ncFileName); 
 
+        } else if (fileTypeName.equals(".nccsv")) {
+            TableWriterNccsv.writeAllAndFinish(null, null, table, outSource); 
+
         } else if (fileTypeName.equals(".tsv")) {
             TableWriterSeparatedValue.writeAllAndFinish(null, null, table, outSource, 
                 "\t", false, true, '0', "NaN"); //separator, quoted, writeColumnNames, writeUnits
@@ -14894,8 +14919,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
 
         if (fileTypeName.equals(".json")) {
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                String2.ERROR, ".json", ".json")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                String2.ERROR, ".json", ".json")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
             writer.write(
                 "{\n" +
                 "  \"" + String2.ERROR + "\": " + String2.toJson(error) + "\n" +
@@ -14915,8 +14940,8 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             fileTypeName.equals(".xhtml")) {  
 
             OutputStream out = (new OutputStreamFromHttpResponse(request, response, 
-                String2.ERROR, ".txt", ".txt")).outputStream("UTF-8");
-            Writer writer = new OutputStreamWriter(out, "UTF-8");
+                String2.ERROR, ".txt", ".txt")).outputStream(String2.UTF_8);
+            Writer writer = new OutputStreamWriter(out, String2.UTF_8);
             if (!error.startsWith(String2.ERROR))
                 writer.write(String2.ERROR + ": ");
             writer.write(error + "\n");
@@ -15107,12 +15132,47 @@ XML.encodeAsXML(String2.noLongerThanDots(EDStatic.adminInstitution, 256)) + "</A
             results = SSR.getUrlResponseString(EDStatic.erddapUrl + "/search/index.html?" +
                 EDStatic.defaultPIppQuery + "&searchFor=tao+pmel");
             Test.ensureTrue(results.indexOf("</html>") >= 0, "results=\n" + results);
-            Test.ensureTrue(results.indexOf(">TAO/TRITON, RAMA, and PIRATA Buoys, Daily, Sea Surface Temperature\n") > 0,
+            Test.ensureTrue(results.indexOf(">TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\n") > 0,
                 "results=\n" + results);
+
+            //.json
+            results = SSR.getUrlResponseString(EDStatic.erddapUrl + "/search/index.json?" +
+                EDStatic.defaultPIppQuery + "&searchFor=tao+pmel");
+            expected = 
+"{\n" +
+"  \"table\": {\n" +
+"    \"columnNames\": [\"griddap\", \"Subset\", \"tabledap\", \"Make A Graph\", \"wms\", \"files\", \"Accessible\", \"Title\", \"Summary\", \"FGDC\", \"ISO 19115\", \"Info\", \"Background Info\", \"RSS\", \"Email\", \"Institution\", \"Dataset ID\"],\n" +
+"    \"columnTypes\": [\"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\", \"String\"],\n" +
+"    \"rows\": [\n" +
+"      [\"\", \"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst.subset\", \"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst\", \"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst.graph\", \"\", \"http://localhost:8080/cwexperimental/files/pmelTaoDySst/\", \"public\", \"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"http://localhost:8080/cwexperimental/metadata/fgdc/xml/pmelTaoDySst_fgdc.xml\", \"http://localhost:8080/cwexperimental/metadata/iso19115/xml/pmelTaoDySst_iso19115.xml\", \"http://localhost:8080/cwexperimental/info/pmelTaoDySst/index.json\", \"https://www.pmel.noaa.gov/gtmba/mission\", \"http://localhost:8080/cwexperimental/rss/pmelTaoDySst.rss\", \"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=pmelTaoDySst&showErrors=false&email=\", \"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"pmelTaoDySst\"],\n" +
+"      [\"\", \"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst.subset\", \"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst\", \"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst.graph\", \"\", \"\", \"public\", \"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"http://localhost:8080/cwexperimental/metadata/fgdc/xml/rPmelTaoDySst_fgdc.xml\", \"http://localhost:8080/cwexperimental/metadata/iso19115/xml/rPmelTaoDySst_iso19115.xml\", \"http://localhost:8080/cwexperimental/info/rPmelTaoDySst/index.json\", \"https://www.pmel.noaa.gov/gtmba/mission\", \"http://localhost:8080/cwexperimental/rss/rPmelTaoDySst.rss\", \"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=rPmelTaoDySst&showErrors=false&email=\", \"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"rPmelTaoDySst\"],\n" +
+"      [\"\", \"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst.subset\", \"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst\", \"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst.graph\", \"\", \"\", \"public\", \"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"http://localhost:8080/cwexperimental/metadata/fgdc/xml/rlPmelTaoDySst_fgdc.xml\", \"http://localhost:8080/cwexperimental/metadata/iso19115/xml/rlPmelTaoDySst_iso19115.xml\", \"http://localhost:8080/cwexperimental/info/rlPmelTaoDySst/index.json\", \"https://www.pmel.noaa.gov/gtmba/mission\", \"http://localhost:8080/cwexperimental/rss/rlPmelTaoDySst.rss\", \"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=rlPmelTaoDySst&showErrors=false&email=\", \"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"rlPmelTaoDySst\"]\n" +
+"    ]\n" +
+"  }\n" +
+"}\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //.jsonlCSV
+            results = SSR.getUrlResponseString(EDStatic.erddapUrl + "/search/index.jsonlCSV?" +
+                EDStatic.defaultPIppQuery + "&searchFor=tao+pmel");
+            expected = 
+"[\"\", \"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst.subset\", \"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst\", \"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst.graph\", \"\", \"http://localhost:8080/cwexperimental/files/pmelTaoDySst/\", \"public\", \"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"http://localhost:8080/cwexperimental/metadata/fgdc/xml/pmelTaoDySst_fgdc.xml\", \"http://localhost:8080/cwexperimental/metadata/iso19115/xml/pmelTaoDySst_iso19115.xml\", \"http://localhost:8080/cwexperimental/info/pmelTaoDySst/index.jsonlCSV\", \"https://www.pmel.noaa.gov/gtmba/mission\", \"http://localhost:8080/cwexperimental/rss/pmelTaoDySst.rss\", \"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=pmelTaoDySst&showErrors=false&email=\", \"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"pmelTaoDySst\"]\n" +
+"[\"\", \"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst.subset\", \"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst\", \"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst.graph\", \"\", \"\", \"public\", \"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"http://localhost:8080/cwexperimental/metadata/fgdc/xml/rPmelTaoDySst_fgdc.xml\", \"http://localhost:8080/cwexperimental/metadata/iso19115/xml/rPmelTaoDySst_iso19115.xml\", \"http://localhost:8080/cwexperimental/info/rPmelTaoDySst/index.jsonlCSV\", \"https://www.pmel.noaa.gov/gtmba/mission\", \"http://localhost:8080/cwexperimental/rss/rPmelTaoDySst.rss\", \"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=rPmelTaoDySst&showErrors=false&email=\", \"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"rPmelTaoDySst\"]\n" +
+"[\"\", \"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst.subset\", \"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst\", \"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst.graph\", \"\", \"\", \"public\", \"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"http://localhost:8080/cwexperimental/metadata/fgdc/xml/rlPmelTaoDySst_fgdc.xml\", \"http://localhost:8080/cwexperimental/metadata/iso19115/xml/rlPmelTaoDySst_iso19115.xml\", \"http://localhost:8080/cwexperimental/info/rlPmelTaoDySst/index.jsonlCSV\", \"https://www.pmel.noaa.gov/gtmba/mission\", \"http://localhost:8080/cwexperimental/rss/rlPmelTaoDySst.rss\", \"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=rlPmelTaoDySst&showErrors=false&email=\", \"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"rlPmelTaoDySst\"]\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //.jsonlKVP
+            results = SSR.getUrlResponseString(EDStatic.erddapUrl + "/search/index.jsonlKVP?" +
+                EDStatic.defaultPIppQuery + "&searchFor=tao+pmel");
+            expected = 
+"{\"griddap\"=\"\", \"Subset\"=\"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst.subset\", \"tabledap\"=\"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst\", \"Make A Graph\"=\"http://localhost:8080/cwexperimental/tabledap/pmelTaoDySst.graph\", \"wms\"=\"\", \"files\"=\"http://localhost:8080/cwexperimental/files/pmelTaoDySst/\", \"Accessible\"=\"public\", \"Title\"=\"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"Summary\"=\"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"FGDC\"=\"http://localhost:8080/cwexperimental/metadata/fgdc/xml/pmelTaoDySst_fgdc.xml\", \"ISO 19115\"=\"http://localhost:8080/cwexperimental/metadata/iso19115/xml/pmelTaoDySst_iso19115.xml\", \"Info\"=\"http://localhost:8080/cwexperimental/info/pmelTaoDySst/index.jsonlKVP\", \"Background Info\"=\"https://www.pmel.noaa.gov/gtmba/mission\", \"RSS\"=\"http://localhost:8080/cwexperimental/rss/pmelTaoDySst.rss\", \"Email\"=\"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=pmelTaoDySst&showErrors=false&email=\", \"Institution\"=\"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"Dataset ID\"=\"pmelTaoDySst\"}\n" +
+"{\"griddap\"=\"\", \"Subset\"=\"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst.subset\", \"tabledap\"=\"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst\", \"Make A Graph\"=\"http://localhost:8080/cwexperimental/tabledap/rPmelTaoDySst.graph\", \"wms\"=\"\", \"files\"=\"\", \"Accessible\"=\"public\", \"Title\"=\"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"Summary\"=\"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"FGDC\"=\"http://localhost:8080/cwexperimental/metadata/fgdc/xml/rPmelTaoDySst_fgdc.xml\", \"ISO 19115\"=\"http://localhost:8080/cwexperimental/metadata/iso19115/xml/rPmelTaoDySst_iso19115.xml\", \"Info\"=\"http://localhost:8080/cwexperimental/info/rPmelTaoDySst/index.jsonlKVP\", \"Background Info\"=\"https://www.pmel.noaa.gov/gtmba/mission\", \"RSS\"=\"http://localhost:8080/cwexperimental/rss/rPmelTaoDySst.rss\", \"Email\"=\"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=rPmelTaoDySst&showErrors=false&email=\", \"Institution\"=\"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"Dataset ID\"=\"rPmelTaoDySst\"}\n" +
+"{\"griddap\"=\"\", \"Subset\"=\"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst.subset\", \"tabledap\"=\"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst\", \"Make A Graph\"=\"http://localhost:8080/cwexperimental/tabledap/rlPmelTaoDySst.graph\", \"wms\"=\"\", \"files\"=\"\", \"Accessible\"=\"public\", \"Title\"=\"TAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\", \"Summary\"=\"This dataset has daily Sea Surface Temperature (SST) data from the\\nTAO/TRITON (Pacific Ocean, https://www.pmel.noaa.gov/gtmba/ ),\\nRAMA (Indian Ocean, https://www.pmel.noaa.gov/gtmba/pmel-theme/indian-ocean-rama ), and\\nPIRATA (Atlantic Ocean, https://www.pmel.noaa.gov/gtmba/pirata/ )\\narrays of moored buoys which transmit oceanographic and meteorological data to shore in real-time via the Argos satellite system.  These buoys are major components of the CLIVAR climate analysis project and the GOOS, GCOS, and GEOSS observing systems.  Daily averages are computed starting at 00:00Z and are assigned an observation 'time' of 12:00Z.  For more information, see\\nhttps://www.pmel.noaa.gov/gtmba/mission .\\n\\ncdm_data_type = TimeSeries\\nVARIABLES:\\narray\\nstation\\nwmo_platform_code\\nlongitude (Nominal Longitude, degrees_east)\\nlatitude (Nominal Latitude, degrees_north)\\ntime (Centered Time, seconds since 1970-01-01T00:00:00Z)\\ndepth (m)\\nT_25 (Sea Surface Temperature, degree_C)\\nQT_5025 (Sea Surface Temperature Quality)\\nST_6025 (Sea Surface Temperature Source)\\n\", \"FGDC\"=\"http://localhost:8080/cwexperimental/metadata/fgdc/xml/rlPmelTaoDySst_fgdc.xml\", \"ISO 19115\"=\"http://localhost:8080/cwexperimental/metadata/iso19115/xml/rlPmelTaoDySst_iso19115.xml\", \"Info\"=\"http://localhost:8080/cwexperimental/info/rlPmelTaoDySst/index.jsonlKVP\", \"Background Info\"=\"https://www.pmel.noaa.gov/gtmba/mission\", \"RSS\"=\"http://localhost:8080/cwexperimental/rss/rlPmelTaoDySst.rss\", \"Email\"=\"http://localhost:8080/cwexperimental/subscriptions/add.html?datasetID=rlPmelTaoDySst&showErrors=false&email=\", \"Institution\"=\"NOAA PMEL, TAO/TRITON, RAMA, PIRATA\", \"Dataset ID\"=\"rlPmelTaoDySst\"}\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
 
             results = SSR.getUrlResponseString(EDStatic.erddapUrl + "/search/index.tsv?" +
                 EDStatic.defaultPIppQuery + "&searchFor=tao+pmel");
-            Test.ensureTrue(results.indexOf("\tTAO/TRITON, RAMA, and PIRATA Buoys, Daily, Sea Surface Temperature\t") > 0,
+            Test.ensureTrue(results.indexOf("\tTAO/TRITON, RAMA, and PIRATA Buoys, Daily, 1977-present, Sea Surface Temperature\t") > 0,
                 "results=\n" + results);
 
 
@@ -15807,7 +15867,7 @@ EDStatic.endBodyHtml(EDStatic.erddapUrl((String)null)) + "\n" +
                 sumTime -= System.currentTimeMillis();
                 //if uncompressed, it is 1Thread=280 4Threads=900ms
                 results = SSR.getUncompressedUrlResponseString(EDStatic.erddapUrl + 
-                    "/info/index.html?" + EDStatic.defaultPIppQuery); 
+                    "/info/index.html?" + EDStatic.defaultPIppQuery, String2.UTF_8); 
                 //if compressed, it is 1Thread=1575 4=Threads=5000ms
                 //results = SSR.getUrlResponseString(EDStatic.erddapUrl + 
                 //    "/info/index.html?" + EDStatic.defaultPIppQuery); 
@@ -15832,6 +15892,7 @@ EDStatic.endBodyHtml(EDStatic.erddapUrl((String)null)) + "\n" +
      *
      */
     public static void test() throws Throwable {
+/* for releases, this line should have open/close comment */
         testBasic();
     }
 

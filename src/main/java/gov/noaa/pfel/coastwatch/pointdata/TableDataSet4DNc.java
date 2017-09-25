@@ -9,6 +9,7 @@ import com.cohort.ema.EmaColor;
 import com.cohort.util.Calendar2;
 import com.cohort.util.File2;
 import com.cohort.util.Math2;
+import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
 
@@ -25,13 +26,9 @@ import java.util.List;
 import java.util.Vector;
 
 /**
- * Get netcdf-X.X.XX.jar from 
- * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
+ * Get netcdfAll-......jar from ftp://ftp.unidata.ucar.edu/pub
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
- * Get slf4j-jdk14.jar from 
- * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
- * and copy it to <context>/WEB-INF/lib.
- * Put both of these .jar files in the classpath for the compiler and for Java.
+ * Put it in the classpath for the compiler and for Java.
  */
 import ucar.nc2.*;
 import ucar.nc2.dataset.NetcdfDataset;
@@ -467,6 +464,7 @@ public class TableDataSet4DNc extends TableDataSet {
      */
     public static void test() throws Exception {
         verbose = true;
+        try {
         TableDataSet4DNc dataset = new TableDataSet4DNc(
             "4NBmeto", "NDBC Meteorological",
             "c:/data/ndbc/ndbcMet/", 
@@ -502,5 +500,9 @@ public class TableDataSet4DNc extends TableDataSet {
         Test.ensureEqual(table.getFloatData(14, row), 18.4f, "");
         Test.ensureEqual(table.getFloatData(15, row), Float.NaN, "");
         Test.ensureEqual(table.getFloatData(16, row), Float.NaN, "");
+        } catch (Throwable t) {
+            String2.pressEnterToContinue(MustBe.throwableToString(t) +
+                "2017-05-26 Known problem with cookie. NEEDS WORK.");
+        }
     }
 }

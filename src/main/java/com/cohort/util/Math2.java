@@ -4,6 +4,7 @@
  */
 package com.cohort.util;
 
+import java.nio.ByteBuffer;
 import java.text.MessageFormat;
 import java.util.Arrays;
 
@@ -137,6 +138,9 @@ public class Math2 {
         30, 35, 40, 45, 50, 60, 70, 80, 90, 100, 110
     };
 
+    public static final double[] COMMON_MV9 = {
+        -99, -99.9, -99.99, -999, -9999, -99999, -999999, -9999999,
+         99,  99.9,  99.99,  999,  9999,  99999,  999999,  9999999};
 
 
     /**
@@ -358,8 +362,8 @@ public class Math2 {
         long using = getMemoryInUse();
         maxUsingMemory = Math.max(maxUsingMemory, using); //before gc
 
-        return "Memory: currently using " + String2.right("" + using/BytesPerMB, 7) + 
-            " MB (high water mark = " + String2.right("" + maxUsingMemory/BytesPerMB, 7) + 
+        return "MemoryInUse=" + String2.right("" + using/BytesPerMB, 6) + 
+            " MB (highWaterMark=" + String2.right("" + maxUsingMemory/BytesPerMB, 6) + 
             " MB)";
     }
 
@@ -857,7 +861,7 @@ public class Math2 {
      *   Undesirable: d.5 rounds up for positive numbers, down for negative.
      */
     public static final long roundToLong(double d) {
-        return d > Long.MAX_VALUE || d <= Long.MIN_VALUE - 0.5 || !isFinite(d)? 
+        return d > Long.MAX_VALUE || d < -9.223372036854776E18 || !isFinite(d)? 
             Long.MAX_VALUE : 
             Math.round(d);
     }
@@ -1218,6 +1222,23 @@ public class Math2 {
         return ar3[0] + " " + Math.abs(ar3[1]) + "/" + ar3[2];
     }
 
+
+    /**
+     * This converts a long to a double (Long.MAX_VALUE becomes NaN).
+     *
+     * @param tl
+     * @return a double.
+     *    If f is NaN or +-INFINITY, this returns Double.NaN.
+     */
+    public static final double longToDoubleNaN(long tl) {
+        if (tl == Long.MAX_VALUE)
+            return Double.NaN;
+        //make sure round(d) is legit long. Low numbers are not a problem. 
+        //ideally    9223372036854775806
+        if (tl >     9223372036854774784L)   //best available
+            return  9.223372036854774784E18;
+        return tl;
+    }
 
     /**
      * Safely converts a float to a double.
@@ -1901,5 +1922,6 @@ public class Math2 {
         return Double.isNaN(a)? b :
                Double.isNaN(b)? a : Math.max(a,b);
     }
+
 
 } //End of Math2 class.

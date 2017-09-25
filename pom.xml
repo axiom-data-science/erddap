@@ -55,26 +55,28 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.6.1</version>
 				<configuration>
-					<failOnError>false</failOnError>
+					<failOnError>true</failOnError>
 					<source>1.8</source>
 					<target>1.8</target>
 					<excludes>
-						<exclude>**/org/jdom/xpath/JaxenXPath.java</exclude>
-						<exclude>**/coastwatch/sgt/LandMask.java</exclude>
-						<exclude>**/coastwatch/sgt/GSHHSNewOnHold.java</exclude>
-						<exclude>**/coastwatch/griddata/Grd.java</exclude>
-						<exclude>**/coastwatch/griddata/WriteShapefile.java</exclude>
-						<exclude>**/coastwatch/pointdata/TwoTable.java</exclude>
-						<exclude>**/coastwatch/pointdata/DigirIobisTDSP.java</exclude>
-						<exclude>**/coastwatch/pointdata/DigirObisTDSP.java</exclude>
-						<exclude>**/coastwatch/hdf/HdfWriter.java</exclude>
-						<exclude>**/coastwatch/netcheck/SftpTest.java</exclude>
-						<exclude>**/coastwatch/HelloWorld.java</exclude>
-						<exclude>**/dataset/EDDTableFromBMD.java</exclude>
-						<exclude>**/dataset/EDDTableFromBMDE.java</exclude>
-						<exclude>**/dataset/EDDTableFromMWFS.java</exclude>
-						<exclude>**/dataset/EDDGridLonPM180.java</exclude>
-						<exclude>**/dataset/EDDTableFromPostDatabase.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/sgt/LandMask.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/sgt/GSHHSNewOnHold.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/griddata/Grd.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/griddata/WriteShapefile.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/pointdata/TwoTable.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/pointdata/DigirIobisTDSP.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/pointdata/DigirObisTDSP.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/hdf/HdfWriter.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/netcheck/SftpTest.java</exclude>
+						<exclude>gov/noaa/pfel/coastwatch/HelloWorld.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromBMD.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromBMDE.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromMWFS.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDGridLonPM180.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromPostFromNcFiles.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableCopyPost.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromPostDatabase.java</exclude>
+						<exclude>gov/noaa/pfel/erddap/dataset/EDDTableFromHttpGet.java</exclude>
 					</excludes>
 				</configuration>
 			</plugin>
@@ -150,12 +152,12 @@
 		<dependency>
 			<groupId>com.sun.mail</groupId>
 			<artifactId>javax.mail</artifactId>
-			<version>1.5.5</version>
+			<version>1.5.6</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-compress</artifactId>
-			<version>1.10</version>
+			<version>1.14</version>
 		</dependency>
 		<dependency>
 			<groupId>commons-discovery</groupId>
@@ -220,28 +222,28 @@
 		<dependency>
 			<groupId>io.dropwizard.metrics</groupId>
 			<artifactId>metrics-core</artifactId>
-			<version>3.1.2</version>
+			<version>3.2.2</version>
 		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-simple</artifactId>
-			<version>1.7.20</version>
+			<version>1.7.25</version>
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
 			<groupId>io.netty</groupId>
 			<artifactId>netty-all</artifactId>
-			<version>4.0.36.Final</version>
+			<version>4.1.12.Final</version>
 		</dependency>
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<version>9.4.1208</version>
+			<version>42.1.1</version>
 		</dependency>
 		<dependency>
 			<groupId>org.xerial.snappy</groupId>
 			<artifactId>snappy-java</artifactId>
-			<version>1.1.2.4</version>
+			<version>1.1.4</version>
 		</dependency>
         <dependency>
 			<groupId>org.json</groupId>
@@ -251,12 +253,12 @@
         <dependency>
 			<groupId>org.jdom</groupId>
 			<artifactId>jdom2</artifactId>
-			<version>2.0.5</version>
+			<version>2.0.6</version>
 		</dependency>
 		<dependency>
 			<groupId>edu.ucar</groupId>
 			<artifactId>netcdfAll</artifactId>
-			<version>4.6.8</version>
+			<version>4.6.10</version>
 		</dependency>
 		<dependency>
 			<groupId>javax.servlet</groupId>

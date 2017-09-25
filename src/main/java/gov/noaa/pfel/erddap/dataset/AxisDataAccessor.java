@@ -61,7 +61,6 @@ public class AxisDataAccessor {
      * @param tEDDGrid
      * @param tRequestUrl the part of the user's request, after EDStatic.baseUrl, before '?'.
      * @param tUserDapQuery  the part after the '?', still percentEncoded, may be null.
-     * @param tConstraints
      * @throws Throwable if trouble
      */
     public AxisDataAccessor(EDDGrid tEDDGrid, String tRequestUrl, String tUserDapQuery) throws Throwable {

@@ -110,9 +110,17 @@ public class XML {
 
             //is it the start of a tag? skip the tag
             if (ch == '<') {
+                int po1 = po - 1;
                 while (po < htmlStringLength && ch != '>') {
                     ch = htmlString.charAt(po++);
                 }
+                //save href from <a> or <img>
+                String tag = htmlString.substring(po1, po);
+                String href = String2.extractCaptureGroup(tag, ".*href=\"(.*?)\".*", 1);
+                if (String2.isUrl(href))  //just show if it is a complete URL, not if relative fragment
+                    sb.append(
+                        (sb.length() > 0 && !String2.isWhite(sb.charAt(sb.length() - 1)) ? " " : "") + 
+                        "[ " + href + " ] ");
             } else sb.append(ch);
         }
         return decodeEntities(sb.toString());
@@ -229,11 +237,11 @@ public class XML {
 
     /** This encodes spaces as (char)160 (nbsp) when they are leading, trailing,
      * or more than 1 consecutive.
-     * #160 (instead of &amp;nbsp; or &amp;#160;) is fine because that is the 
-     * UTF character for a non-break-space. When UTF stream is encoded as UTF-8, 
-     * it is appropriately encoded.
+     * #160 (instead of &amp;nbsp; [not supported in XML] or &amp;#160;) 
+     * is fine because that is the character for a non-break-space. 
+     * When the stream is encoded as UTF-8, it is appropriately encoded.
      *
-     * This is reasonable for HTML, but not recommended for xhtml.
+     * This is reasonable for HTML, but not recommended for xhtml(?).
      *
      * @param s
      * @return s with some spaces encoded as (char)160 (nbsp)
@@ -711,7 +719,7 @@ public class XML {
         String2.log("prettyXml\n in=" + inFileName + "\nout=" + outFileName);
         if (inFileName.equals(outFileName))
             throw new RuntimeException("Error: inFileName equals outFileName!");
-        String in[] = String2.readFromFile(inFileName, "UTF-8");
+        String in[] = String2.readFromFile(inFileName, String2.UTF_8);
         if (in[0].length() > 0)
             throw new RuntimeException("Error while reading " + inFileName + "\n" + in[0]);
         String xml = in[1];
@@ -728,7 +736,7 @@ public class XML {
   <gmd:axisDimensionProperties>
     <gmd:MD_Dimension>
       <gmd:dimensionName>
-        <gmd:MD_DimensionNameTypeCode codeList="http://www.ngdc.noaa.gov/metadata/published/xsd/schema/resources/Codelist/gmxCodelists.xml#gmd:MD_DimensionNameTypeCode" codeListValue="column">column</gmd:MD_DimensionNameTypeCode>
+        <gmd:MD_DimensionNameTypeCode codeList="https://www.ngdc.noaa.gov/metadata/published/xsd/schema/resources/Codelist/gmxCodelists.xml#gmd:MD_DimensionNameTypeCode" codeListValue="column">column</gmd:MD_DimensionNameTypeCode>
       </gmd:dimensionName>
       <gmd:dimensionSize gco:nilReason="unknown"/>
       <gmd:resolution>
@@ -822,11 +830,13 @@ public class XML {
      */
     public static void test() throws Exception {
         String2.log("\n*********************************************************** XML.test");
+/* for releases, this line should have open/close comment */
 
         //test removeHTMLTags
         String2.log("test removeHTMLTags");
-        Test.ensureEqual(removeHTMLTags("Hi, <b>bob.simons&amp;</b>!"), 
-            "Hi, bob.simons&!", "a");
+        Test.ensureEqual(removeHTMLTags(
+            "Hi, <b>bob.simons&amp;</b>! <a href=\"http://someUrl\">Click here!</a>"), 
+            "Hi, bob.simons&! [ http://someUrl ] Click here!", "a");
 
         //test encodeAsXML
         String2.log("test encode");

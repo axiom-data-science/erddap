@@ -12,6 +12,7 @@ import com.cohort.util.Test;
 import com.cohort.util.XML;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
@@ -695,6 +696,28 @@ public class SimpleXMLReader {
     }
 
     /**
+     * This tests validity of an XML file by running through the file printing all the tags.
+     * If there is an error, you can see that the last few tags read were.
+     *
+     * @param rootTag e.g., "erddapDatasets"
+     * @throws Throwable if trouble (e.g., file not valid)
+     */
+    public static void testValidity(String fileName, String rootTag) throws Throwable {
+        String2.log("\n*** SimpleXMLReader.testValidity...");
+        SimpleXMLReader xmlReader = new SimpleXMLReader(
+            new FileInputStream(fileName), rootTag);
+        while (true) {
+            xmlReader.nextTag();
+            String at = xmlReader.allTags();
+            String2.log("line=" + xmlReader.lineNumber() + " " + at);
+            if (xmlReader.stackSize() == 1 && at.equals("</" + rootTag + ">")) {
+                xmlReader.close();
+                return;
+            }
+        }
+    } 
+
+    /**
      * This performs a unit test of this class.
      *
      */
@@ -703,7 +726,8 @@ public class SimpleXMLReader {
         SimpleXMLReader xmlReader;
         String2.log("SimpleXMLReader will now intentionally throw and catch several exceptions.");
         String results, expected;
-        
+ /* for releases, this line should have open/close comment */
+       
         //test invalid start of xml
         String error = "";
         try {

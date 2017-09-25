@@ -39,13 +39,9 @@ import java.util.regex.Pattern;
 
 
 /**
- * Get netcdf-X.X.XX.jar from 
- * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
+ * Get netcdfAll-......jar from ftp://ftp.unidata.ucar.edu/pub
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
- * Get slf4j-jdk14.jar from 
- * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
- * and copy it to <context>/WEB-INF/lib.
- * Put both of these .jar files in the classpath for the compiler and for Java.
+ * Put it in the classpath for the compiler and for Java.
  */
 import ucar.nc2.*;
 import ucar.nc2.dataset.NetcdfDataset;
@@ -55,7 +51,7 @@ import ucar.ma2.*;
 
 /** 
  * This class represents gridded data aggregated from a collection of 
- * NetCDF .nc (http://www.unidata.ucar.edu/software/netcdf/),
+ * NetCDF .nc (https://www.unidata.ucar.edu/software/netcdf/),
  * GRIB .grb (https://en.wikipedia.org/wiki/GRIB),
  * (and related) data files.
  *
@@ -283,10 +279,11 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
 
         NetcdfFile ncFile = NcHelper.openFile(fileDir + fileName); //may throw exception
         int nValues = -1; //not yet calculated
+        EDV edv = null;
         try {
 
             for (int dvi = 0; dvi < ndv; dvi++) {
-                EDV edv = tDataVariables[dvi];
+                edv = tDataVariables[dvi];
                 Variable var = ncFile.findVariable(edv.sourceName());  
                 if (var == null) {
                     //this var isn't in this file: return array of missing_values
@@ -340,6 +337,9 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
                     "\n" + MustBe.throwableToShortString(t2));
             }  
 
+            String2.log("ERROR: while reading sourceName=" +
+                (edv == null? "null" : edv.sourceName()) + 
+                "[" + selection + "] (start:STOP:stride).");                
             throw t;
         }
     }
@@ -467,11 +467,10 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
                         }
                         axisSourceTable.addColumn(avi, axisName, new DoubleArray(), //type doesn't matter
                             sourceAtts); 
-                        String destName = String2.modifyToBeVariableNameSafe(axisName);
-                        axisAddTable.addColumn(   avi, destName, new DoubleArray(), //type doesn't matter
+                        axisAddTable.addColumn(   avi, axisName, new DoubleArray(), //type doesn't matter
                             makeReadyToUseAddVariableAttributesForDatasetsXml(
                                 globalSourceAtts,
-                                sourceAtts, destName, false, true)); //addColorBarMinMax, tryToFindLLAT
+                                sourceAtts, null, axisName, false, true)); //addColorBarMinMax, tryToFindLLAT
 
                     }
 
@@ -503,11 +502,11 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
                 }
                 dataSourceTable.addColumn(dataSourceTable.nColumns(), varName, pa, 
                     sourceAtts);
-                String destName = String2.modifyToBeVariableNameSafe(varName);
-                dataAddTable.addColumn(   dataAddTable.nColumns(),   destName, pa, 
+                dataAddTable.addColumn(   dataAddTable.nColumns(),    varName, 
+                    makeDestPAForGDX(pa, sourceAtts), 
                     makeReadyToUseAddVariableAttributesForDatasetsXml(
-                        globalSourceAtts,
-                        sourceAtts, destName, true, false)); //addColorBarMinMax, tryToFindLLAT
+                        globalSourceAtts, sourceAtts, null, varName, 
+                        true, false)); //tryToAddColorBarMinMax, tryToFindLLAT); 
             }
 
             if (dataAddTable.nColumns() == 0)
@@ -559,12 +558,12 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
                 if (!"MH1".equals(m1)) {
                     globalAddAtts.set("creator_name", "NOAA NMFS SWFSC ERD");
                     globalAddAtts.set("creator_email", "erd.data@noaa.gov");
-                    globalAddAtts.set("creator_url", "http://www.pfeg.noaa.gov");
+                    globalAddAtts.set("creator_url", "https://www.pfeg.noaa.gov");
                     globalAddAtts.set("institution", "NOAA NMFS SWFSC ERD");
                 }
                 globalAddAtts.set("publisher_name", "NOAA NMFS SWFSC ERD");
                 globalAddAtts.set("publisher_email", "erd.data@noaa.gov");
-                globalAddAtts.set("publisher_url", "http://www.pfeg.noaa.gov");
+                globalAddAtts.set("publisher_url", "https://www.pfeg.noaa.gov");
                 globalAddAtts.set("id", "null");
                 globalAddAtts.set("infoUrl", "http://coastwatch.pfeg.noaa.gov/infog/" +
                     m1_2 + "_las.html");
@@ -592,6 +591,12 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
                     "!!! The source for " + tDatasetID + " has nGridVariables=" + nGridsAtSource + ",\n" +
                     "but this dataset will only serve " + dataAddTable.nColumns() + 
                     " because the others use different dimensions.\n");
+
+            //tryToFindLLAT 
+            tryToFindLLAT(   axisSourceTable, axisAddTable); //just axisTables
+            ensureValidNames(dataSourceTable, dataAddTable);
+
+            //write results
             sb.append(
                 (generateDatasetsXmlCoastwatchErdMode? "": "-->\n") +
                 "\n" +
@@ -612,9 +617,9 @@ public abstract class EDDGridFromNcLow extends EDDGridFromFiles {
             sb.append(writeAttsForDatasetsXml(false, globalSourceAtts, "    "));
             sb.append(writeAttsForDatasetsXml(true,  globalAddAtts,    "    "));
             
-            //last 3 params: includeDataType, tryToFindLLAT, questionDestinationName
-            sb.append(writeVariablesForDatasetsXml(axisSourceTable, axisAddTable, "axisVariable", false, true,  false));
-            sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, "dataVariable", true,  false, false));
+            //last 2 params: includeDataType, questionDestinationName
+            sb.append(writeVariablesForDatasetsXml(axisSourceTable, axisAddTable, "axisVariable", false, false));
+            sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, "dataVariable", true,  false));
             sb.append(
                 "</dataset>\n" +
                 "\n");

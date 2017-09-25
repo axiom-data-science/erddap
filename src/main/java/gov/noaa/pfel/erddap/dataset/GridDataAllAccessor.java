@@ -95,7 +95,7 @@ public class GridDataAllAccessor {
      *
      * @param dv a dataVariable number (within the request, not the EDD dataVariable number).
      * @return a DataInputStream
-     * @param throws RuntimeException if trouble
+     * @throws RuntimeException if trouble
      */
     public DataInputStream getDataInputStream(int dv) throws Exception {
         return new DataInputStream(new BufferedInputStream(
@@ -112,7 +112,7 @@ public class GridDataAllAccessor {
      *
      * @param dv a dataVariable number (within the request, not the EDD dataVariable number).
      * @return a PrimitiveArray
-     * @param throws RuntimeException if trouble, 
+     * @throws RuntimeException if trouble,
      *    e.g., if gdaTotalIndex.size() is &gt;= Integer.MAX_VALUE.
      */
     public PrimitiveArray getPrimitiveArray(int dv) throws Exception {

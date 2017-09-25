@@ -292,7 +292,7 @@ public class EDDTableFromDatabase extends EDDTable{
      * </ul>
      *
      * @param tDatasetID is a very short string identifier 
-     *   (required: just safe characters: A-Z, a-z, 0-9, _, -, or .)
+     *  (recommended: [A-Za-z][A-Za-z0-9_]* )
      *   for this dataset. See EDD.datasetID().
      * @param tAccessibleTo is a comma separated list of 0 or more
      *    roles which will have access to this dataset.
@@ -344,10 +344,10 @@ public class EDDTableFromDatabase extends EDDTable{
      *        describing how to interpret source time values 
      *        (which should always be numeric since they are a dimension of a grid)
      *        (e.g., "seconds since 1970-01-01T00:00:00").
-     *      <li> a org.joda.time.format.DateTimeFormat string
+     *      <li> a java.time.format.DateTimeFormatter string
      *        (which is compatible with java.text.SimpleDateFormat) describing how to interpret 
      *        string times  (e.g., the ISO8601TZ_FORMAT "yyyy-MM-dd'T'HH:mm:ssZ", see 
-     *        http://www.joda.org/joda-time/apidocs/org/joda/time/format/DateTimeFormat.html or 
+     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/DateTimeFomatter.html or 
      *        https://docs.oracle.com/javase/8/docs/api/index.html?java/text/SimpleDateFormat.html)).
      *      </ul>
      * @param tReloadEveryNMinutes indicates how often the source should
@@ -372,7 +372,7 @@ public class EDDTableFromDatabase extends EDDTable{
      *    <br>So, if the database is local, you may chose not to use SSL 
      *    for the connection. But for all remote databases, it is 
      *    STRONGLY RECOMMENDED that you use SSL.
-     *    <br>See http://jdbc.postgresql.org/documentation/81/ssl-client.html .
+     *    <br>See https://jdbc.postgresql.org/documentation/81/ssl-client.html .
      * @param tCatalogName   use "" if not needed
      * @param tSchemaName    use "" if not needed
      * @param tTableName
@@ -489,7 +489,7 @@ public class EDDTableFromDatabase extends EDDTable{
         if (tLicense != null)
             combinedGlobalAttributes.set("license", 
                 String2.replaceAll(tLicense, "[standard]", EDStatic.standardLicense));
-        combinedGlobalAttributes.removeValue("null");
+        combinedGlobalAttributes.removeValue("\"null\"");
 
         //create dataVariables[]
         int ndv = tDataVariables.length;
@@ -599,7 +599,7 @@ public class EDDTableFromDatabase extends EDDTable{
                 "EDDTableFromDatabase.makeConnection via DriverManager + datasets.xml info");
             Class.forName(driverName); //to load the jdbc driver
 
-            //see example (with SSL info) at http://jdbc.postgresql.org/documentation/80/connect.html
+            //see example (with SSL info) at https://jdbc.postgresql.org/documentation/80/connect.html
             Properties props = new Properties();
             for (int i = 0; i < connectionProperties.length; i += 2) 
                 props.setProperty(connectionProperties[i], connectionProperties[i + 1]);
@@ -907,6 +907,10 @@ public class EDDTableFromDatabase extends EDDTable{
                 }
 
                 if (paArray[0].size() >= triggerNRows) {
+                    if (Thread.currentThread().isInterrupted())
+                        throw new SimpleException("EDDTableFromDatabase.getDataForDapQuery" + 
+                            EDStatic.caughtInterrupted);
+        
                     //String2.log(table.toString("rows",5));
                     preStandardizeResultsTable(loggedInAs, table); 
                     if (table.nRows() > 0) {
@@ -942,7 +946,8 @@ public class EDDTableFromDatabase extends EDDTable{
             String msg = MustBe.throwableToString(t);
             //String2.log("EDDTableFromDatabase caught:\n" + msg);
 
-            if (msg.indexOf(MustBe.THERE_IS_NO_DATA) >= 0) { 
+            if (msg.indexOf(MustBe.THERE_IS_NO_DATA) >= 0 ||
+                msg.indexOf(EDStatic.caughtInterrupted) >= 0) { 
                 throw t;
             } else {
                 //all other errors probably from database
@@ -1233,14 +1238,15 @@ public class EDDTableFromDatabase extends EDDTable{
             Attributes sourceAtts = new Attributes();
             Attributes addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
                 null, //no source global attributes
-                sourceAtts, sqlName, true, true); //sourceAtts, sourceName, addColorBarMinMax, tryToFindLLAT
+                sourceAtts, null, sqlName, true, true); //sourceAtts, addAtts, sourceName, addColorBarMinMax, tryToFindLLAT
             if (isTime) {
                 addAtts.add("ioos_category", "Time");
                 addAtts.add("units", "seconds since 1970-01-01T00:00:00Z");  //no "???"
             }
 
             dataSourceTable.addColumn(col, sqlName,               pa, sourceAtts);
-            dataAddTable.addColumn(   col, sqlName.toLowerCase(), pa, addAtts);
+            dataAddTable.addColumn(   col, sqlName.toLowerCase(), 
+                makeDestPAForGDX(pa, sourceAtts), addAtts);
             if (verbose) String2.log(
                 String2.left("" + col, 4) + 
                 String2.left(key, 4) +
@@ -1258,7 +1264,6 @@ public class EDDTableFromDatabase extends EDDTable{
         rs.close();
         con.close();
 
-
         //globalAttributes
         if (externalAddGlobalAttributes == null)
             externalAddGlobalAttributes = new Attributes();
@@ -1267,13 +1272,17 @@ public class EDDTableFromDatabase extends EDDTable{
         if (tSummary     != null && tSummary.length()     > 0) externalAddGlobalAttributes.add("summary",     tSummary);
         if (tTitle       != null && tTitle.length()       > 0) externalAddGlobalAttributes.add("title",       tTitle);
         externalAddGlobalAttributes.setIfNotAlreadySet("sourceUrl", "(local database)");
+
+        //tryToFindLLAT 
+        tryToFindLLAT(dataSourceTable, dataAddTable); //just axisTables
+
         //externalAddGlobalAttributes.setIfNotAlreadySet("subsetVariables", "???");
         //after dataVariables known, add global attributes in the dataAddTable
         dataAddTable.globalAttributes().set(
             makeReadyToUseAddGlobalAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), 
                 //another cdm_data_type could be better; this is ok
-                probablyHasLonLatTime(dataSourceTable, dataAddTable)? "Point" : "Other",
+                hasLonLatTime(dataAddTable)? "Point" : "Other",
                 "database/" + //fake file dir
                     (catalogName == null? "" : catalogName + "/") +
                     (schemaName  == null? "" : schemaName + "/") +
@@ -1317,9 +1326,9 @@ public class EDDTableFromDatabase extends EDDTable{
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
 
-        //last 3 params: includeDataType, tryToFindLLAT, questionDestinationName
+        //last 2 params: includeDataType, questionDestinationName
         sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, 
-            "dataVariable", true, true, false));
+            "dataVariable", true, false));
         sb.append(
             "</dataset>\n" +
             "\n");
@@ -1442,8 +1451,8 @@ expected =
 "\n" +
 " DIRECTIONS:\n" +
 " * Read about this type of dataset in\n" +
-"   http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html .\n" +
-" * Read http://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#addAttributes\n" +
+"   https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html .\n" +
+" * Read https://coastwatch.pfeg.noaa.gov/erddap/download/setupDatasetsXml.html#addAttributes\n" +
 "   so that you understand about sourceAttributes and addAttributes.\n" +
 " * Note: Global sourceAttributes and variable sourceAttributes are listed\n" +
 "   below as comments, for informational purposes only.\n" +
@@ -1484,8 +1493,9 @@ expected =
 "        <att name=\"Conventions\">COARDS, CF-1.6, ACDD-1.3</att>\n" +
 "        <att name=\"creator_email\">erd.data@noaa.gov</att>\n" +
 "        <att name=\"creator_name\">NOAA NMFS SWFSC ERD</att>\n" +
-"        <att name=\"creator_url\">http://www.pfeg.noaa.gov</att>\n" +
-"        <att name=\"infoUrl\">http://www.pfeg.noaa.gov</att>\n" +
+"        <att name=\"creator_type\">institution</att>\n" +
+"        <att name=\"creator_url\">https://www.pfeg.noaa.gov</att>\n" +
+"        <att name=\"infoUrl\">https://www.pfeg.noaa.gov</att>\n" +
 "        <att name=\"institution\">NOAA NMFS SWFSC ERD</att>\n" +
 "        <att name=\"keywords\">birthdate, category, center, data, erd, first, fisheries, height, height_cm, identifier, local, marine, national, nmfs, noaa, science, service, source, southwest, swfsc, time, weight, weight_kg</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
@@ -1558,6 +1568,8 @@ expected =
 "        <addAttributes>\n" +
 "            <att name=\"ioos_category\">Time</att>\n" +
 "            <att name=\"long_name\">Birthdate</att>\n" +
+"            <att name=\"source_name\">birthdate</att>\n" +
+"            <att name=\"standard_name\">time</att>\n" +
 "            <att name=\"units\">seconds since 1970-01-01T00:00:00Z</att>\n" +
 "        </addAttributes>\n" +
 "    </dataVariable>\n" +
@@ -2020,7 +2032,7 @@ expected =
         String2.log("\n****************** EDDTableFromDatabase.test() *****************\n");
 
         //tests usually run       
-        /* */
+/* for releases, this line should have open/close comment */
         testGenerateDatasetsXml();
         //test sourceCanOrderBy=x and sourceCanDoDistinct=x (x=no|partial|yes).
         testBasic("testMyDatabaseNo");  

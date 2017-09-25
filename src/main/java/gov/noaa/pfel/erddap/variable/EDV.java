@@ -48,9 +48,7 @@ public class EDV {
     /** 
      * These are the standardized variable names, long names, CF standard names, 
      * and units for the lon, lat, alt, and time axes in the results. 
-     * These names are suggested by
-     * http://www.unidata.ucar.edu/software/netcdf-java/formats/UnidataObsConvention.html 
-     * and match the CF standard names
+     * These names match the CF standard names
      * (see http://cfconventions.org/Data/cf-standard-names/27/build/cf-standard-name-table.html).
      */
     public final static String
@@ -363,7 +361,8 @@ public class EDV {
                 pa.getUnsignedDouble(0) : 
                 pa.getNiceDouble(0); 
             destinationMissingValue = sourceMissingValue * scaleFactor + addOffset;
-            if (destinationDataTypeClass == String.class) {
+            if (destinationDataTypeClass == String.class ||
+                destinationDataTypeClass == char.class) {
                 stringMissingValue = String2.canonical(
                     stringMissingValue == null? "" : stringMissingValue);
                 combinedAttributes.remove("missing_value");
@@ -382,7 +381,8 @@ public class EDV {
                 pa.getUnsignedDouble(0) :
                 pa.getNiceDouble(0);
             destinationFillValue = sourceFillValue * scaleFactor + addOffset;
-            if (destinationDataTypeClass == String.class) {
+            if (destinationDataTypeClass == String.class ||
+                destinationDataTypeClass == char.class) {
                 stringFillValue = String2.canonical(
                     stringFillValue == null? "" : stringFillValue);
                 combinedAttributes.remove("_FillValue");
@@ -471,7 +471,7 @@ public class EDV {
      */
     protected void makeCombinedAttributes() throws Throwable {
         combinedAttributes = new Attributes(addAttributes, sourceAttributes); //order is important
-        combinedAttributes.removeValue("null");
+        combinedAttributes.removeValue("\"null\"");
 
         //test presence and validity of colorBar attributes
         //ERDDAP.doWmsGetMap relies on these tests.
@@ -548,6 +548,7 @@ public class EDV {
                 //if floating type, '_Unsigned'=true is nonsense
                 PrimitiveArray.isIntegerType(sourceDataTypeClass)) 
                 combinedAttributes.set("_Unsigned", un); //re-set it
+            //but destinationDataType(Class) is left as new data type
         }
         if (verbose && scaleAddOffset)
             String2.log("EDV sourceName=" + sourceName + 
@@ -582,7 +583,7 @@ public class EDV {
         //priority to actual_range
         PrimitiveArray ar = combinedAttributes.remove("actual_range"); //always remove
         if (ar != null && ar.size() == 2) {
-            //if (reallyVerbose) String2.log("  actual_range metadata for " + destinationName + ": " + actualRange);
+            if (reallyVerbose) String2.log("  actual_range metadata for " + destinationName + ": " + ar);
             return new double[] {ar.getNiceDouble(0),
                                  ar.getNiceDouble(1)};
         }
@@ -615,6 +616,7 @@ public class EDV {
         combinedAttributes.remove("actual_max");
         combinedAttributes.remove("data_min");
         combinedAttributes.remove("data_max");
+        if (reallyVerbose) String2.log("  " + destinationName + " destinationMin=" + destinationMin + " max=" + destinationMax);
         if (Double.isNaN(destinationMin) && Double.isNaN(destinationMax)) {
             combinedAttributes.remove("actual_range");
         } else {
@@ -1079,6 +1081,8 @@ public class EDV {
             destinationDataTypeClass == float.class? "" + (float)destinationMin :
             destinationDataTypeClass == double.class?
                 "" + Math2.niceDouble(destinationMin, 15) :  //was "" + destinationMin
+            destinationDataTypeClass == char.class?
+                String2.toJson("" + Math2.roundToChar(destinationMin), 65536) :
                 "" + Math2.roundToLong(destinationMin);  //ints are nicer without trailing ".0"
     }
 
@@ -1092,6 +1096,8 @@ public class EDV {
             destinationDataTypeClass == float.class? "" + (float)destinationMax :
             destinationDataTypeClass == double.class?
                 "" + Math2.niceDouble(destinationMax, 15) :
+            destinationDataTypeClass == char.class?
+                String2.toJson("" + Math2.roundToChar(destinationMax), 65536) :
                 "" + Math2.roundToLong(destinationMax);  //ints are nicer without trailing ".0"
     }
 
@@ -1164,9 +1170,9 @@ public class EDV {
      * Some subclasses overwrite this.   (Time variables will return a DoubleArray.)
      * 
      * @param source
-     * @return a PrimitiveArray 
+     * @return a PrimitiveArray with destinationDataTypeClass
      *   (the same Primitive array if the data type wasn't changed)
-     * with source values converted to destinationValues.
+     *   with source values converted to destinationValues.
      */
     public PrimitiveArray toDestination(PrimitiveArray source) {
         
@@ -1179,10 +1185,11 @@ public class EDV {
                 source.switchFromTo(stringFillValue, "");
         }
 
+        //change to destType and scaleAddOffset if needed
         return scaleAddOffset?
-            source.scaleAddOffset(sourceIsUnsigned, destinationDataTypeClass, 
+            source.scaleAddOffset(sourceIsUnsigned, destinationDataTypeClass,
                 scaleFactor, addOffset):
-            source;        
+            PrimitiveArray.factory(destinationDataTypeClass, source); 
     }
 
     /**
@@ -1479,6 +1486,77 @@ public class EDV {
              String2.parseDouble(location.substring(degPo + 1, minPo)) / 60 +
              String2.parseDouble(location.substring(minPo + 1, secPo)) / 3600);
     }
+
+    /**
+     * This returns true if this variable is probably longitude.
+     */
+    public static boolean probablyLon(String tName, String tUnits) {
+        if (!String2.isSomething(tName))
+            return false;
+        tName = tName.toLowerCase();
+        return  
+           //must check name, since uCurrent and uWind use degrees_east, too          
+           (tName.startsWith("lon") ||  //startsWith allows for e.g., "lon (degE)", "long"
+            tName.indexOf("longitude") >= 0 ||
+            tName.equals("x") ||
+            tName.equals("xax")) &&  
+           couldBeLonUnits(tUnits);
+    }
+
+    /**
+     * This returns true if this variable is probably latitude.
+     */
+    public static boolean probablyLat(String tName, String tUnits) {
+        if (!String2.isSomething(tName))
+            return false;
+        tName = tName.toLowerCase();
+        return  
+           //must check name, since uCurrent and uWind use degrees_east, too          
+           (tName.startsWith("lat") ||  //startsWith allows for e.g., "lat (degN)", "lat"
+            tName.indexOf("latitude") >= 0 ||
+            tName.equals("y") ||
+            tName.equals("yax")) &&  
+           couldBeLatUnits(tUnits);
+    }
+
+    /**
+     * This returns true if the units are consistent with longitude units.
+     * Use this if the var name is e.g., lon.
+     */
+    public static boolean couldBeLonUnits(String tUnits) {
+        if (tUnits == null || tUnits.length() == 0)
+            return true;
+        tUnits = tUnits.toLowerCase();
+        if (tUnits.indexOf("north") >= 0 ||
+            tUnits.indexOf("south") >= 0)
+            return false;
+        return "deg".equals(tUnits) || "degree".equals(tUnits) || "degrees".equals(tUnits) || 
+            tUnits.indexOf("decimal degrees") >= 0 || //BCO-DMO has "decimal degrees; negative = South of Equator"
+            tUnits.indexOf("degrees east") >= 0 || 
+            tUnits.indexOf("degree west") >= 0 ||   //some goofy datasets
+            tUnits.indexOf("degrees west") >= 0 ||  //some goofy datasets
+            tUnits.startsWith("ddd.d") ||
+            String2.indexOf(LON_UNITS_VARIANTS, tUnits) >= 0;
+    }
+
+    /**
+     * This returns true if the units are consistent with latitude units.
+     * Use this if the var name is e.g., lat.
+     */
+    public static boolean couldBeLatUnits(String tUnits) {
+        if (tUnits == null || tUnits.length() == 0)
+            return true;
+        tUnits = tUnits.toLowerCase();
+        if (tUnits.indexOf("east") >= 0 ||
+            tUnits.indexOf("west") >= 0)
+            return false;
+        return "deg".equals(tUnits) || "degree".equals(tUnits) || "degrees".equals(tUnits) || 
+            tUnits.indexOf("decimal degrees") >= 0 ||
+            tUnits.indexOf("degrees north") >= 0 || 
+            tUnits.startsWith("dd.d") ||
+            String2.indexOf(LAT_UNITS_VARIANTS, tUnits) >= 0;
+    }
+
 
     /**
      * This tests the methods of this class.

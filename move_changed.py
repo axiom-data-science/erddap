@@ -10,7 +10,7 @@ import subprocess
 dev = os.environ['ERDDAP_DEV_ROOT']
 upstream = os.environ['ERDDAP_UPSTREAM_ROOT']
 
-files = subprocess.run(['git', 'diff', '--name-status', 'HEAD~2', 'HEAD'], stdout=subprocess.PIPE, cwd=upstream)
+files = subprocess.run(['git', 'diff', '--name-status', 'HEAD~3', 'HEAD'], stdout=subprocess.PIPE, cwd=upstream)
 for code, contents in [ x.split('\t', maxsplit=2) for x in files.stdout.decode('utf-8').split('\n') if x ]:
 
     if code == 'D':

@@ -310,7 +310,7 @@ public class EDDTableFromOBIS extends EDDTable{
      * the dataVariables and other attributes are the same for all OBIS servers.
      *
      * @param tDatasetID is a very short string identifier 
-     *   (required: just safe characters: A-Z, a-z, 0-9, _, -, or .)
+     *  (recommended: [A-Za-z][A-Za-z0-9_]* )
      *   for this dataset. See EDD.datasetID().
      * @param tAccessibleTo is a comma separated list of 0 or more
      *    roles which will have access to this dataset.
@@ -431,7 +431,7 @@ public class EDDTableFromOBIS extends EDDTable{
             tLicense = String2.replaceAll(tLicense, "&creator_email;", tCreator_email);
             combinedGlobalAttributes.set("license", tLicense);
         }
-        combinedGlobalAttributes.removeValue("null");
+        combinedGlobalAttributes.removeValue("\"null\"");
 
         //souceCanConstrain:
         sourceNeedsExpandedFP_EQ      = tSourceNeedsExpandedFP_EQ;
@@ -633,11 +633,9 @@ public class EDDTableFromOBIS extends EDDTable{
             }
         }
 
-        //It is very easy for this class since the sourceDapQuery can be 
-        //sent directly to the source after minimal processing.
-        String sourceDapQuery = formatAsDapQuery(resultsVariables.toArray(),
-            constraintVariables.toArray(), constraintOps.toArray(), 
-            constraintValues.toArray());
+        //String sourceDapQuery = formatAsDapQuery(resultsVariables.toArray(),
+        //    constraintVariables.toArray(), constraintOps.toArray(), 
+        //    constraintValues.toArray());
 
         //remove xyztID from resultsVariables  (see includeXYZT below)
         for (int dv = 0; dv < nFixedVariables; dv++) {
@@ -707,6 +705,7 @@ public class EDDTableFromOBIS extends EDDTable{
         Attributes externalAddGlobalAttributes)
         throws Throwable {
 
+        tLocalSourceUrl = updateUrls(tLocalSourceUrl); //http: to https:
         String2.log("\n*** EDDTableFromOBIS.generateDatasetsXml" +
             "\nlocalSourceUrl=" + tLocalSourceUrl +
             " tSourceCode=" + tSourceCode + 
@@ -811,7 +810,8 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"Conventions\">COARDS, CF-1.6, ACDD-1.3</att>\n" +
 "        <att name=\"creator_email\">dhyrenbach@duke.edu</att>\n" +
 "        <att name=\"creator_name\">DHYRENBACH</att>\n" +
-"        <att name=\"creator_url\">http://marine.rutgers.edu/main/</att>\n" +
+"        <att name=\"creator_type\">person</att>\n" +
+"        <att name=\"creator_url\">https://marine.rutgers.edu/main/</att>\n" +
 "        <att name=\"infoUrl\">http://iobis.marine.rutgers.edu/digir2/DiGIR.php</att>\n" +
 "        <att name=\"institution\">DUKE</att>\n" +
 "        <att name=\"keywords\">area, assessment, biogeographic, data, digir.php, duke, information, marine, monitoring, obis, obis-seamap, ocean, program, rutgers, seamap, server, southeast, system</att>\n" +
@@ -1452,6 +1452,7 @@ Ursus (25), Xiphias (16), Zalophus (4668), Ziphius (455)
      */
     public static void test() throws Throwable {
 
+/* for releases, this line should have open/close comment */
         //usually done
         testGenerateDatasetsXml();
 

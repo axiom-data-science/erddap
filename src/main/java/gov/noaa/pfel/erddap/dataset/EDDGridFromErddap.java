@@ -45,13 +45,9 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 
 /**
- * Get netcdf-X.X.XX.jar from
- * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
+ * Get netcdfAll-......jar from ftp://ftp.unidata.ucar.edu/pub
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
- * Get slf4j-jdk14.jar from 
- * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
- * and copy it to <context>/WEB-INF/lib.
- * Put both of these .jar files in the classpath for the compiler and for Java.
+ * Put it in the classpath for the compiler and for Java.
  */
 import ucar.nc2.*;
 import ucar.nc2.dataset.NetcdfDataset;
@@ -74,6 +70,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
 
     protected String publicSourceErddapUrl;
     protected boolean subscribeToRemoteErddapDataset;
+    private boolean redirect = true;
 
     /**
      * This constructs an EDDGridFromErddap based on the information in an .xml file.
@@ -96,6 +93,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
         boolean tSubscribeToRemoteErddapDataset = EDStatic.subscribeToRemoteErddapDataset;
+        boolean tRedirect = true;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
         String tIso19115File = null;
@@ -148,6 +146,9 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<redirect>")) {}
+            else if (localTags.equals("</redirect>")) 
+                tRedirect = String2.parseBoolean(content);
 
             else xmlReader.unexpectedTagException();
         }
@@ -155,7 +156,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
             tOnChange, tFgdcFile, tIso19115File,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, tUpdateEveryNMillis,
-            tLocalSourceUrl, tSubscribeToRemoteErddapDataset);
+            tLocalSourceUrl, tSubscribeToRemoteErddapDataset, tRedirect);
     }
 
     /**
@@ -182,7 +183,8 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
-        String tLocalSourceUrl, boolean tSubscribeToRemoteErddapDataset) 
+        String tLocalSourceUrl, boolean tSubscribeToRemoteErddapDataset,
+        boolean tRedirect) 
         throws Throwable {
 
         if (verbose) String2.log(
@@ -213,6 +215,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                 ", use type=\"EDDTableFromErddap\", not EDDGridFromErddap, in datasets.xml.");
         publicSourceErddapUrl = convertToPublicSourceUrl(localSourceUrl);
         subscribeToRemoteErddapDataset = tSubscribeToRemoteErddapDataset;
+        redirect = tRedirect;
 
         //quickRestart
         Attributes quickRestartAttributes = null;       
@@ -251,7 +254,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             
         Table table = new Table();
         table.readJson(jsonUrl, 
-            new String(sourceInfoBytes, "UTF-8"));  //.json should always be UTF-8
+            new String(sourceInfoBytes, String2.UTF_8));  //.json should always be UTF-8
 
         //go through the rows of table from bottom to top
         int nRows = table.nRows();
@@ -297,7 +300,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                     //guess ioos_category   (alternative is always assign "Unknown")
                     Attributes tAtts = EDD.makeReadyToUseAddVariableAttributesForDatasetsXml(
                         null, //sourceGlobalAtts not yet known
-                        tSourceAttributes, varName, false, true); //tryToAddColorBarMinMax, tryToFindLLAT
+                        tSourceAttributes, null, varName, false, true); //tryToAddColorBarMinMax, tryToFindLLAT
                     tAddAttributes.add("ioos_category", tAtts.getString("ioos_category"));
                 }
 
@@ -320,7 +323,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                     //guess ioos_category   (alternative is always assign "Unknown")
                     Attributes tAtts = EDD.makeReadyToUseAddVariableAttributesForDatasetsXml(
                         null, //sourceGlobalAtts not yet known
-                        tSourceAttributes, varName, false, false); //tryToAddColorBarMinMax, tryToFindLLAT
+                        tSourceAttributes, null, varName, false, false); //tryToAddColorBarMinMax, tryToFindLLAT
                     tAddAttributes.add("ioos_category", tAtts.getString("ioos_category"));
                 }
 
@@ -349,7 +352,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         sourceGlobalAttributes = tSourceAttributes; //at the top of table, so collected last
         addGlobalAttributes = new Attributes();
         combinedGlobalAttributes = new Attributes(addGlobalAttributes, sourceGlobalAttributes); //order is important
-        combinedGlobalAttributes.removeValue("null");
+        combinedGlobalAttributes.removeValue("\"null\"");
 
         int nav = tAxisVariables.size();
         axisVariables = new EDVGridAxis[nav]; 
@@ -381,7 +384,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             versionBytes = quickRestartAttributes == null?
                 SSR.getUrlResponseBytes(vUrl) : //has timeout and descriptive error 
                 ((ByteArray)quickRestartAttributes.get("versionBytes")).toArray();
-            String response[] = String2.split(new String(versionBytes, "UTF-8"), '\n');
+            String response[] = String2.split(new String(versionBytes, String2.UTF_8), '\n');
             if (response[0].startsWith("ERDDAP_version=")) {
                 sourceErddapVersion = String2.parseDouble(response[0].substring(15));
                 if (Double.isNaN(sourceErddapVersion))
@@ -601,7 +604,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         long thisTime = System.currentTimeMillis() - startUpdateMillis;
         cumulativeUpdateTime += thisTime;
         if (reallyVerbose)
-            String2.log(msg + "succeeded. " + Calendar2.getCurrentISODateTimeStringLocal() +
+            String2.log(msg + "succeeded. " + Calendar2.getCurrentISODateTimeStringLocalTZ() +
                 " nValuesAdded=" + newValues.size() + 
                 " time=" + thisTime + " updateCount=" + updateCount +
                 " avgTime=" + (cumulativeUpdateTime / updateCount));
@@ -610,6 +613,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
 
     /** This returns the source ERDDAP's version number, e.g., 1.22 */
     public double sourceErddapVersion() {return sourceErddapVersion;}
+    public int intSourceErddapVersion() {return Math2.roundToInt(sourceErddapVersion * 100);}
 
     /**
      * This returns the local version of the source ERDDAP's url.
@@ -623,6 +627,13 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
      */
     public String getPublicSourceErddapUrl() {
         return publicSourceErddapUrl;
+    }
+
+    /**
+     * This indicates whether user requests should be redirected.
+     */
+    public boolean redirect() {
+        return redirect;
     }
 
 
@@ -664,7 +675,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             shareInfo? onChange : (StringArray)onChange.clone(), 
             "", "", "", "", //fgdc, iso19115, defaultDataQuery, defaultGraphQuery,
             getReloadEveryNMinutes(), getUpdateEveryNMillis(), tLocalSourceUrl,
-            subscribeToRemoteErddapDataset);
+            subscribeToRemoteErddapDataset, redirect);
 
         //if shareInfo, point to same internal data
         if (shareInfo) {
@@ -790,6 +801,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
     public static String generateDatasetsXml(String url, boolean keepOriginalID) 
         throws Throwable {
 
+        url = updateUrls(url); //http: to https:
         String2.log("\n*** EDDGridFromErddap.generateDatasetsXml" +
             "\nurl=" + url + " keepOriginalID=" + keepOriginalID);
 
@@ -909,7 +921,7 @@ String expected =
 
 expected = 
 "<dataset type=\"EDDGridFromErddap\" datasetID=\"localhost_8f86_303c_35ff\" active=\"true\">\n" +
-"    <!-- SST, Blended, Global, EXPERIMENTAL (5 Day Composite) -->\n" +
+"    <!-- SST, Blended, Global, 2002-2014, EXPERIMENTAL (5 Day Composite) -->\n" +
 "    <sourceUrl>http://localhost:8080/cwexperimental/griddap/erdBAssta5day</sourceUrl>\n" +
 "</dataset>";
 
@@ -932,7 +944,8 @@ expected =
                     "title=" + edd.title() + "\n" +
                     "datasetID=" + edd.datasetID() +
                     "vars=" + String2.toCSSVString(edd.dataVariableDestinationNames()));
-                Test.ensureEqual(edd.title(), "Chlorophyll-a, Aqua MODIS, NPP, 0.0125°, West US, EXPERIMENTAL (Monthly Composite)", "");
+                Test.ensureEqual(edd.title(), 
+                    "Chlorophyll-a, Aqua MODIS, NPP, 0.0125°, West US, EXPERIMENTAL, 2002-present (Monthly Composite)", "");
                 Test.ensureEqual(edd.datasetID(), "localhost_bcc8_5919_5e47", "");
                 Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
                     "chlorophyll", "");
@@ -1043,7 +1056,8 @@ expected =
 "    String Conventions \"COARDS, CF-1.6, ACDD-1.3\";\n" + 
 "    String creator_email \"erd.data@noaa.gov\";\n" +
 "    String creator_name \"NOAA NMFS SWFSC ERD\";\n" +
-"    String creator_url \"http://www.pfeg.noaa.gov\";\n" +
+"    String creator_type \"institution\";\n" +
+"    String creator_url \"https://www.pfeg.noaa.gov\";\n" +
 "    String date_created \"20.{8}Z\";\n" +  //changes
 "    String date_issued \"20.{8}Z\";\n" +  //changes
 "    Float64 Easternmost_Easting 360.0;\n" +
@@ -1061,12 +1075,12 @@ expected =
 "    String geospatial_vertical_units \"m\";\n" +
 "    String history \"NASA GSFC \\(OBPG\\)";
 //"2010-02-05T02:14:47Z NOAA CoastWatch (West Coast Node) and NOAA SWFSC ERD\n" + //changes sometimes
-//today + " http://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/MH/chla/8day\n";
+//today + " https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/MH/chla/8day\n";
 //today + " http://localhost:8080/cwexperimental/griddap/rMHchla8day.das\";\n" +   //This is it working locally.
 //or           coastwatch ...      //what I expected/wanted.  This really appears as if remote dataset.
 
 expected2 =
-"    String infoUrl \"http://coastwatch.pfeg.noaa.gov/infog/MH_chla_las.html\";\n" +
+"    String infoUrl \"https://coastwatch.pfeg.noaa.gov/infog/MH_chla_las.html\";\n" +
 "    String institution \"NOAA NMFS SWFSC ERD\";\n" +
 "    String keywords \"8-day,\n" +
 "Oceans > Ocean Chemistry > Chlorophyll,\n" +
@@ -1088,7 +1102,8 @@ expected2 =
 "    String projection_type \"mapped\";\n" +
 "    String publisher_email \"erd.data@noaa.gov\";\n" +
 "    String publisher_name \"NOAA NMFS SWFSC ERD\";\n" +
-"    String publisher_url \"http://www.pfeg.noaa.gov\";\n" +
+"    String publisher_type \"institution\";\n" +
+"    String publisher_url \"https://www.pfeg.noaa.gov\";\n" +
 "    String references \"Aqua/MODIS information: http://oceancolor.gsfc.nasa.gov/ . MODIS information: http://coastwatch.noaa.gov/modis_ocolor_overview.html .\";\n" +
 "    String satellite \"Aqua\";\n" +
 "    String sensor \"MODIS\";\n" +
@@ -1099,7 +1114,7 @@ expected2 =
 "    String summary \"NOAA CoastWatch distributes chlorophyll-a concentration data from NASA's Aqua Spacecraft.  Measurements are gathered by the Moderate Resolution Imaging Spectroradiometer \\(MODIS\\) carried aboard the spacecraft.   This is Science Quality data.\";\n" +
 "    String time_coverage_end \"20.{8}T00:00:00Z\";\n" + //changes
 "    String time_coverage_start \"2002-07-08T00:00:00Z\";\n" +
-"    String title \"Chlorophyll-a, Aqua MODIS, NPP, DEPRECATED OLDER VERSION \\(8 Day Composite\\)\";\n" +
+"    String title \"Chlorophyll-a, Aqua MODIS, NPP, 2003-2013, DEPRECATED OLDER VERSION \\(8 Day Composite\\)\";\n" +
 "    Float64 Westernmost_Easting 0.0;\n" +
 "  }\n" +
 "}\n";
@@ -1347,7 +1362,7 @@ expected2 =
         Test.ensureTrue(tPo >= 0, "tPo=-1 results=\n" + results);
         Test.ensureEqual(results.substring(tPo, tPo + expected.length()), expected, "RESULTS=\n" + results);
         expected2 = 
-"  :title = \"Chlorophyll-a, Aqua MODIS, NPP, DEPRECATED OLDER VERSION (8 Day Composite)\";\n" +
+"  :title = \"Chlorophyll-a, Aqua MODIS, NPP, 2003-2013, DEPRECATED OLDER VERSION (8 Day Composite)\";\n" +
 "  :Westernmost_Easting = 360.0; // double\n" +
 " data:\n" +
 "}\n";
@@ -1538,7 +1553,8 @@ expected2 =
 "  :Conventions = \"COARDS, CF-1.6, ACDD-1.3\";\n" + 
 "  :creator_email = \"erd.data@noaa.gov\";\n" +
 "  :creator_name = \"NOAA NMFS SWFSC ERD\";\n" +
-"  :creator_url = \"http://www.pfeg.noaa.gov\";\n" +
+"  :creator_type = \"institution\";\n" +
+"  :creator_url = \"https://www.pfeg.noaa.gov\";\n" +
 "  :date_created = \"20.{8}Z\";\n" + //changes periodically
 "  :date_issued = \"20.{8}Z\";\n" +  //changes periodically
 "  :Easternmost_Easting = 246.65354786433613; // double\n" +
@@ -1560,7 +1576,7 @@ expected2 =
         Test.ensureLinesMatch(results.substring(0, tPo + 28), expected, "RESULTS=\n" + results);
 
         expected = //note original missing values
-"  :infoUrl = \"http://coastwatch.pfeg.noaa.gov/infog/MH_chla_las.html\";\n" +
+"  :infoUrl = \"https://coastwatch.pfeg.noaa.gov/infog/MH_chla_las.html\";\n" +
 "  :institution = \"NOAA NMFS SWFSC ERD\";\n" +
 "  :keywords = \"8-day,\n" +
 "Oceans > Ocean Chemistry > Chlorophyll,\n" +
@@ -1582,7 +1598,8 @@ expected2 =
 "  :projection_type = \"mapped\";\n" +
 "  :publisher_email = \"erd.data@noaa.gov\";\n" +
 "  :publisher_name = \"NOAA NMFS SWFSC ERD\";\n" +
-"  :publisher_url = \"http://www.pfeg.noaa.gov\";\n" +
+"  :publisher_type = \"institution\";\n" +
+"  :publisher_url = \"https://www.pfeg.noaa.gov\";\n" +
 "  :references = \"Aqua/MODIS information: http://oceancolor.gsfc.nasa.gov/ . MODIS information: http://coastwatch.noaa.gov/modis_ocolor_overview.html .\";\n" +
 "  :satellite = \"Aqua\";\n" +
 "  :sensor = \"MODIS\";\n" +
@@ -1593,7 +1610,7 @@ expected2 =
 "  :summary = \"NOAA CoastWatch distributes chlorophyll-a concentration data from NASA's Aqua Spacecraft.  Measurements are gathered by the Moderate Resolution Imaging Spectroradiometer \\(MODIS\\) carried aboard the spacecraft.   This is Science Quality data.\";\n" +
 "  :time_coverage_end = \"2007-02-06T00:00:00Z\";\n" +
 "  :time_coverage_start = \"2007-02-06T00:00:00Z\";\n" +
-"  :title = \"Chlorophyll-a, Aqua MODIS, NPP, DEPRECATED OLDER VERSION \\(8 Day Composite\\)\";\n" +
+"  :title = \"Chlorophyll-a, Aqua MODIS, NPP, 2003-2013, DEPRECATED OLDER VERSION \\(8 Day Composite\\)\";\n" +
 "  :Westernmost_Easting = 224.98437319134158; // double\n" +
 " data:\n" +
 "time =\n" +
@@ -1662,7 +1679,7 @@ expected2 =
         String2.log("\n****************** EDDGridFromErddap.test() *****************\n");
 
         //standard tests 
-        /* */
+/* for releases, this line should have open/close comment */
         testBasic(false);
         testBasic(true);
         testGenerateDatasetsXml();

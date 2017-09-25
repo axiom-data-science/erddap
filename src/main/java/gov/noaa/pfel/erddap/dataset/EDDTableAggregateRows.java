@@ -259,7 +259,7 @@ public class EDDTableAggregateRows extends EDDTable{
         if (tLicense != null)
             combinedGlobalAttributes.set("license", 
                 String2.replaceAll(tLicense, "[standard]", EDStatic.standardLicense));
-        combinedGlobalAttributes.removeValue("null");
+        combinedGlobalAttributes.removeValue("\"null\"");
        
         //specify what sourceCanConstrain
         //but irrelevant for this class -- 
@@ -899,7 +899,7 @@ expected =
         String2.log("\n****************** EDDTableAggregateRows.test() *****************\n");
         testVerboseOn();
 
-/* */
+/* for releases, this line should have open/close comment */
         //always done        
         testBasic();
     }

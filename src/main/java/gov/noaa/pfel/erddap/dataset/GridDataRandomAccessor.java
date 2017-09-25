@@ -102,7 +102,7 @@ public class GridDataRandomAccessor {
      *   but with values changed to what you want.
      * @param dv a dataVariable number (within the request, not the EDD dataVariable number).
      * @return the data value
-     * @param throws Throwable if trouble
+     * @throws Throwable if trouble
      */
     public double getDataValueAsDouble(int current[], int dv) throws Throwable {
         return PrimitiveArray.rafReadDouble(dataRaf[dv], dataClass[dv], 0,

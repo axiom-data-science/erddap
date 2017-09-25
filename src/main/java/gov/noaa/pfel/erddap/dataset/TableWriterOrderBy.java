@@ -12,13 +12,13 @@ import gov.noaa.pfel.erddap.util.EDStatic;
 
 
 /**
- * TableWriterDistinct provides a way to gather all rows,
+ * TableWriterOrderBy provides a way to gather all rows,
  * sort them, then write to some other TableWriter.
  * This functions like SQL's ORDER BY.
  *
  * <p>This sort is stable: equal elements will not be reordered as a result of the sort.
  *
- * <p>This doesn't do anything to missing values and doesn't asssume they are
+ * <p>This doesn't do anything to missing values and doesn't assume they are
  * stored as NaN or fake missing values.
  *
  * <p>Unlike TableWriterAllWithMetadata, this doesn't keep track of min,max for actual_range

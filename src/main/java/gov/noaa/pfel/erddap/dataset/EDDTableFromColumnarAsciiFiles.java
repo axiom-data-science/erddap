@@ -68,7 +68,8 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         Object[][] tDataVariables,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
-        String tMetadataFrom, String tCharset, int tColumnNamesRow, int tFirstDataRow,
+        String tMetadataFrom, String tCharset, 
+        int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
@@ -84,7 +85,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow,
+            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
@@ -131,7 +132,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         Table table = new Table();
         table.readColumnarASCIIFile(fileDir + fileName, charset, 
             firstDataRow - 1, tLoadCol, tStartColumn, tStopColumn, tColClass);
-        //String2.log(">> lowGetSourceData:\n" + table.dataToCSVString(5));
+        //String2.log(">> lowGetSourceData:\n" + table.dataToString(5));
         return table;
     }
 
@@ -293,7 +294,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         tFileDir = File2.addSlash(tFileDir); //ensure it has trailing slash
         firstDataRow = Math.max(1, firstDataRow); //1..
         if (charset == null || charset.length() == 0)
-            charset = "ISO-8859-1";
+            charset = String2.ISO_8859_1;
         tColumnNameForExtract = String2.isSomething(tColumnNameForExtract)?
             tColumnNameForExtract.trim() : "";
         //tSortedColumnSourceName = String2.isSomething(tSortedColumnSourceName)?
@@ -307,7 +308,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
 
         //get info from the sampleFile
         if (charset == null || charset.length() == 0)
-            charset = "ISO-8859-1";
+            charset = String2.ISO_8859_1;
         StringArray colNames = new StringArray();
         IntArray start = new IntArray();
         IntArray stop = new IntArray();
@@ -333,16 +334,15 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         //externalAddGlobalAttributes.setIfNotAlreadySet("subsetVariables", "???");
 
         boolean dateTimeAlreadyFound = false;
-        DoubleArray mv9 = new DoubleArray(new double[]{
-            -99, -999, -9999, -99999, -999999, -9999999,
-             99,  999,  9999,  99999,  999999,  9999999});
+        DoubleArray mv9 = new DoubleArray(Math2.COMMON_MV9);
         for (int col = 0; col < dataSourceTable.nColumns(); col++) {
             String colName = dataSourceTable.getColumnName(col);
             PrimitiveArray pa = (PrimitiveArray)dataSourceTable.getColumn(col).clone(); //clone because going into addTable
 
+            Attributes sourceAtts = dataSourceTable.columnAttributes(col);
             Attributes addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
                 null, //no source global attributes
-                dataSourceTable.columnAttributes(col), colName, 
+                sourceAtts, null, colName, 
                 true, true); //addColorBarMinMax, tryToFindLLAT
             addAtts.add("startColumn", start.get(col));
             addAtts.add("stopColumn", stop.get(col));
@@ -372,7 +372,8 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
             }
 
             //add to dataAddTable
-            dataAddTable.addColumn(col, colName, pa, addAtts);
+            dataAddTable.addColumn(col, colName, 
+                makeDestPAForGDX(pa, sourceAtts), addAtts);
 
             //files are likely sorted by first date time variable
             //and no harm if files aren't sorted that way
@@ -393,12 +394,15 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
             dataAddTable.addColumn(   0, tColumnNameForExtract, new StringArray(), atts);
         }
 
+        //tryToFindLLAT
+        tryToFindLLAT(dataSourceTable, dataAddTable);
+
         //after dataVariables known, add global attributes in the dataAddTable
         dataAddTable.globalAttributes().set(
             makeReadyToUseAddGlobalAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), 
                 //another cdm_data_type could be better; this is ok
-                probablyHasLonLatTime(dataSourceTable, dataAddTable)? "Point" : "Other",
+                hasLonLatTime(dataAddTable)? "Point" : "Other",
                 tFileDir, externalAddGlobalAttributes, 
                 suggestKeywords(dataSourceTable, dataAddTable)));
 
@@ -406,7 +410,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         if (dataSourceTable.globalAttributes().getString("subsetVariables") == null &&
                dataAddTable.globalAttributes().getString("subsetVariables") == null) 
             dataAddTable.globalAttributes().add("subsetVariables",
-                suggestSubsetVariables(dataSourceTable, dataAddTable, 100)); //guess nFiles
+                suggestSubsetVariables(dataSourceTable, dataAddTable, false)); 
 
         //write the information
         StringBuilder sb = new StringBuilder();
@@ -443,9 +447,9 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
 
-        //last 3 params: includeDataType, tryToFindLLAT, questionDestinationName
+        //last 2 params: includeDataType, questionDestinationName
         sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, 
-            "dataVariable", true, true, false));
+            "dataVariable", true, false));
         sb.append(
             "</dataset>\n" +
             "\n");
@@ -609,7 +613,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
         if (!String2.isSomething(localTimeZone))
             localTimeZone = "";
         String charset = null; //for the sample data file
-        String defaultDatafileCharset = "ISO-8859-1"; //for the sample data file
+        String defaultDatafileCharset = String2.ISO_8859_1; //for the sample data file
         int tReloadEveryNMinutes = DEFAULT_RELOAD_EVERY_N_MINUTES; 
         Table addTable = new Table();
         Attributes addGlobalAtts = addTable.globalAttributes();
@@ -1264,7 +1268,7 @@ public class EDDTableFromColumnarAsciiFiles extends EDDTableFromFiles {
                     if (emlIsSomething(xmlReader.content())) {
                         varUnits = xmlReader.content();
 
-                        //convert DateTime formatting strings to Java/Joda: 
+                        //convert DateTime formatting strings to java.time (was Joda): 
                         //deal with little things
                         //file:///C:/programs/joda-time-2.1/docs/index.html?overview-summary.html
                         varUnits = String2.replaceAll(varUnits, "YYYY-MM-DDT-8hh:mm", "local time"); //invalid UDUNITS but let it go
@@ -1466,7 +1470,7 @@ boolean columnar = false;  // are there any? how detect?
             sourceTable.readASCII(
                 emlDir + dataFileName, charset, 
                 numHeaderLines - 1, //namesRow (0..)  -1 for none
-                numHeaderLines,     //dataRow  (0..)
+                numHeaderLines, "", //dataRow  (0..)
                 null, null, null, null, true);  //simplify
         }
         if (verbose) String2.log(
@@ -1564,9 +1568,7 @@ boolean columnar = false;  // are there any? how detect?
 
         //!!!USER CHOSE TO EQUATE COLS in SOURCE FILE with COLUMNS in EML, 1 to 1, SAME ORDER!!!
         addGlobalAtts.trimAndMakeValidUnicode();       
-        DoubleArray mv9 = new DoubleArray(new double[]{
-            -99, -999, -9999, -99999, -999999, -9999999,
-             99,  999,  9999,  99999,  999999,  9999999});
+        DoubleArray mv9 = new DoubleArray(Math2.COMMON_MV9);
         for (int col = 0; col < addTable.nColumns(); col++) { //nCols changes, so always check
             String colName = addTable.getColumnName(col);
             String sourceVarName = sourceTable.getColumnName(col);
@@ -1576,7 +1578,7 @@ boolean columnar = false;  // are there any? how detect?
             //make and apply revisions to the variable's addAtts
             Attributes addVarAtts = addTable.columnAttributes(col);
             addVarAtts.set(makeReadyToUseAddVariableAttributesForDatasetsXml(
-                addGlobalAtts, addVarAtts, colName, 
+                addGlobalAtts, sourceVarAtts, addVarAtts, colName, 
                 true, true)); //addColorBarMinMax, tryToFindLLAT
             if (columnar) {
                 addVarAtts.add("startColumn", colStart.get(col));
@@ -1608,7 +1610,7 @@ boolean columnar = false;  // are there any? how detect?
             //dataType
             Class sourceClass = sourceTable.getColumn(col).elementClass(); //from file
             Class destClass   =    addTable.getColumn(col).elementClass(); //as defined
-            if (tUnits.indexOf("yy") >= 0) {
+            if (tUnits.indexOf("yyyy") >= 0) { //was "yy"
                 //force to be String
                 sourceClass = String.class;
                 destClass   = String.class;
@@ -1843,7 +1845,7 @@ boolean columnar = false;  // are there any? how detect?
                 if (tUnits == null)
                     tUnits = "";
                 //some vars don't qualify as isTimeUnits, but do have time info
-                if (tUnits.indexOf("yy") >= 0 ||
+                if (tUnits.indexOf("yyyy") >= 0 ||  //was "yy"
                     tColNameLC.indexOf("year") >= 0) hasyyCol = true;
                 if (tUnits.indexOf("MM") >= 0 ||
                     tColNameLC.indexOf("month") >= 0) hasMMCol = true;
@@ -1852,7 +1854,7 @@ boolean columnar = false;  // are there any? how detect?
                     tColNameLC.indexOf("date") >= 0) hasddCol = true;
                 if (tUnits.indexOf("HH") >= 0) hasHHCol = true;
 
-                if (tUnits.indexOf("yy") >= 0 ||
+                if (tUnits.indexOf("yyyy") >= 0 ||  //was "yy"
                     tUnits.indexOf("MM") >= 0 ||
                     tUnits.indexOf("dd") >= 0 ||
                     tUnits.indexOf("HH") >= 0 ||
@@ -1878,7 +1880,7 @@ boolean columnar = false;  // are there any? how detect?
                     (infoLC.indexOf("time") >= 0 ||   //knb-lter-sbc.1113
                      infoLC.indexOf("day") >= 0 || 
                      infoLC.indexOf("date") >= 0) &&
-                    infoLC.indexOf("yy") < 0 &&
+                    infoLC.indexOf("yyyy") < 0 &&  //was "yy"
                     infoLC.indexOf("mm") < 0 &&
                     infoLC.indexOf("dd") < 0 &&
                     infoLC.indexOf("hh") < 0) {
@@ -1943,7 +1945,7 @@ boolean columnar = false;  // are there any? how detect?
                 //        tUnits.startsWith("yyyyMMdd")) {
                 //because ERDDAP required that when searching minMaxTable.
                 //But that was fixed in ERDDAP v1.74.
-                if (tUnits.indexOf("yy") >= 0 &&
+                if (tUnits.indexOf("yyyy") >= 0 &&  //was "yy"
                     tUnits.indexOf("MM") >= 0 &&
                     tUnits.indexOf("dd") >= 0) {
                     if (tUnits.indexOf("HH") < 0) { //no HH, just date 
@@ -1960,11 +1962,11 @@ boolean columnar = false;  // are there any? how detect?
                         }
                     }
                 } else if (
-                    tUnits.indexOf("yy") >= 0 &&
+                    tUnits.indexOf("yyyy") >= 0 &&  //was "yy"
                     tUnits.indexOf("MM") >= 0) {
                     if (goodStringMonthName == null)
                         goodStringMonthName = addName;
-                } else if (tUnits.indexOf("yy") >= 0) {
+                } else if (tUnits.indexOf("yyyy") >= 0) {  //was "yy"
                     if (goodStringYearName == null)
                         goodStringYearName = addName;
                 }
@@ -2004,7 +2006,7 @@ boolean columnar = false;  // are there any? how detect?
                     String tUnits = addTable.columnAttributes(col).getString("units");
                     if (tUnits != null && 
                         (Calendar2.isNumericTimeUnits(tUnits) ||
-                         tUnits.indexOf("yy") >= 0 || 
+                         tUnits.indexOf("yyyy") >= 0 ||  //was "yy"
                          tUnits.indexOf("MM") >= 0 || 
                          tUnits.indexOf("dd") >= 0 || 
                          tUnits.indexOf("HH") >= 0 || 
@@ -2033,18 +2035,14 @@ boolean columnar = false;  // are there any? how detect?
             }
         }
 
-        //after LLAT found, ensure column names are valid (for subsetVariables)
+        //tryToFindLLAT
+        tryToFindLLAT(sourceTable, addTable);
+
+        //after LLAT found
         //*** This fails for knb_lter_sbc_85_t1 where it finds "time2" instead of time
         for (int col = 0; col < addTable.nColumns(); col++) {
             Attributes addAtts = addTable.columnAttributes(col);
-            String destName = suggestDestinationName(
-                addTable.getColumnName(col), //usually sourceTable, here addTable 
-                sourceTable.columnAttributes(col), addAtts,
-                addAtts.getString("units"),
-                addAtts.getString("positive"), 
-                addAtts.getFloat("scale_factor"), false); //tryToFindLLAT
-            addTable.setColumnName(col, destName);
-
+            String destName = addTable.getColumnName(col);
             Class destClass = addTable.getColumn(col).elementClass();
 
             //if numeric, set colorBarMin Max
@@ -2070,25 +2068,12 @@ boolean columnar = false;  // are there any? how detect?
             }
         }
 
-        //check for duplicate addTable column names.
-        {
-            StringArray tAddColNames = new StringArray((String[])(addTable.getColumnNames().clone()));
-            tAddColNames.sort();
-            StringBuilder dupLog = new StringBuilder();
-            int nDup = tAddColNames.removeDuplicates(false, dupLog);
-            if (nDup > 0) 
-                throw new SimpleException(
-                    "DUPLICATE COLUMN NAMES For datasetID=" + datasetID + ", datafile=" + dataFileName + ":\n" + 
-                    "There are " + nDup + " duplicate column names in the EML dataTable:\n" +
-                    dupLog);
-        }
-
         //after dataVariables known, add global attributes in the addTable
         addGlobalAtts.set(
             makeReadyToUseAddGlobalAttributesForDatasetsXml(
                 addGlobalAtts,  //unusual
                 //another cdm_data_type could be better; this is ok
-                probablyHasLonLatTime(sourceTable, addTable)? "Point" : "Other",
+                hasLonLatTime(addTable)? "Point" : "Other",
                 emlDir, null, 
                 suggestKeywords(sourceTable, addTable)));
 
@@ -2096,7 +2081,7 @@ boolean columnar = false;  // are there any? how detect?
         if (sourceTable.globalAttributes().getString("subsetVariables") == null &&
                addTable.globalAttributes().getString("subsetVariables") == null) 
             addGlobalAtts.add("subsetVariables",
-                suggestSubsetVariables(sourceTable, addTable, 1)); //1 datafile / eml file
+                suggestSubsetVariables(sourceTable, addTable, true)); //1 datafile / eml file
 
         //make fileNameRegex from dataFileName.  Quote any special regex characters.
         String from = ".^$*+-?()[]{}\\|";
@@ -2148,9 +2133,9 @@ boolean columnar = false;  // are there any? how detect?
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     addTable.globalAttributes(), "    "));
 
-        //last 3 params: includeDataType, tryToFindLLAT, questionDestinationName
+        //last 2 params: includeDataType, questionDestinationName
         sb.append(writeVariablesForDatasetsXml(sourceTable, addTable, 
-            "dataVariable", true, true, false));
+            "dataVariable", true, false));
         sb.append(
             "</dataset>\n" +
             "\n");
@@ -2459,7 +2444,7 @@ String expected =
 "        <att name=\"publisher_type\">institution</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
 "        <att name=\"standard_name_vocabulary\">CF Standard Name Table v29</att>\n" +
-"        <att name=\"subsetVariables\">site_code</att>\n" +
+"        <att name=\"subsetVariables\">site_code, NH4_uM, PO4_uM, TDP_uM</att>\n" +
 "        <att name=\"summary\">SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000. Stream chemistry, registered stations, all years. stream water chemistry at REGISTERED SBC stations. Registered stations are geo-located in metadata.</att>\n" +
 "        <att name=\"time_coverage_end\">2014-09-17</att>\n" +
 "        <att name=\"time_coverage_start\">2000-10-01</att>\n" +
@@ -2504,7 +2489,9 @@ String expected =
 "            <att name=\"ioos_category\">Time</att>\n" +
 "            <att name=\"long_name\">Time</att>\n" +
 "            <att name=\"missing_value\">9997-04-06T00:00:00-08:00</att>\n" +
+"            <att name=\"source_name\">timestamp_local</att>\n" +
 "            <att name=\"standard_name\">time</att>\n" +
+"            <att name=\"time_precision\">1970-01-01T00:00:00Z</att>\n" +
 "            <att name=\"time_zone\">US/Pacific</att>\n" +
 "            <att name=\"units\">yyyy-MM-dd&#39;T&#39;HH:mm:ss</att>\n" +
 "        </addAttributes>\n" +
@@ -2841,6 +2828,7 @@ String expected =
 "        <att name=\"publisher_type\">institution</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
 "        <att name=\"standard_name_vocabulary\">CF Standard Name Table v29</att>\n" +
+"        <att name=\"subsetVariables\">site_code, NH4_uM, PO4_uM, TDP_uM, TPP_uM</att>\n" +
 "        <att name=\"summary\">SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000. Stream chemistry, non-registered stations, all years. stream water chemistry at NON_REGISTERED stations</att>\n" +
 "        <att name=\"time_coverage_end\">2014-09-17</att>\n" +
 "        <att name=\"time_coverage_start\">2000-10-01</att>\n" +
@@ -2872,7 +2860,9 @@ String expected =
 "            <att name=\"ioos_category\">Time</att>\n" +
 "            <att name=\"long_name\">Time</att>\n" +
 "            <att name=\"missing_value\">9997-04-06T00:00:00</att>\n" +
+"            <att name=\"source_name\">timestamp_local</att>\n" +
 "            <att name=\"standard_name\">time</att>\n" +
+"            <att name=\"time_precision\">1970-01-01T00:00:00Z</att>\n" +
 "            <att name=\"time_zone\">US/Pacific</att>\n" +
 "            <att name=\"units\">yyyy-MM-dd&#39;T&#39;HH:mm:ss</att>\n" +
 "        </addAttributes>\n" +
@@ -3053,7 +3043,13 @@ String expected =
 "</dataset>\n" +
 "\n" +
 "\n\n";
+        try {
         Test.ensureEqual(results, expected, "results=\n" + results);
+
+        } catch (Throwable t) {
+            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+                "\nThis issue is what to include in <subsetVariables>."); 
+        }
 
         //ensure it is ready-to-use by making a dataset from it
         EDD edd = oneFromXmlFragment(null, results);
@@ -3153,6 +3149,7 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"Conventions\">COARDS, CF-1.6, ACDD-1.3</att>\n" +
 "        <att name=\"creator_email\">webmaster.ndbc@noaa.gov</att>\n" +
 "        <att name=\"creator_name\">NOAA NDBC</att>\n" +
+"        <att name=\"creator_type\">institution</att>\n" +
 "        <att name=\"creator_url\">http://www.ndbc.noaa.gov/</att>\n" +
 "        <att name=\"infoUrl\">http://www.ndbc.noaa.gov/</att>\n" +
 "        <att name=\"institution\">NOAA NDBC</att>\n" +
@@ -3160,7 +3157,6 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
 "        <att name=\"standard_name_vocabulary\">CF Standard Name Table v29</att>\n" +
-"        <att name=\"subsetVariables\">aString, aChar, aBoolean, aByte, aShort, anInt, aLong, aFloat, aDouble</att>\n" +
 "        <att name=\"summary\">The new summary! NOAA National Data Buoy Center (NDBC) data from a local source.</att>\n" +
 "        <att name=\"title\">The Newer Title!</att>\n" +
 "    </addAttributes>\n" +
@@ -3301,6 +3297,7 @@ directionsForGenerateDatasetsXml() +
 "aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
 ",,,,,,,,\n" +
 "abcdef,Ab,t,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"short:,,,NaN,NaN,NaN,,NaN,NaN\n" +
 "fg,F,true,11,12001,1200000,12000000000,1.21,1.0E200\n" +
 "h,H,1,12,12002,120000,1200000000,1.22,2.0E200\n" +
 "i,I,TRUE,13,12003,12000,120000000,1.23,3.0E200\n" +
@@ -3308,8 +3305,7 @@ directionsForGenerateDatasetsXml() +
 "k,K,false,15,12005,120,1200000,1.25,5.0E200\n" +
 "l,L,0,16,12006,12,120000,1.26,6.0E200\n" +
 "m,M,FALSE,17,12007,121,12000,1.27,7.0E200\n" +
-"n,N,8,18,12008,122,1200,1.28,8.0E200\n" +
-"short:,,,NaN,NaN,NaN,,NaN,NaN\n";  //all in subsetVariables, so sorted, so this row at end
+"n,N,8,18,12008,122,1200,1.28,8.0E200\n";  
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
     }
@@ -3355,7 +3351,7 @@ directionsForGenerateDatasetsXml() +
 "    String long_name \"A String\";\n" +
 "  }\n" +
 "  aChar {\n" +
-"    Int16 actual_range 65, 78;\n" +
+"    String actual_range \"A\nN\";\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"A Char\";\n" +
 "  }\n" +
@@ -3380,7 +3376,7 @@ directionsForGenerateDatasetsXml() +
 "    String long_name \"An Int\";\n" +
 "  }\n" +
 "  aLong {\n" +
-"    Float64 actual_range 1200, 240000000000;\n" +
+"    Float64 actual_range 1200.0, 2.4e+11;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"A Long\";\n" +
 "  }\n" +
@@ -3419,7 +3415,7 @@ expected =
 "completeness, or usefulness, of this information.\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
 "    String standard_name_vocabulary \"CF Standard Name Table v29\";\n" +
-"    String subsetVariables \"five, fileName\";\n" +
+"    String subsetVariables \"aString, aChar, aBoolean, aByte, aShort, anInt, aLong, aFloat, aDouble, five, fileName\";\n" +
 "    String summary \"The new summary!\";\n" +
 "    String title \"The Newer Title!\";\n" +
 "  }\n" +
@@ -3441,7 +3437,7 @@ expected =
 "    String fileName;\n" +
 "    Float32 five;\n" +
 "    String aString;\n" +
-"    Int16 aChar;\n" +
+"    String aChar;\n" +
 "    Byte aBoolean;\n" +
 "    Byte aByte;\n" +
 "    Int16 aShort;\n" +
@@ -3466,16 +3462,16 @@ expected =
         expected = 
 "fileName,five,aString,aChar,aBoolean,aByte,aShort,anInt,aLong,aFloat,aDouble\n" +
 ",,,,,,,,,,\n" +
-"columnarAscii,5.0,abcdef,65,1,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
-"columnarAscii,5.0,short:,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN\n" +
-"columnarAscii,5.0,fg,70,1,11,12001,1200000,12000000000,1.21,1.0E200\n" +
-"columnarAscii,5.0,h,72,1,12,12002,120000,1200000000,1.22,2.0E200\n" +
-"columnarAscii,5.0,i,73,1,13,12003,12000,120000000,1.23,3.0E200\n" +
-"columnarAscii,5.0,j,74,0,14,12004,1200,12000000,1.24,4.0E200\n" +
-"columnarAscii,5.0,k,75,0,15,12005,120,1200000,1.25,5.0E200\n" +
-"columnarAscii,5.0,l,76,0,16,12006,12,120000,1.26,6.0E200\n" +
-"columnarAscii,5.0,m,77,0,17,12007,121,12000,1.27,7.0E200\n" +
-"columnarAscii,5.0,n,78,1,18,12008,122,1200,1.28,8.0E200\n";
+"columnarAscii,5.0,abcdef,A,1,24,24000,24000000,240000000000,2.4,2.412345678987654\n" +
+"columnarAscii,5.0,fg,F,1,11,12001,1200000,12000000000,1.21,1.0E200\n" +
+"columnarAscii,5.0,h,H,1,12,12002,120000,1200000000,1.22,2.0E200\n" +
+"columnarAscii,5.0,i,I,1,13,12003,12000,120000000,1.23,3.0E200\n" +
+"columnarAscii,5.0,j,J,0,14,12004,1200,12000000,1.24,4.0E200\n" +
+"columnarAscii,5.0,k,K,0,15,12005,120,1200000,1.25,5.0E200\n" +
+"columnarAscii,5.0,l,L,0,16,12006,12,120000,1.26,6.0E200\n" +
+"columnarAscii,5.0,m,M,0,17,12007,121,12000,1.27,7.0E200\n" +
+"columnarAscii,5.0,n,N,1,18,12008,122,1200,1.28,8.0E200\n" +
+"columnarAscii,5.0,short:,,NaN,NaN,NaN,NaN,NaN,NaN,NaN\n";
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
 
@@ -3485,8 +3481,17 @@ expected =
             eddTable.className() + "_sv", ".csv"); 
         results = new String((new ByteArray(testDir + tName)).toArray());
         expected = 
-"fileName,five\n" +
+"fileName,five\n" +       
 ",\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
+"columnarAscii,5.0\n" +
 "columnarAscii,5.0\n";
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
@@ -3511,9 +3516,9 @@ expected =
     /**
      * This tests reading glerl .dat files with Year[space]Day.
      * Test file is from
-     * http://coastwatch.glerl.noaa.gov/statistic/statistic.html 
+     * https://coastwatch.glerl.noaa.gov/statistic/statistic.html 
      * then clicking on "Average GLSEA Surface Water Temperature Data" / 1995 to get
-     * http://coastwatch.glerl.noaa.gov/ftp/glsea/avgtemps/1995/glsea-temps1995.dat
+     * https://coastwatch.glerl.noaa.gov/ftp/glsea/avgtemps/1995/glsea-temps1995.dat
      * stored as /erddapTest/ascii/glsea-temps1995.dat
      *
      * @throws Throwable if trouble
@@ -3534,7 +3539,7 @@ expected =
             "", "", "8", "11",  //avg temp
            "10080",  "", "", "", "",  
             "", 
-            "http://coastwatch.glerl.noaa.gov/statistic/statistic.html", "NOAA GLERL", 
+            "https://coastwatch.glerl.noaa.gov/statistic/statistic.html", "NOAA GLERL", 
             "Daily lake average surface water temperature from Great Lakes Surface Environmental Analysis maps.", 
             "Great Lakes Average Surface Water Temperature, Daily"},
             false); //doIt loop?
@@ -3548,7 +3553,7 @@ expected =
             "", "", "6", "9",  //ice
             "10080",  "", "", "", "",  
             "", 
-            "http://coastwatch.glerl.noaa.gov/statistic/statistic.html", "NOAA GLERL", 
+            "https://coastwatch.glerl.noaa.gov/statistic/statistic.html", "NOAA GLERL", 
             "Daily lake average surface water temperature from Great Lakes Surface Environmental Analysis maps.", 
             "Great Lakes Average Surface Water Temperature, Daily"},
             false); //doIt loop?
@@ -3568,7 +3573,7 @@ expected =
         //String2.log(results);
         expected = 
 "time,Superior,Michigan,Huron,Erie,Ontario,St_Clair\n" +
-"UTC,degrees_C,degrees_C,degrees_C,degrees_C,degrees_C,degrees_C\n" +
+"UTC,degree_C,degree_C,degree_C,degree_C,degree_C,degree_C\n" +
 "1994-10-25T00:00:00Z,9.04,13.19,11.76,15.74,12.15,NaN\n" +
 "1994-10-26T00:00:00Z,8.87,13.12,10.81,14.16,11.05,NaN\n" +
 "1994-10-27T00:00:00Z,8.87,13.13,10.82,14.17,11.06,NaN\n" +
@@ -3591,7 +3596,7 @@ expected =
                 eddTable.className() + "_" + year, ".nc"); 
             Table table = new Table();
             table.readFlatNc(testDir + tName, null, 0);
-            String2.log(table.dataToCSVString());
+            String2.log(table.dataToString());
             Test.ensureEqual(table.nRows(), 1, "year=" + year);
         }
 
@@ -3621,9 +3626,9 @@ expected =
     /**
      * This tests reading glerl .dat files with no column names.
      * Test file is from
-     * http://coastwatch.glerl.noaa.gov/statistic/statistic.html 
+     * https://coastwatch.glerl.noaa.gov/statistic/statistic.html 
      * then clicking on "Long term average surface water temperature (Data)" 1992/2014 Superior to get
-     * http://coastwatch.glerl.noaa.gov/statistic/dat/avgtemps-s_1992-2014.dat
+     * https://coastwatch.glerl.noaa.gov/statistic/dat/avgtemps-s_1992-2014.dat
      * stored as /erddapTest/ascii/avgtemps-s_1992-2014.dat
      *
      * @throws Throwable if trouble
@@ -3644,7 +3649,7 @@ expected =
             "", "0", "1", "10080",
             "", "", "", "",  
             "", 
-            "http://coastwatch.glerl.noaa.gov/statistic/statistic.html", "NOAA GLERL", 
+            "https://coastwatch.glerl.noaa.gov/statistic/statistic.html", "NOAA GLERL", 
             "Great Lakes long term average surface water temperature, daily.", 
             "Great Lakes Long Term Average Surface Water Temperature, Daily"},
             false); //doIt loop?
@@ -3664,7 +3669,7 @@ expected =
         //String2.log(results);
         expected = 
 "lake,dayOfYear,temperature\n" +
-",count,degrees_C\n" +
+",count,degree_C\n" +
 "s,1,3.3175\n" +
 "s,2,3.2395\n" +
 "s,3,3.2215\n" +
@@ -3681,7 +3686,9 @@ expected =
      * @throws Throwable if trouble
      */
     public static void test() throws Throwable {
-        /* */
+        String2.log("\n*** EDDTableFromColumnarAsciiFiles.test");
+
+/* for releases, this line should have open/close comment */
         testGenerateDatasetsXml();
         testBasic();
         testGlerl();

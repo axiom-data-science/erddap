@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Enumeration;
 import java.util.Iterator;
+import java.util.regex.Pattern;
 
 /**
  * This class holds a list of attributes (name=value, where name is a String
@@ -28,7 +29,7 @@ public class Attributes {
     public static boolean verbose = false;
 
     /** The backing data structure.  It is thread-safe. */
-    private ConcurrentHashMap hashmap = new ConcurrentHashMap(16, 0.75f, 4);
+    private ConcurrentHashMap<String,PrimitiveArray> hashmap = new ConcurrentHashMap(16, 0.75f, 4);
 
     /**
      * This constructs a new, empty Attributes object.
@@ -100,7 +101,7 @@ public class Attributes {
      * @return the attribute's value (a PrimitiveArray).
      */
     public PrimitiveArray get(String name) {
-        return (PrimitiveArray)hashmap.get(name);
+        return hashmap.get(name);
     }
 
     /**
@@ -314,7 +315,7 @@ public class Attributes {
      * @return the previous value stored for attributeName, or null if none
      */
     public PrimitiveArray remove(String name) {
-        return (PrimitiveArray)hashmap.remove(name);
+        return hashmap.remove(name);
     }
 
     /**
@@ -330,8 +331,8 @@ public class Attributes {
     public PrimitiveArray set(String name, PrimitiveArray value) {
         if (value == null || value.size() == 0 || 
             (value.size() == 1 && value instanceof StringArray && value.getString(0).trim().length() == 0)) 
-            return (PrimitiveArray)hashmap.remove(name);
-        return (PrimitiveArray)hashmap.put(String2.canonical(name), value);
+            return hashmap.remove(name);
+        return hashmap.put(String2.canonical(name), value);
     }
 
     /** 
@@ -607,13 +608,15 @@ public class Attributes {
         StringBuilder sb = new StringBuilder();
         String names[] = getNames();
         for (int i = 0; i < names.length; i++) {
-            sb.append("    " + names[i] + "=" + get(names[i]).toJsonCsvString() + "\n");
+            sb.append("    " + names[i] + "=" + get(names[i]).toNccsvAttString() + "\n");
         }
         return sb.toString();
     }
 
     /** 
      * This removes any entry which has a String value of 'value'. 
+     * value must equal the pa.toString() of the attribute's value,
+     * so a string with the word null must be requesth here as "\"null\""
      *
      * @param value Any attribute that has this value (when evaluated as a String)
      *   will be removed.
@@ -622,6 +625,7 @@ public class Attributes {
         Iterator it = hashmap.keySet().iterator(); //iterator (not enumeration) since I use it.remove() below
         while (it.hasNext()) {
             String name = (String)it.next();
+            //String2.log(">> lookFor=" + value + " found=" + get(name).toString());
             if (get(name).toString().equals(value))
                 it.remove();
         }
@@ -647,21 +651,18 @@ public class Attributes {
         String names[] = getNames();
         for (int index = 0; index < names.length; index++) {
             sb.append(prefix + names[index] + " = ");
-            Object o = hashmap.get(names[index]);
+            PrimitiveArray pa = hashmap.get(names[index]);
             String connect = "";
-            if (o instanceof StringArray) {
-                StringArray sa = (StringArray)o;
-                int n = sa.size();
+            boolean isCharArray = pa instanceof CharArray;
+            if (pa instanceof StringArray || isCharArray) {
+                int n = pa.size();
                 for (int i = 0; i < n; i++) {
                     sb.append(connect);
                     connect = ", ";
-                    //we don't need/want full String2.toJson encoding, just encode \ and ".
-                    String s = String2.replaceAll(sa.get(i), "\\", "\\\\");  //  \ becomes \\
-                    s = String2.replaceAll(s, "\"", "\\\"");                 //  " becomes \"
-                    sb.append("\"" + s + "\"");
+                    sb.append(String2.toJson(pa.getString(i), 65536, isCharArray)); //encodeNewline?
                 }
-            } else if (o instanceof FloatArray) {
-                FloatArray fa = (FloatArray)o;
+            } else if (pa instanceof FloatArray) {
+                FloatArray fa = (FloatArray)pa;
                 int n = fa.size();
                 for (int i = 0; i < n; i++) {
                     sb.append(connect);
@@ -670,7 +671,7 @@ public class Attributes {
                     sb.append("f");
                 }
             } else {
-                sb.append(o.toString());
+                sb.append(pa.toString());
             }
             sb.append(suffix + "\n");
         }
@@ -708,6 +709,8 @@ public class Attributes {
      * This doesn't throw an Exception if a difference is found.
      *
      * @param o an object, presumably an Attributes
+     * @return a string indicating the differents of this Attributes and o,
+     *   or "" if no difference. 
      */
     public String testEquals(Object o) {
         if (o == null)
@@ -732,7 +735,7 @@ public class Attributes {
 
     /**
      * This removes keys and values from this Attributes which 
-     * are the same in otherAtts.
+     * are exactly equal (even same data type) in otherAtts.
      * 
      * @param otherAtts another Attributes object
      */
@@ -799,17 +802,34 @@ public class Attributes {
                 int tSize = pa.size();
                 pa.setString(0, String2.trimStart(pa.getString(0)));
                 pa.setString(tSize - 1, String2.trimEnd(pa.getString(tSize - 1)));
-                for (int i = 0; i < tSize; i++) 
-                    pa.setString(0, String2.makeValidUnicode(pa.getString(i), "\r\n\t"));
+                for (int i = 0; i < tSize; i++) {
+                    String s = String2.makeValidUnicode(pa.getString(i), "\r\n\t");
+                    s = String2.commonUnicodeToPlainText(s); //a little aggressive, but reasonable for attributes
+                    pa.setString(0, s);
+                }
             }
         }
 
     }
 
     /**
+     * This uses StringArray.fromNccsv() on all StringArray values
+     * to de-JSON and convert "" to ".
+     */
+    public void fromNccsvStrings() {
+        Iterator it = hashmap.keySet().iterator(); 
+        while (it.hasNext()) {
+            String name = (String)it.next();
+            PrimitiveArray pa = get(name);
+            if (pa.elementClass() == String.class) 
+                ((StringArray)pa).fromNccsv();
+        }
+    }
+
+    /**
      * This makes a set of addAttributes which are needed to change a into b.
      * If an attribute in 'a' needs to be set to null, this sets it to the String 
-     *   "null" instead of just nulling it.
+     * "null" instead of just nulling it.
      *
      * @param a an Attributes object
      * @param b another Attributes object
@@ -844,15 +864,137 @@ public class Attributes {
     }
 
     /**
+     * This writes the attributes for a variable (or *GLOBAL*) to an NCCSV String.
+     * This doesn't write *SCALAR* or dataType attributes.
+     * This doesn't change any of the attributes.
+     * 
+     * @param varName 
+     * @return a string with all of the attributes for a variable (or *GLOBAL*) 
+     *   formatted for NCCSV.
+     */
+    public String toNccsvString(String varName) {
+        String nccsvVarName = String2.toNccsvDataString(varName);
+        StringBuilder sb = new StringBuilder();
+        String tName;
+
+        //special case: *GLOBAL* Conventions
+        if (varName.equals(String2.NCCSV_GLOBAL)) {
+            tName = "Conventions";
+            String val = getString(tName);
+            if (String2.isSomething(val)) {
+                if (val.indexOf("NCCSV") < 0)
+                    val += ", " + String2.NCCSV_VERSION;
+            } else {
+                val = "COARDS, CF-1.6, ACDD-1.3, " + String2.NCCSV_VERSION;
+            }
+            sb.append(
+                String2.toNccsvDataString(varName) + "," +  
+                String2.toNccsvDataString(tName)   + "," +  
+                String2.toNccsvAttString(val)     + "\n"); 
+        }
+
+        //each of the attributes
+        String names[] = getNames();
+        for (int ni = 0; ni < names.length; ni++) { 
+            tName = names[ni];
+            if (varName.equals(String2.NCCSV_GLOBAL) && tName.equals("Conventions"))
+                continue;
+            if (!String2.isSomething(tName) || 
+                tName.equals("_NCProperties")) 
+                continue;
+            PrimitiveArray tValue = get(tName);
+            if (tValue == null || tValue.size() == 0 || tValue.toString().length() == 0) 
+                continue; //do nothing
+            sb.append(
+                String2.toNccsvDataString(nccsvVarName) + "," + 
+                String2.toNccsvDataString(tName)        + "," +  
+                tValue.toNccsvAttString()           + "\n"); 
+        }
+        return sb.toString();        
+    }
+
+    /**
+     * This writes the attributes for a variable (or *GLOBAL*) to a String using
+     * NCO JSON lvl=2 pedantic style.
+     * See http://nco.sourceforge.net/nco.html#json
+     * This doesn't change any of the attributes.
+     * See issues in javadoc for EDDTable.saveAsNcoJson().
+     *
+     * <p>String attributes are written as type="char". 
+     * See comments in EDDTable.
+     * 
+     * @param indent a String a spaces for the start of each line
+     * @return a string with all of the attributes for a variable (or *GLOBAL*) 
+     *   formatted for NCO JSON, with a comma after the closing }.
+     */
+    public String toNcoJsonString(String indent) {
+        StringBuilder sb = new StringBuilder();
+
+//"attributes": {
+//  "byte_att": { "type": "byte", "data": [0, 1, 2, 127, -128, -127, -2, -1]},
+//  "char_att": { "type": "char", "data": "Sentence one.\nSentence two.\n"},
+//  "short_att": { "type": "short", "data": 37},
+//  "int_att": { "type": "int", "data": 73},
+//  "long_att": { "type": "int", "data": 73},                            //???!!! why not "type"="long"???       
+//  "float_att": { "type": "float", "data": [73.0, 72.0, 71.0, 70.010, 69.0010, 68.010, 67.010]},
+//  "double_att": { "type": "double", "data": [73.0, 72.0, 71.0, 70.010, 69.0010, 68.010, 67.0100010]}
+//},
+        sb.append(indent + "\"attributes\": {\n");
+
+        //each of the attributes
+        String names[] = getNames();
+        boolean somethingWritten = false;
+        for (int ni = 0; ni < names.length; ni++) { 
+            String tName = names[ni];
+            PrimitiveArray pa = get(tName);
+            if (pa == null || pa.size() == 0) 
+                continue; //do nothing
+            String tType = pa.elementClassString();
+            boolean isString = tType.equals("String");
+            //In NCO JSON, all char and String attributes appear as 1 string with type=char.
+            //There are no "string" attributes.
+            if (isString) {
+                tType = "char";
+            } else if (tType.equals("long")) {
+                tType = "int64"; //see http://www.unidata.ucar.edu/software/netcdf/docs/netcdf_utilities_guide.html#cdl_data_types and NCO JSON examples
+            }
+            sb.append(
+                (somethingWritten? ",\n" : "") +
+                indent + "  " +
+                String2.toJson(tName) + ": {\"type\": \"" + tType + "\", \"data\": ");
+            if (isString) {
+                String s = ((StringArray)pa).toNewlineString();
+                sb.append(String2.toJson(s.substring(0, s.length() - 1))); //remove trailing \n
+            } else if (pa.elementClass() == char.class) {
+                //each char becomes a string, then displayed as newline separated string
+                String s = (new StringArray(pa)).toNewlineString();
+                sb.append(String2.toJson(s.substring(0, s.length() - 1))); //remove trailing \n
+            } else {
+                String js = pa.toJsonCsvString();
+                sb.append(pa.size() == 1?  js :
+                    "[" + js + "]");
+            }
+            sb.append('}');
+            somethingWritten = true;
+        }
+        sb.append(
+            (somethingWritten? "\n" : "") +  //end previous line
+            indent + "},\n");
+        return sb.toString();        
+    }
+
+    /**
      * This tests the methods in this class.
      *
      * @throws Exception if trouble
      */
     public static void test() throws Exception {
         String2.log("\n*** test Attributes...");
+/* for releases, this line should have open/close comment */
 
         //set  and size
         Attributes atts = new Attributes();
+        String results;
         Test.ensureEqual(atts.size(), 0, "");
         atts.set("byte", (byte)1);
         atts.set("char", 'a');
@@ -880,7 +1022,7 @@ public class Attributes {
         Test.ensureEqual(atts.remove("zz"), new IntArray(new int[]{2}), "");
         Test.ensureEqual(atts.size(), 9, "");
 
-        ////empty string same as null; attribute removed
+        //empty string same as null; attribute removed
         atts.set("zz", "a"); 
         Test.ensureEqual(atts.size(), 10, "");
         atts.set("zz", ""); 
@@ -924,17 +1066,17 @@ public class Attributes {
             "");
 
         //toString
-        Test.ensureEqual(atts.toString(), 
-            "    byte=1\n" +
-            "    char=97\n" +
-            "    double=3.141592653589793\n" +
-            "    float=2.5\n" +
-            "    int=1000000\n" +
-            "    long=1000000000000\n" +
-            "    PA=1, 2, 3\n" +   
-            "    short=3000\n" +
-            "    String=\"a, csv, string\"\n",
-            "");
+        results = atts.toString();
+        Test.ensureEqual(results, 
+            "    byte=1b\n" +
+            "    char=\"'a'\"\n" +
+            "    double=3.141592653589793d\n" +
+            "    float=2.5f\n" +
+            "    int=1000000i\n" +
+            "    long=1000000000000L\n" +
+            "    PA=1i,2i,3i\n" +   
+            "    short=3000s\n" +
+            "    String=\"a, csv, string\"\n", "results=\n" + results);
 
         //clone   
         Attributes atts2 = (Attributes)atts.clone();
@@ -983,18 +1125,19 @@ public class Attributes {
             .add("char", 'd')   //diff value
             .add("short", (short)3000); //same value
         atts3.set(atts4);
-        Test.ensureEqual(atts3.toString(), 
-            "    byte=1\n" +
-            "    char=100\n" +
-            "    double=3.141592653589793\n" +
-            "    float=2.5\n" +
-            "    int=1000000\n" +
-            "    long=1000000000000\n" +
-            "    PA=1, 2, 3\n" +   
-            "    short=3000\n" +
+        results = atts3.toString();
+        Test.ensureEqual(results, 
+            "    byte=1b\n" +
+            "    char=\"'d'\"\n" +
+            "    double=3.141592653589793d\n" +
+            "    float=2.5f\n" +
+            "    int=1000000i\n" +
+            "    long=1000000000000L\n" +
+            "    PA=1i,2i,3i\n" +   
+            "    short=3000s\n" +
             "    String=\"a, csv, string\"\n" +
-            "    zztop=77\n",
-            "");
+            "    zztop=77i\n",
+            "results=\n" + results);
 
         //_FillValue
         atts.clear();
@@ -1016,8 +1159,8 @@ public class Attributes {
         atts2.add("d", 4d);
         atts.removeIfSame(atts2);
         Test.ensureEqual(atts.toString(), 
-            "    a=1\n" +
-            "    c=3.0\n",
+            "    a=1i\n" +
+            "    c=3.0f\n", //different type
             "");
 
         //trim
@@ -1027,12 +1170,13 @@ public class Attributes {
         atts.add("c",  "C");
         atts.add("d",  4);
         atts.trim();
-        Test.ensureEqual(atts.toString(), 
-            "    a=\"A\"\n" +
-            "    b=\"B\"\n" +
-            "    c=\"C\"\n" +
-            "    d=4\n",
-            "");
+        results = atts.toString();
+        Test.ensureEqual(results, 
+            "    a=A\n" +
+            "    b=B\n" +
+            "    c=C\n" +
+            "    d=4i\n",
+            "results=\n" + results);
 
         //makeALikeB
         Attributes a =  new Attributes();
@@ -1047,13 +1191,14 @@ public class Attributes {
         atts = makeALikeB(a, b);
         Test.ensureEqual(atts.toString(), 
 "    inA=\"null\"\n" +
-"    inB=3, 4, 5\n" +
-"    number=11, 22\n",
+"    inB=3i,4i,5i\n" +
+"    number=11i,22i\n",
             "atts=\n" + atts.toString());
         a.add(atts);
-        a.removeValue("null");
+        a.removeValue("\"null\"");
         Test.ensureEqual(a, b, "");
         Test.ensureEqual(a.toString(), b.toString(), "");
+
 
         String2.log("*** test Attributes finished successfully.");
     } 

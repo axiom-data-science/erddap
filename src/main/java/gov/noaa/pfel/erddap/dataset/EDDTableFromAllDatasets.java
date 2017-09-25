@@ -276,18 +276,18 @@ public class EDDTableFromAllDatasets extends EDDTable{
         table.columnAttributes(col)
             .add("comment", EDStatic.advc_dataStructure)
             .add("ioos_category", "Other")
-            .add("long_name", EDStatic.advl_dataStructure)
-            .add("reference", EDStatic.advr_dataStructure);
+            .add("long_name",  EDStatic.advl_dataStructure)
+            .add("references", EDStatic.advr_dataStructure);
         col = table.addColumn("cdm_data_type", cdmCol); 
         table.columnAttributes(col)
             .add("ioos_category", "Other")
-            .add("long_name", EDStatic.advl_cdm_data_type)
-            .add("reference", EDStatic.advr_cdm_data_type);
+            .add("long_name",  EDStatic.advl_cdm_data_type)
+            .add("references", EDStatic.advr_cdm_data_type);
         col = table.addColumn("class", classCol); 
         table.columnAttributes(col)
             .add("ioos_category", "Other")
-            .add("long_name", EDStatic.advl_class)
-            .add("reference", EDStatic.advr_class);
+            .add("long_name",  EDStatic.advl_class)
+            .add("references", EDStatic.advr_class);
         col = table.addColumn("title", titleCol);  //Title
         int titleColNumber = col;
         table.columnAttributes(col)
@@ -571,6 +571,7 @@ public class EDDTableFromAllDatasets extends EDDTable{
     public static void test() throws Throwable {
         String2.log("\n****************** EDDTableFromAllDatasets.test() *****************\n");
 
+/* for releases, this line should have open/close comment */
         //tests usually run
         testBasic();
     }

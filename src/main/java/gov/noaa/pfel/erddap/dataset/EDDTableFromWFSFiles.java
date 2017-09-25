@@ -67,7 +67,8 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
         Object[][] tDataVariables,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
-        String tMetadataFrom, String tCharset, int tColumnNamesRow, int tFirstDataRow,
+        String tMetadataFrom, String tCharset, 
+        int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
@@ -82,7 +83,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow,
+            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
@@ -115,14 +116,14 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             //read the table
             Table table = new Table();
             InputStream is = SSR.getUrlInputStream(tSourceUrl); 
-            BufferedReader in = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+            BufferedReader in = new BufferedReader(new InputStreamReader(is, String2.UTF_8));
             table.readXml(in, false, //no validate since no .dtd
                 tRowElementXPath, 
                 null, false);  //row attributes,  simplify=false
 
             //save as UTF-8 ASCII TSV file
             //This writes to temp file first and throws Exception if trouble.
-            table.saveAsTabbedASCII(fullFileName, "UTF-8"); 
+            table.saveAsTabbedASCII(fullFileName, String2.UTF_8); 
             return "";
 
         } catch (Exception e) {
@@ -192,7 +193,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
                 false, tRowElementXPath, null, true); //simplify=true
         } else {
             InputStream is = SSR.getUrlInputStream(tSourceUrl); 
-            BufferedReader in = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+            BufferedReader in = new BufferedReader(new InputStreamReader(is, String2.UTF_8));
             dataSourceTable.readXml(in, false, //no validate since no .dtd
                 tRowElementXPath, 
                 null, true);  //row attributes,  here, simplify to get suggested dataTypes
@@ -230,7 +231,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
 
             //make addAtts
             Attributes addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
-                dataSourceTable.globalAttributes(), sourceAtts, colName, 
+                dataSourceTable.globalAttributes(), sourceAtts, null, colName, 
                 timeUnits.length() == 0, true); //addColorBarMinMax, tryToFindLLAT
 
             //put time units
@@ -240,7 +241,8 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             }
 
             //add to dataAddTable
-            dataAddTable.addColumn(col, colName, pa, addAtts);                
+            dataAddTable.addColumn(col, colName, 
+                makeDestPAForGDX(pa, sourceAtts), addAtts);                
 
             //files are likely sorted by first date time variable
             //and no harm if files aren't sorted that way
@@ -248,13 +250,16 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
                 tSortedColumnSourceName = colName;
         }
 
+        //tryToFindLLAT
+        tryToFindLLAT(dataSourceTable, dataAddTable);
+
         //after dataVariables known, add global attributes in the dataAddTable
         String tDatasetID = suggestDatasetID(tSourceUrl);
         dataAddTable.globalAttributes().set(
             makeReadyToUseAddGlobalAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), 
                 //another cdm_data_type could be better; this is good for now
-                probablyHasLonLatTime(dataSourceTable, dataAddTable)? "Point" : "Other",
+                hasLonLatTime(dataAddTable)? "Point" : "Other",
                 EDStatic.fullCopyDirectory + tDatasetID + "/", 
                 externalAddGlobalAttributes, 
                 suggestKeywords(dataSourceTable, dataAddTable)));
@@ -264,7 +269,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
         if (dataSourceTable.globalAttributes().getString("subsetVariables") == null &&
                dataAddTable.globalAttributes().getString("subsetVariables") == null) 
             dataAddTable.globalAttributes().add("subsetVariables",
-                suggestSubsetVariables(dataSourceTable, dataAddTable, 100)); //guess nFiles
+                suggestSubsetVariables(dataSourceTable, dataAddTable, false));
 
         //write the information
         StringBuilder sb = new StringBuilder();
@@ -299,7 +304,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
 
         sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, 
             "dataVariable", 
-            true, true, false)); //includeDataType, tryToFindLLAT, questionDestinationName
+            true, false)); //includeDataType, questionDestinationName
         sb.append(
             "</dataset>\n" +
             "\n");
@@ -1080,7 +1085,6 @@ directionsForGenerateDatasetsXml() +
 "    String creator_email \"doug@uky.edu\";\n" +
 "    String creator_name \"Doug Curl\";\n" +
 "    String creator_url \"http://www.uky.edu/KGS/\";\n" +
-"    String drawLandMask \"under\";\n" +
 "    Float64 Easternmost_Easting -78.80319;\n" +
 "    String featureType \"Point\";\n" +
 "    Float64 geospatial_lat_max 39.98267;\n" +
@@ -1191,6 +1195,9 @@ expected =
      * @throws Throwable if trouble
      */
     public static void test() throws Throwable {
+        String2.log("\n*** EDDTableFromWFSFiles.test()");
+
+/* for releases, this line should have open/close comment */
         testGenerateDatasetsXml();
         testBasic();
     }

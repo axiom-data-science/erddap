@@ -20,10 +20,10 @@ import com.cohort.util.String2;
 import com.cohort.util.Test;
 import com.cohort.util.XML;
 
+import gov.noaa.pfel.coastwatch.griddata.NcHelper;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.sgt.SgtUtil;
 import gov.noaa.pfel.coastwatch.util.FileVisitorDNLS;
-import gov.noaa.pfel.coastwatch.griddata.NcHelper;
 
 import gov.noaa.pfel.erddap.GenerateDatasetsXml;
 import gov.noaa.pfel.erddap.util.EDStatic;
@@ -33,6 +33,7 @@ import java.text.MessageFormat;
 import java.util.List;
 
 import ucar.nc2.*;
+
 
 
 /** 
@@ -55,12 +56,12 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         Object[][] tAxisVariables,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
-        String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex,
-        String tMetadataFrom, int tMatchAxisNDigits,
-        boolean tFileTableInMemory, boolean tAccessibleViaFiles)
+        String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
+        String tMetadataFrom, int tMatchAxisNDigits, 
+        boolean tFileTableInMemory, boolean tAccessibleViaFiles) 
         throws Throwable {
 
-        super("EDDGridFromMatFiles", tDatasetID,
+        super("EDDGridFromMatFiles", tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
             tOnChange, tFgdcFile, tIso19115File, 
             tDefaultDataQuery, tDefaultGraphQuery, 
@@ -68,8 +69,8 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             tAxisVariables,
             tDataVariables,
             tReloadEveryNMinutes, tUpdateEveryNMillis,
-            tFileDir, tFileNameRegex, tRecursive, tPathRegex,
-            tMetadataFrom, tMatchAxisNDigits,
+            tFileDir, tFileNameRegex, tRecursive, tPathRegex, 
+            tMetadataFrom, tMatchAxisNDigits, 
             tFileTableInMemory, tAccessibleViaFiles);
     }
 
@@ -367,7 +368,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                         axisAddTable.addColumn(   avi, axisName, new DoubleArray(), //type doesn't matter
                             makeReadyToUseAddVariableAttributesForDatasetsXml(
                                 axisSourceTable.globalAttributes(),
-                                sourceAtts, axisName, false, true)); //addColorBarMinMax, tryToFindLLAT
+                                sourceAtts, null, axisName, false, true)); //addColorBarMinMax, tryToFindLLAT
 
                     }
 
@@ -394,10 +395,11 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                 Attributes sourceAtts = new Attributes();
                 NcHelper.getVariableAttributes(var, sourceAtts);
                 dataSourceTable.addColumn(dataSourceTable.nColumns(), varName, pa, sourceAtts);
-                dataAddTable.addColumn(   dataAddTable.nColumns(),    varName, pa, 
+                dataAddTable.addColumn(   dataAddTable.nColumns(),    varName, 
+                    makeDestPAForGDX(pa, sourceAtts),
                     makeReadyToUseAddVariableAttributesForDatasetsXml(
                         axisSourceTable.globalAttributes(),
-                        sourceAtts, varName, true, false)); //addColorBarMinMax, tryToFindLLAT
+                        sourceAtts, null, varName, true, false)); //addColorBarMinMax, tryToFindLLAT
             }
 
             //after dataVariables known, add global attributes in the axisAddTable
@@ -435,9 +437,12 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             sb.append(writeAttsForDatasetsXml(false, axisSourceTable.globalAttributes(), "    "));
             sb.append(writeAttsForDatasetsXml(true,  axisAddTable.globalAttributes(),    "    "));
             
-            //last 3 params: includeDataType, tryToFindLLAT, questionDestinationName
-            sb.append(writeVariablesForDatasetsXml(axisSourceTable, axisAddTable, "axisVariable", false, true,  false));
-            sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, "dataVariable", true,  false, false));
+            //tryToFindLLAT 
+            tryToFindLLAT(axisSourceTable, axisAddTable); //just axisTables
+
+            //last 2 params: includeDataType, questionDestinationName
+            sb.append(writeVariablesForDatasetsXml(axisSourceTable, axisAddTable, "axisVariable", false, false));
+            sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, "dataVariable", true,  false));
             sb.append(
                 "</dataset>\n" +
                 "\n");
@@ -520,7 +525,7 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"geospatial_vertical_units\">m</att>\n" +
 "        <att name=\"history\">Remote Sensing Systems, Inc\n" +
 "2008-08-29T00:31:43Z NOAA CoastWatch (West Coast Node) and NOAA SFSC ERD\n" +
-"2009-01-07 http://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\n" +
+"2009-01-07 https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\n" +
 "2009-01-07 http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.nc?x_wind[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)],y_wind[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)],mod[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)]</att>\n" +
 "        <att name=\"infoUrl\">http://coastwatch.pfel.noaa.gov/infog/QS_ux10_las.html</att>\n" +
 "        <att name=\"institution\">NOAA CoastWatch, West Coast Node</att>\n" +
@@ -538,7 +543,7 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"satellite\">QuikSCAT</att>\n" +
 "        <att name=\"sensor\">SeaWinds</att>\n" +
 "        <att name=\"source\">satellite observation: QuikSCAT, SeaWinds</att>\n" +
-"        <att name=\"sourceUrl\">http://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day</att>\n" +
+"        <att name=\"sourceUrl\">https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day</att>\n" +
 "        <att name=\"Southernmost_Northing\" type=\"double\">-89.875</att>\n" +
 "        <att name=\"standard_name_vocabulary\">CF-1.0</att>\n" +
 "        <att name=\"summary\">Remote Sensing Inc. distributes science quality wind velocity data from the SeaWinds instrument onboard NASA&#39;s QuikSCAT satellite.  SeaWinds is a microwave scatterometer designed to measure surface winds over the global ocean.  Wind velocity fields are provided in zonal, meriodonal, and modulus sets. The reference height for all wind velocities is 10 meters.</att>\n" +
@@ -840,7 +845,7 @@ today;
         tResults = results.substring(0, Math.min(results.length(), expected.length()));
         Test.ensureEqual(tResults, expected, "results=\n" + results);
 
-//            + " http://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\n" +
+//            + " https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\n" +
 //today + 
 
 expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das\";\n" +
@@ -860,7 +865,7 @@ expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das
 "    String satellite \"QuikSCAT\";\n" +
 "    String sensor \"SeaWinds\";\n" +
 "    String source \"satellite observation: QuikSCAT, SeaWinds\";\n" +
-"    String sourceUrl \"http://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\";\n" +
+"    String sourceUrl \"https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\";\n" +
 "    Float64 Southernmost_Northing -89.875;\n" +
 "    String standard_name_vocabulary \"CF Standard Name Table v29\";\n" +
 "    String summary \"Remote Sensing Inc. distributes science quality wind velocity data from the SeaWinds instrument onboard NASA's QuikSCAT satellite.  SeaWinds is a microwave scatterometer designed to measure surface winds over the global ocean.  Wind velocity fields are provided in zonal, meriodonal, and modulus sets. The reference height for all wind velocities is 10 meters.\";\n" +

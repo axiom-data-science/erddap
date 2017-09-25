@@ -1,7 +1,8 @@
 /* 
  * EDDTableFromNcPostFiles Copyright 2009, NOAA.
  * See the LICENSE.txt file in this file's directory.
- */
+ *//*
+
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
@@ -28,32 +29,33 @@ import gov.noaa.pfel.erddap.variable.*;
 import java.util.HashMap;
 import java.util.List;
 
+*/
 /**
- * Get netcdf-X.X.XX.jar from 
- * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
+ * Get netcdfAll-......jar from ftp://ftp.unidata.ucar.edu/pub
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
- * Get slf4j-jdk14.jar from 
- * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
- * and copy it to <context>/WEB-INF/lib.
- * Put both of these .jar files in the classpath for the compiler and for Java.
- */
+ * Put it in the classpath for the compiler and for Java.
+ *//*
+
 import ucar.nc2.*;
 import ucar.nc2.dataset.NetcdfDataset;
 import ucar.nc2.dods.*;
 import ucar.nc2.util.*;
 import ucar.ma2.*;
 
-/** 
+*/
+/**
  * This class represents a table of data from a collection of n-dimensional (1,2,3,4,...) .nc data files.
  * The dimensions are e.g., time,depth,lat,lon.
  * <br>[still true???]In a given file, there are multiple values of the outermost dimension (e.g., time), 
  * but THERE MUST BE JUST ONE value for the other dimensions (e.g., depth, lat, and lon).
  *
  * @author Bob Simons (bob.simons@noaa.gov) 2009-02-13
- */
+ *//*
+
 public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles { 
 
-    /** 
+    */
+/**
      * The constructor calls the super constructor and loads the user and role table data
      * (to control data access). 
      *
@@ -71,7 +73,8 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      *    to try to generate FGDC metadata for this dataset), or null (to allow
      *    ERDDAP to try to generate FGDC metadata for this dataset).
      * @param tIso19115File This is like tFgdcFile, but for the ISO 19119-2/19139 metadata.
-     */
+     *//*
+
     public EDDTableFromPostNcFiles(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
@@ -106,7 +109,8 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
     }
 
 
-    /**
+    */
+/**
      * This returns a suggested fileName (no dir or extension).
      * It doesn't add a random number, so will return the same results 
      * if the inputs are the same.
@@ -116,7 +120,8 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      * @param userDapQuery
      * @param fileTypeName
      * @return a suggested fileName (no dir or extension)
-     */
+     *//*
+
     public String suggestFileName(String loggedInAs, String userDapQuery, String fileTypeName) {
 
         //decode userDapQuery to a canonical form to avoid slight differences in percent-encoding 
@@ -134,7 +139,8 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
         return name;
     }
 
-    /** 
+    */
+/**
      * This returns the name of the file in datasetDir()
      * which has all of the distinct data combinations for the current subsetVariables.
      * The file is deleted by setSubsetVariablesCSV(), which is called whenever
@@ -144,13 +150,15 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      * @param loggedInAs POST datasets overwrite this method and use loggedInAs 
      *    since data for each loggedInAs is different; others don't use this
      * @throws Exception if trouble
-     */
+     *//*
+
     public String subsetVariablesFileName(String loggedInAs) throws Exception {
         return (loggedInAs == null? "" : String2.encodeFileNameSafe(loggedInAs) + "_") + 
             SUBSET_FILENAME; 
     }
 
-    /** 
+    */
+/**
      * This returns the name of the file in datasetDir()
      * which has all of the distinct values for the current subsetVariables.
      * The file is deleted by setSubsetVariablesCSV(), which is called whenever
@@ -160,13 +168,15 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      * @param loggedInAs POST datasets overwrite this method and use loggedInAs 
      *    since data for each loggedInAs is different; others don't use this
      * @throws Exception if trouble
-     */
+     *//*
+
     public String distinctSubsetVariablesFileName(String loggedInAs) throws Exception {
         return (loggedInAs == null? "" : String2.encodeFileNameSafe(loggedInAs) + "_") + 
             DISTINCT_SUBSET_FILENAME; 
     }
 
-    /** 
+    */
+/**
      * This gets the data (chunk by chunk) from this EDDTable for the 
      * OPeNDAP DAP-style query and writes it to the TableWriter. 
      * See the EDDTable method documentation.
@@ -181,7 +191,8 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
      * @param userDapQuery the part of the user's request after the '?', still percentEncoded, may be null.
      * @param tableWriter
      * @throws Throwable if trouble (notably, WaitThenTryAgainException)
-     */
+     *//*
+
     public void getDataForDapQuery(String loggedInAs, String requestUrl, 
         String userDapQuery, TableWriter tableWriter) throws Throwable {
 
@@ -193,20 +204,24 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
         super.getDataForDapQuery(loggedInAs, requestUrl, userDapQuery, tableWriter);
     }
 
-    /**
+    */
+/**
      * getDataForDapQuery always calls this right before standardizeResultsTable.
      * EDDTableFromPostNcFiles uses this to remove data not accessible to this user.
-     */
+     *//*
+
     public void preStandardizeResultsTable(String loggedInAs, Table table) {
         EDDTableFromPostDatabase.staticPreStandardizeResultsTable(loggedInAs, table);
     }
 
 
-    /**
+    */
+/**
      * This tests the methods in this class.
      *
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static void test() throws Throwable {
 
         //usually run
@@ -218,3 +233,4 @@ public class EDDTableFromPostNcFiles extends EDDTableFromNcFiles {
     }
 }
 
+*/

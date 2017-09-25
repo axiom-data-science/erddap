@@ -57,17 +57,13 @@ import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
-import org.joda.time.*;
-import org.joda.time.format.*;
+import java.time.*;
+import java.time.format.*;
 
 /**
- * Get netcdf-X.X.XX.jar from 
- * http://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html
+ * Get netcdfAll-......jar from ftp://ftp.unidata.ucar.edu/pub
  * and copy it to <context>/WEB-INF/lib renamed as netcdf-latest.jar.
- * Get slf4j-jdk14.jar from 
- * ftp://ftp.unidata.ucar.edu/pub/netcdf-java/slf4j-jdk14.jar
- * and copy it to <context>/WEB-INF/lib.
- * Put both of these .jar files in the classpath for the compiler and for Java.
+ * Put it in the classpath for the compiler and for Java.
  */
 import ucar.nc2.*;
 import ucar.nc2.dataset.NetcdfDataset;
@@ -126,7 +122,8 @@ public class EDDTableFromHttpGet extends EDDTableFromFiles {
         Object[][] tDataVariables,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
-        String tMetadataFrom, String tCharset, int tColumnNamesRow, int tFirstDataRow,
+        String tMetadataFrom, String tCharset, 
+        int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
@@ -141,7 +138,7 @@ public class EDDTableFromHttpGet extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow,
+            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
@@ -163,7 +160,7 @@ public class EDDTableFromHttpGet extends EDDTableFromFiles {
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, String tCharset, int tColumnNamesRow, int tFirstDataRow,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
-        String tColumnNameForExtract,
+        String tColumnNameForExtract, String tColumnSeparator,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
         boolean tAccessibleViaFiles, boolean tRemoveMVRows) 
@@ -175,7 +172,7 @@ public class EDDTableFromHttpGet extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow,
+            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
@@ -502,11 +499,11 @@ public class EDDTableFromHttpGet extends EDDTableFromFiles {
             if (columnNames[col].equals(EDV.TIME_NAME)) {
                 timeColumn = col;
                 if (columnIsString[col]) {
-                    if (columnUnits[col].toLowerCase().indexOf("yy") < 0)
+                    if (columnUnits[col].toLowerCase().indexOf("yyyy") < 0)  //was "yy"
                         throw new SimpleException(EDStatic.queryError + 
                             "Invalid units for the string time variable. " +
                             "Units MUST specify the format of the time values.");
-                    timeFormatter = DateTimeFormat.forPattern(columnUnits[col]).withZone(DateTimeZone.UTC);
+                    timeFormatter = DateTimeFormat.forPattern(columnUnits[col]).withZone(ZoneId.of("UTC"));
                 } else { //numeric time values
                     timeBaseAndFactor = Calendar2.getTimeBaseAndFactor(
                         columnUnits[col]); //throws RuntimeException if trouble
@@ -639,8 +636,8 @@ public class EDDTableFromHttpGet extends EDDTableFromFiles {
             //figure out the epochSeconds time value
             double tTime = 
                 timeColumn < 0? Double.NaN :                           //no time column
-                timeBaseAndFactor == null? timeFormatter.parseMillis(  //String time, thread safe
-                    columnValues[timeColumn].getString(row)) / 1000.0 : 
+                timeBaseAndFactor == null? Calendar2.toEpochSeconds(
+                    columnValues[timeColumn].getString(row), timeFormatter) : 
                 Calendar2.unitsSinceToEpochSeconds(                    //numeric time
                     timeBaseAndFactor[0], timeBaseAndFactor[1], 
                     columnValues[timeColumn].getDouble(row));
@@ -907,7 +904,7 @@ oneAuthorArray.set(0, author);
         //read the data
         table = readFile(startDir + "46088/1980-01/46088_1980-01.nc", 
             Double.MAX_VALUE, requiredColumnNames);
-        results = table.dataToCSVString();
+        results = table.dataToString();
         expected = "zztop";
         Test.ensureEqual(results, expected, "results=" + results);
 
@@ -1039,10 +1036,10 @@ oneAuthorArray.set(0, author);
             String colName = dataSourceTable.getColumnName(c);
             Attributes sourceAtts = dataSourceTable.columnAttributes(c);
             dataAddTable.addColumn(c, colName,
-                dataSourceTable.getColumn(c),
+                makeDestPAForGDX(sourceAtts, dataSourceTable.getColumn(c)),
                 makeReadyToUseAddVariableAttributesForDatasetsXml(
-                    dataSourceTable.globalAttributes(), sourceAtts, colName, 
-                    true, true)); //addColorBarMinMax, tryToFindLLAT
+                    dataSourceTable.globalAttributes(), sourceAtts, null, 
+                    colName, true, true)); //addColorBarMinMax, tryToFindLLAT
 
             //if a variable has timeUnits, files are likely sorted by time
             //and no harm if files aren't sorted that way
@@ -1062,21 +1059,25 @@ oneAuthorArray.set(0, author);
         if (tTitle       != null && tTitle.length()       > 0) externalAddGlobalAttributes.add("title",       tTitle);
         externalAddGlobalAttributes.setIfNotAlreadySet("sourceUrl", 
             "(" + (String2.isRemote(tFileDir)? "remote" : "local") + " files)");
+
+        //tryToFindLLAT
+        tryToFindLLAT(dataSourceTable, dataAddTable);
+
         //externalAddGlobalAttributes.setIfNotAlreadySet("subsetVariables", "???");
         //after dataVariables known, add global attributes in the dataAddTable
         dataAddTable.globalAttributes().set(
             makeReadyToUseAddGlobalAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), 
                 //another cdm_data_type could be better; this is ok
-                probablyHasLonLatTime(dataSourceTable, dataAddTable)? "Point" : "Other",
+                hasLonLatTime(dataAddTable)? "Point" : "Other",
                 tFileDir, externalAddGlobalAttributes, 
                 suggestKeywords(dataSourceTable, dataAddTable)));
 
         //subsetVariables
         if (dataSourceTable.globalAttributes().getString("subsetVariables") == null &&
-                dataAddTable.globalAttributes().getString("subsetVariables") == null)
-            externalAddGlobalAttributes.add("subsetVariables",
-                suggestSubsetVariables(dataSourceTable, dataAddTable, 100)); //guess nFiles
+               dataAddTable.globalAttributes().getString("subsetVariables") == null) 
+            externalAddGlobalAtts.add("subsetVariables",
+                suggestSubsetVariables(dataSourceTable, dataAddTable, false)); 
 
         //add the columnNameForExtract variable
         if (tColumnNameForExtract.length() > 0) {
@@ -1122,9 +1123,9 @@ oneAuthorArray.set(0, author);
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
 
-        //last 3 params: includeDataType, tryToFindLLAT, questionDestinationName
+        //last 2 params: includeDataType, questionDestinationName
         sb.append(writeVariablesForDatasetsXml(dataSourceTable, dataAddTable, 
-            "dataVariable", true, true, false));
+            "dataVariable", true, false));
         sb.append(
             "</dataset>\n" +
             "\n");

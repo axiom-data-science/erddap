@@ -173,7 +173,7 @@ public class EDDTableFromMWFS extends EDDTable{
      * explicitly.
      *
      * @param tDatasetID is a very short string identifier 
-     *   (required: just safe characters: A-Z, a-z, 0-9, _, -, or .)
+     *  (recommended: [A-Za-z][A-Za-z0-9_]* )
      *   for this dataset. See EDD.datasetID().
      * @param tAccessibleTo is a comma separated list of 0 or more
      *    roles which will have access to this dataset.
@@ -279,7 +279,7 @@ public class EDDTableFromMWFS extends EDDTable{
         if (tLicense != null)
             combinedGlobalAttributes.set("license", 
                 String2.replaceAll(tLicense, "[standard]", EDStatic.standardLicense));
-        combinedGlobalAttributes.removeValue("null");
+        combinedGlobalAttributes.removeValue("\"null\"");
 
         //make the fixedVariables
         dataVariables = new EDV[nFixedVariables + tDataVariables.length];
@@ -639,7 +639,7 @@ time series data.</att>
             "&longitude>=-72&longitude<=-69&latitude>=32&latitude<=42.3" +
             "&time>=2007-06-01T12:00&time<=2007-06-01T14:00", tw);
         Table table = tw.cumulativeTable();
-        String2.log("table=" + table.toString("row", 10));
+        String2.log("table=" + table.dataToString(10));
         //   Row       longitude       latitude       altitude           time     station_id sea_water_temp
         //     0          -70.43          38.48              0     1180702200          44004           24.1
         //     1          -70.43          38.48              0     1180705800          44004           24.1

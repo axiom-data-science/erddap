@@ -46,6 +46,7 @@ import java.io.Writer;
 import java.security.Principal;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
@@ -76,8 +77,14 @@ import org.apache.lucene.util.Version;
 //import org.apache.lucene.search.TopDocs;
 //import org.apache.lucene.store.SimpleFSDirectory;
 
-
 //import org.verisign.joid.consumer.OpenIdFilter;
+
+import ucar.ma2.Array;
+import ucar.ma2.DataType;
+import ucar.nc2.Dimension;
+import ucar.nc2.Group;
+import ucar.nc2.NetcdfFileWriter;
+import ucar.nc2.Variable;
 
 /** 
  * This class holds a lot of static information set from the setup.xml and messages.xml
@@ -142,6 +149,9 @@ public class EDStatic {
      * <br>1.70 released on 2016-04-15
      * <br>1.72 released on 2016-05-12
      * <br>1.74 released on 2016-10-07
+     * <br>1.76 released on 2017-05-12
+     * <br>1.78 released on 2017-05-27
+     * <br>1.80 released on 2017-08-04
      */   
     public static String erddapVersion = "1.74-axiom-r3";
 
@@ -155,7 +165,7 @@ public static boolean developmentMode = false;
     /** This identifies the dods server/version that this mimics. */
     public static String dapVersion = "DAP/2.0";   //???
     public static String serverVersion = "dods/3.7"; //this is what thredds replies
-      //drds at http://oceanwatch.pfeg.noaa.gov/opendap/GLOBEC/GLOBEC_bottle.ver replies "DODS/3.2"
+      //drds at https://oceanwatch.pfeg.noaa.gov/opendap/GLOBEC/GLOBEC_bottle.ver replies "DODS/3.2"
       //both reply with server version, neither replies with coreVersion
       //spec says #.#.#, but Gallagher says #.# is fine.
 
@@ -199,13 +209,11 @@ public static boolean developmentMode = false;
 
     public static String datasetsThatFailedToLoad = "";
     public static String errorsDuringMajorReload = "";
-    public static StringBuffer memoryUseLoadDatasetsSB     = new StringBuffer(""); //thread-safe (1 thread writes but others may read)
-    public static StringBuffer failureTimesLoadDatasetsSB  = new StringBuffer(""); //thread-safe (1 thread writes but others may read)
-    public static StringBuffer responseTimesLoadDatasetsSB = new StringBuffer(""); //thread-safe (1 thread writes but others may read)
+    public static StringBuffer majorLoadDatasetsTimeSeriesSB = new StringBuffer(""); //thread-safe (1 thread writes but others may read)
     public static HashSet requestBlacklist = null;
     public static volatile int slowDownTroubleMillis = 1000;
     public static long startupMillis = System.currentTimeMillis();
-    public static String startupLocalDateTime = Calendar2.getCurrentISODateTimeStringLocal();
+    public static String startupLocalDateTime = Calendar2.getCurrentISODateTimeStringLocalTZ();
     public static int nGridDatasets = 0;  
     public static int nTableDatasets = 0;
     public static long lastMajorLoadDatasetsStartTimeMillis = System.currentTimeMillis();
@@ -394,6 +402,7 @@ public static boolean developmentMode = false;
         searchEngine,
         warName;
     public static String ampLoginInfo = "&loginInfo;";
+    public static String accessibleViaNC4; //"" if accessible, else message why not
     public static int 
         lowResLogoImageFileWidth,  lowResLogoImageFileHeight,
         highResLogoImageFileWidth, highResLogoImageFileHeight,
@@ -417,7 +426,8 @@ public static boolean developmentMode = false;
         reallyVerbose,
         subscriptionSystemActive,  convertersActive, slideSorterActive,
         fgdcActive, iso19115Active, geoServicesRestActive, 
-        filesActive, dataProviderFormActive, sosActive, wcsActive, wmsActive,
+        filesActive, dataProviderFormActive, openLayersActive, politicalBoundariesActive,
+        sosActive, wcsActive, wmsActive,
         quickRestart, subscribeToRemoteErddapDataset,
         useOriginalSearchEngine, useLuceneSearchEngine,  //exactly one will be true
         variablesMustHaveIoosCategory,
@@ -552,6 +562,7 @@ public static boolean developmentMode = false;
         categorySearchDifferentHtml,
         categoryClickHtml,
         categoryNotAnOption,
+        caughtInterrupted,
         clickAccessHtml,
         clickAccess,
         clickBackgroundInfo,
@@ -732,7 +743,7 @@ public static boolean developmentMode = false;
         fileHelp_dds,
         fileHelp_dods,
         fileHelpGrid_esriAscii,
-        fileHelpTable_esriAscii,
+        fileHelpTable_esriCsv,
         fileHelp_fgdc,
         fileHelp_geoJson,
         fileHelp_graph,
@@ -744,15 +755,23 @@ public static boolean developmentMode = false;
         fileHelp_itxGrid,
         fileHelp_itxTable,
         fileHelp_json,
+        fileHelp_jsonlCSV,
+        fileHelp_jsonlKVP,
         fileHelp_mat,
-        fileHelpGrid_nc,
-        fileHelpTable_nc,
-        fileHelp_ncHeader,
+        fileHelpGrid_nc3,
+        fileHelpGrid_nc4,
+        fileHelpTable_nc3,
+        fileHelpTable_nc4,
+        fileHelp_nc3Header,
+        fileHelp_nc4Header,
+        fileHelp_nccsv,
+        fileHelp_nccsvMetadata,
         fileHelp_ncCF,
         fileHelp_ncCFHeader,
         fileHelp_ncCFMA,
         fileHelp_ncCFMAHeader,
         fileHelp_ncml,
+        fileHelp_ncoJson,
         fileHelpGrid_odvTxt,
         fileHelpTable_odvTxt,
         fileHelp_subset,
@@ -778,6 +797,7 @@ public static boolean developmentMode = false;
         functionHtml,
         functionDistinctCheck,
         functionDistinctHtml,
+        functionOrderByExtra,
         functionOrderByHtml,
         functionOrderBySort,
         functionOrderBySort1,
@@ -1067,6 +1087,8 @@ public static boolean developmentMode = false;
         selectPrevious,
         sosDescriptionHtml,
         sosLongDescriptionHtml,
+        sparqlP01toP02pre,
+        sparqlP01toP02post,
         ssUse,
         ssBePatient, 
         ssInstructionsHtml,
@@ -1165,6 +1187,7 @@ public static boolean developmentMode = false;
         subsetNotSetUp,
         subsetLongNotShown,
 
+        tabledapVideoIntro,
         Then,
         unknownDatasetID,
         unknownProtocol,
@@ -1211,7 +1234,7 @@ public static boolean developmentMode = false;
 
         String eol = String2.lineSeparator;
         String2.log(eol + "////**** " + erdStartup + eol +
-            "localTime=" + Calendar2.getCurrentISODateTimeStringLocal() + eol +
+            "localTime=" + Calendar2.getCurrentISODateTimeStringLocalTZ() + eol +
             String2.standardHelpAboutMessage());
 
         //**** find contentDirectory
@@ -1519,6 +1542,10 @@ public static boolean developmentMode = false;
 geoServicesRestActive      = false; //setup.getBoolean(         "geoServicesRestActive",      false); 
         filesActive                = setup.getBoolean(         "filesActive",                true); 
         dataProviderFormActive     = setup.getBoolean(         "dataProviderFormActive",     true); 
+        openLayersActive           = setup.getBoolean(         "openLayersActive",           true); 
+        politicalBoundariesActive  = setup.getBoolean(         "politicalBoundariesActive",  true); 
+        SgtMap.drawPoliticalBoundaries = politicalBoundariesActive;
+
 //until SOS is finished, it is always inactive
 sosActive = false;//        sosActive                  = setup.getBoolean(         "sosActive",                  false); 
         if (sosActive) {
@@ -1649,6 +1676,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         //    "alt=\"logo\" title=\"logo\">\n";
 
 
+        
         //**** messages.xml *************************************************************
         //read static messages from messages(2).xml in contentDirectory?
         String messagesFileName = contentDirectory + 
@@ -1766,6 +1794,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         categorySearchDifferentHtml= messages.getNotNothingString("categorySearchDifferentHtml","");
         categoryClickHtml          = messages.getNotNothingString("categoryClickHtml",          "");
         categoryNotAnOption        = messages.getNotNothingString("categoryNotAnOption",        "");
+        caughtInterrupted    = " " + messages.getNotNothingString("caughtInterrupted",          "");
         clickAccessHtml            = messages.getNotNothingString("clickAccessHtml",            "");
         clickAccess                = messages.getNotNothingString("clickAccess",                "");
         clickBackgroundInfo        = messages.getNotNothingString("clickBackgroundInfo",        "");
@@ -1950,7 +1979,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         fileHelp_dds               = messages.getNotNothingString("fileHelp_dds",               "");
         fileHelp_dods              = messages.getNotNothingString("fileHelp_dods",              "");
         fileHelpGrid_esriAscii     = messages.getNotNothingString("fileHelpGrid_esriAscii",     "");
-        fileHelpTable_esriAscii    = messages.getNotNothingString("fileHelpTable_esriAscii",    "");
+        fileHelpTable_esriCsv      = messages.getNotNothingString("fileHelpTable_esriCsv",      "");
         fileHelp_fgdc              = messages.getNotNothingString("fileHelp_fgdc",              "");
         fileHelp_geoJson           = messages.getNotNothingString("fileHelp_geoJson",           "");
         fileHelp_graph             = messages.getNotNothingString("fileHelp_graph",             "");
@@ -1962,15 +1991,23 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         fileHelp_itxGrid           = messages.getNotNothingString("fileHelp_itxGrid",           "");
         fileHelp_itxTable          = messages.getNotNothingString("fileHelp_itxTable",          "");
         fileHelp_json              = messages.getNotNothingString("fileHelp_json",              "");
+        fileHelp_jsonlCSV          = messages.getNotNothingString("fileHelp_jsonlCSV",          "");
+        fileHelp_jsonlKVP          = messages.getNotNothingString("fileHelp_jsonlKVP",          "");
         fileHelp_mat               = messages.getNotNothingString("fileHelp_mat",               "");
-        fileHelpGrid_nc            = messages.getNotNothingString("fileHelpGrid_nc",            "");
-        fileHelpTable_nc           = messages.getNotNothingString("fileHelpTable_nc",           "");
-        fileHelp_ncHeader          = messages.getNotNothingString("fileHelp_ncHeader",          "");
+        fileHelpGrid_nc3           = messages.getNotNothingString("fileHelpGrid_nc3",           "");
+        fileHelpGrid_nc4           = messages.getNotNothingString("fileHelpGrid_nc4",           "");
+        fileHelpTable_nc3          = messages.getNotNothingString("fileHelpTable_nc3",          "");
+        fileHelpTable_nc4          = messages.getNotNothingString("fileHelpTable_nc4",          "");
+        fileHelp_nc3Header         = messages.getNotNothingString("fileHelp_nc3Header",         "");
+        fileHelp_nc4Header         = messages.getNotNothingString("fileHelp_nc4Header",         "");
+        fileHelp_nccsv             = messages.getNotNothingString("fileHelp_nccsv",             "");
+        fileHelp_nccsvMetadata     = messages.getNotNothingString("fileHelp_nccsvMetadata",       "");
         fileHelp_ncCF              = messages.getNotNothingString("fileHelp_ncCF",              "");
         fileHelp_ncCFHeader        = messages.getNotNothingString("fileHelp_ncCFHeader",        "");
         fileHelp_ncCFMA            = messages.getNotNothingString("fileHelp_ncCFMA",            "");
         fileHelp_ncCFMAHeader      = messages.getNotNothingString("fileHelp_ncCFMAHeader",      "");
         fileHelp_ncml              = messages.getNotNothingString("fileHelp_ncml",              "");
+        fileHelp_ncoJson           = messages.getNotNothingString("fileHelp_ncoJson",           "");
         fileHelpGrid_odvTxt        = messages.getNotNothingString("fileHelpGrid_odvTxt",        "");
         fileHelpTable_odvTxt       = messages.getNotNothingString("fileHelpTable_odvTxt",       "");
         fileHelp_subset            = messages.getNotNothingString("fileHelp_subset",            "");
@@ -1996,6 +2033,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         functionHtml               = messages.getNotNothingString("functionHtml",               "");
         functionDistinctCheck      = messages.getNotNothingString("functionDistinctCheck",      "");
         functionDistinctHtml       = messages.getNotNothingString("functionDistinctHtml",       "");
+        functionOrderByExtra       = messages.getNotNothingString("functionOrderByExtra",       "");
         functionOrderByHtml        = messages.getNotNothingString("functionOrderByHtml",        "");
         functionOrderBySort        = messages.getNotNothingString("functionOrderBySort",        "");
         functionOrderBySort1       = messages.getNotNothingString("functionOrderBySort1",       "");
@@ -2253,6 +2291,8 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         queryErrorNotExpectedAt    = messages.getNotNothingString("queryErrorNotExpectedAt",    "");
         queryErrorNotFoundAfter    = messages.getNotNothingString("queryErrorNotFoundAfter",    "");
         queryErrorOccursTwice      = messages.getNotNothingString("queryErrorOccursTwice",      "");
+        Table.ORDER_BY_CLOSEST_ERROR=messages.getNotNothingString("queryErrorOrderByClosest",   "");
+        Table.ORDER_BY_LIMIT_ERROR = messages.getNotNothingString("queryErrorOrderByLimit",     "");
         queryErrorOrderByVariable  = messages.getNotNothingString("queryErrorOrderByVariable",  "");
         queryErrorUnknownVariable  = messages.getNotNothingString("queryErrorUnknownVariable",  "");
 
@@ -2300,6 +2340,8 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         seeProtocolDocumentation   = messages.getNotNothingString("seeProtocolDocumentation",   "");
         sosDescriptionHtml         = messages.getNotNothingString("sosDescriptionHtml",         "");
         sosLongDescriptionHtml     = messages.getNotNothingString("sosLongDescriptionHtml",     ""); 
+        sparqlP01toP02pre          = messages.getNotNothingString("sparqlP01toP02pre",          ""); 
+        sparqlP01toP02post         = messages.getNotNothingString("sparqlP01toP02post",         ""); 
         ssUse                      = messages.getNotNothingString("ssUse",                      "");
         ssBePatient                = messages.getNotNothingString("ssBePatient",                "");
         ssInstructionsHtml         = messages.getNotNothingString("ssInstructionsHtml",         "");
@@ -2398,6 +2440,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         subsetNotSetUp             = messages.getNotNothingString("subsetNotSetUp",             "");
         subsetLongNotShown         = messages.getNotNothingString("subsetLongNotShown",         "");
 
+        tabledapVideoIntro         = messages.getNotNothingString("tabledapVideoIntro",         "");
         theLongDescriptionHtml     = messages.getNotNothingString("theLongDescriptionHtml",     "");
         Then                       = messages.getNotNothingString("Then",                       "");
         unknownDatasetID           = messages.getNotNothingString("unknownDatasetID",           "");
@@ -2425,6 +2468,58 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
                 "\"" + palettes[p] + 
                 "\" is listed in <palettes>, but there is no file " + tName);
         }
+
+        //try to create an nc4 file
+accessibleViaNC4 = ".nc4 is not yet supported.";
+/* DISABLED until nc4 is thread safe -- next netcdf-java
+        String testNc4Name = fullTestCacheDirectory + 
+            "testNC4_" + Calendar2.getCompactCurrentISODateTimeStringLocal() + ".nc";
+        //String2.log("testNc4Name=" + testNc4Name);
+        try {
+            NetcdfFileWriter nc = NetcdfFileWriter.createNew(
+                NetcdfFileWriter.Version.netcdf4, testNc4Name);
+            try {
+                Group rootGroup = nc.addGroup(null, "");
+                nc.setFill(false);
+            
+                int nRows = 4;
+                Dimension dimension  = nc.addDimension(rootGroup, "row", nRows);
+                Variable var = nc.addVariable(rootGroup, "myLongs", 
+                    DataType.getType(long.class), Arrays.asList(dimension)); 
+
+                //leave "define" mode
+                nc.create();  //error is thrown here if netcdf-c not found
+
+                //write the data
+                Array array = Array.factory(long.class, new int[]{nRows}, new long[]{0,1,2,3});
+                nc.write(var, new int[]{0}, array);
+
+                //if close throws Throwable, it is trouble
+                nc.close(); //it calls flush() and doesn't like flush called separately
+
+                //success!
+                accessibleViaNC4 = "";
+                String2.log(".nc4 files can be created in this ERDDAP installation.");
+
+            } catch (Throwable t2) {
+                //try to close the file
+                try {
+                    nc.close(); //it calls flush() and doesn't like flush called separately
+                } catch (Throwable t3) {
+                    //don't care
+                }
+
+                throw t2;
+            }
+
+        } catch (Throwable t) {
+            accessibleViaNC4 = String2.canonical(
+                MessageFormat.format(noXxxBecause2, ".nc4",
+                    resourceNotFound + " netcdf-c library"));
+            String2.log(t.toString() + "\n" + accessibleViaNC4);
+        }
+//        File2.delete(testNc4Name);
+*/
 
         ampLoginInfoPo = startBodyHtml.indexOf(ampLoginInfo); 
         //String2.log("ampLoginInfoPo=" + ampLoginInfoPo);
@@ -2770,8 +2865,8 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
 
         String destType = 
             //long and char aren't handled by getAtomicType. I don't think ever used.
-            destinationDataTypeClass == long.class? "Int64" :   
-            destinationDataTypeClass == char.class? "UInt16" :  //???   
+            destinationDataTypeClass == long.class? "long" :   
+            destinationDataTypeClass == char.class? "char" :  //???   
             OpendapHelper.getAtomicType(destinationDataTypeClass);
 
         StringBuilder sb = OpendapHelper.dasToStringBuilder(
@@ -2816,11 +2911,12 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
 
         //write the email to the log
         String emailAddressesCSSV = String2.toCSSVString(emailAddresses);
-        String localTime = Calendar2.getCurrentISODateTimeStringLocal();
+        String localTime = Calendar2.getCurrentISODateTimeStringLocalTZ();
         boolean logIt = !subject.startsWith(DONT_LOG_THIS_EMAIL);
         if (!logIt) 
             subject = subject.substring(DONT_LOG_THIS_EMAIL.length());
-        subject = (computerName.length() > 0? computerName + " ": "") + "ERDDAP: " + subject;
+        subject = (computerName.length() > 0? computerName + " ": "") + "ERDDAP: " + 
+            String2.replaceAll(subject, '\n', ' ');
 
         //almost always write to emailLog
         try {
@@ -3043,8 +3139,8 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
      * This adds the common, publicly accessible statistics to the StringBuilder.
      */
     public static void addIntroStatistics(StringBuilder sb) {
-        sb.append("Current time is " + Calendar2.getCurrentISODateTimeStringLocal()  + " local time\n");
-        sb.append("Startup was at  " + startupLocalDateTime + " local time\n");
+        sb.append("Current time is " + Calendar2.getCurrentISODateTimeStringLocalTZ()  + "\n");
+        sb.append("Startup was at  " + startupLocalDateTime + "\n");
         long loadTime = lastMajorLoadDatasetsStopTimeMillis - lastMajorLoadDatasetsStartTimeMillis;
         sb.append("Last major LoadDatasets started " + Calendar2.elapsedTimeString(1000 * 
             Math2.roundToInt((System.currentTimeMillis() - lastMajorLoadDatasetsStartTimeMillis)/1000) ) + 
@@ -3092,9 +3188,11 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
      * This adds the common, publicly accessible statistics to the StringBuffer.
      */
     public static void addCommonStatistics(StringBuilder sb) {
-        if (memoryUseLoadDatasetsSB.length() > 0) {
-            sb.append("Memory Use Summary (time series from ends of major LoadDatasets)\n");
-            sb.append(memoryUseLoadDatasetsSB);
+        if (majorLoadDatasetsTimeSeriesSB.length() > 0) {
+            sb.append(
+"Major LoadDatasets Time Series: MLD    Datasets Loaded    Requests (medianTime in seconds)     Number of Threads      Memory (MB)\n" +
+"  timestamp                    time   nTry nFail nTotal  nSuccess (median) nFailed (median)  tomWait inotify other  inUse highWater\n");
+            sb.append(majorLoadDatasetsTimeSeriesSB);
             sb.append("\n\n");
         }
         
@@ -3110,11 +3208,6 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         sb.append(String2.getDistributionStatistics(minorLoadDatasetsDistributionTotal)); sb.append('\n');
         sb.append('\n');
 
-        if (failureTimesLoadDatasetsSB.length() > 0) {
-            sb.append("Response Failed Summary (time series from between major LoadDatasets)\n");
-            sb.append(failureTimesLoadDatasetsSB);
-            sb.append('\n');
-        }
         sb.append("Response Failed Time Distribution (since last major LoadDatasets):\n");
         sb.append(String2.getDistributionStatistics(failureTimesDistributionLoadDatasets)); sb.append('\n');
         sb.append("Response Failed Time Distribution (since last Daily Report):\n");
@@ -3123,11 +3216,6 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         sb.append(String2.getDistributionStatistics(failureTimesDistributionTotal)); sb.append('\n');
         sb.append('\n');
 
-        if (responseTimesLoadDatasetsSB.length() > 0) {
-            sb.append("Response Succeeded Summary (time series from between major LoadDatasets)\n");
-            sb.append(responseTimesLoadDatasetsSB);
-            sb.append('\n');
-        }
         sb.append("Response Succeeded Time Distribution (since last major LoadDatasets):\n");
         sb.append(String2.getDistributionStatistics(responseTimesDistributionLoadDatasets)); sb.append('\n');
         sb.append("Response Succeeded Time Distribution (since last Daily Report):\n");
@@ -3611,7 +3699,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
                     String tError = "\n*** Error: EDStatic is interrupting a stalled taskThread (" +
                         Calendar2.elapsedTimeString(eTime) + " > " + 
                         Calendar2.elapsedTimeString(maxTime) + ") at " + 
-                        Calendar2.getCurrentISODateTimeStringLocal();
+                        Calendar2.getCurrentISODateTimeStringLocalTZ();
                     email(emailEverythingToCsv, "taskThread Stalled", tError);
                     String2.log("\n*** " + tError);
 
@@ -3625,7 +3713,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
             } else {
                 //it isn't alive
                 String2.log("\n*** EDStatic noticed that taskThread is finished (" + 
-                    Calendar2.getCurrentISODateTimeStringLocal() + ")\n");
+                    Calendar2.getCurrentISODateTimeStringLocalTZ() + ")\n");
                 lastFinishedTask = nextTask - 1;
                 taskThread = null;
                 return false;
@@ -3653,7 +3741,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
                 taskThread = new TaskThread(nextTask);
                 runningThreads.put(taskThread.getName(), taskThread); 
                 String2.log("\n*** new taskThread started at " + 
-                    Calendar2.getCurrentISODateTimeStringLocal() + " nPendingTasks=" + nPending + "\n");
+                    Calendar2.getCurrentISODateTimeStringLocalTZ() + " nPendingTasks=" + nPending + "\n");
                 taskThread.start();
                 return;            
             } catch (Throwable t) {
@@ -3707,7 +3795,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         table.addColumn("fullName", col2);
         String lines[] = String2.readLinesFromFile(
             contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/OceanicAtmosphericAcronyms.tsv",
-            "ISO-8859-1", 1);
+            String2.ISO_8859_1, 1);
         int nLines = lines.length;
         for (int i = 1; i < nLines; i++) { //1 because skip colNames
             String s = lines[i].trim();
@@ -3727,7 +3815,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
      * <br>varNames are all lower-case.  long_names are mostly first letter of each word capitalized.
      * <br>The table is basically sorted by varName.
      * <br>Many of these are from
-     * http://www.esrl.noaa.gov/psd/data/gridded/conventions/variable_abbreviations.html
+     * https://www.esrl.noaa.gov/psd/data/gridded/conventions/variable_abbreviations.html
      *
      * @return the oceanic/atmospheric variable names table
      * @throws Exception if trouble (e.g., file not found)
@@ -3740,7 +3828,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         table.addColumn("fullName", col2);
         String lines[] = String2.readLinesFromFile(
             contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/OceanicAtmosphericVariableNames.tsv",
-            "ISO-8859-1", 1);
+            String2.ISO_8859_1, 1);
         int nLines = lines.length;
         for (int i = 1; i < nLines; i++) {
             String s = lines[i].trim();
@@ -3849,7 +3937,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
         Table table = new Table();
         table.readASCII(
             contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/FipsCounty.tsv", 
-            0, 1, null, null, null, null, false); //false = don't simplify
+            0, 1, "", null, null, null, null, false); //false = don't simplify
         return table;
     }
     
@@ -3901,7 +3989,7 @@ wcsActive                  = false; //setup.getBoolean(         "wcsActive",    
      * @return true during the initial loadDatasets, else false.
      */
     public static boolean initialLoadDatasets() {
-        return memoryUseLoadDatasetsSB.length() == 0;
+        return majorLoadDatasetsTimeSeriesSB.length() == 0;
     }
 
     /** This is called by the ERDDAP constructor to initialize Lucene. */

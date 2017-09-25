@@ -1,7 +1,8 @@
 /* 
  * EDDTableFromPostDatabase Copyright 2009, NOAA.
  * See the LICENSE.txt file in this file's directory.
- */
+ *//*
+
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
@@ -33,23 +34,28 @@ import java.util.BitSet;
 import java.util.HashMap;    //isn't synchronized, but after construction it is just read, so doesn't need to be
 import java.util.HashSet;    //isn't synchronized, but after construction it is just read, so doesn't need to be
 
-/** 
+*/
+/**
  * This is a special-purpose class to handle data from the POST database.
  * 
  * @author Bob Simons (bob.simons@noaa.gov) 2009-09-03
- */
+ *//*
+
 public class EDDTableFromPostDatabase extends EDDTableFromDatabase { 
 
     
-    /** 
+    */
+/**
      * set by the constructor. static so various datasets all use same/latest info. 
      * private since this info mustn't leak out.
      * <br>The hashmap holds userName -&gt; roleHashset.
-     */
+     *//*
+
     private static HashMap userHashMap; 
 
 
-    /**
+    */
+/**
      * This constructs an EDDTableFromPostDatabase based on the information in an .xml file.
      * 
      * @param erddap if known in this context, else null
@@ -58,15 +64,18 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
      * @return an EDDTableFromPostDatabase.
      *    When this returns, xmlReader will have just read &lt;erddapDatasets&gt;&lt;/dataset&gt; .
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static EDDTableFromPostDatabase fromXml(Erddap erddap,
         SimpleXMLReader xmlReader) throws Throwable {
         return (EDDTableFromPostDatabase)lowFromXml(erddap, xmlReader, "Post");
     }
 
-    /**
+    */
+/**
      * The constructor. See EDDTableFromDatabase for details.
-     */
+     *//*
+
     public EDDTableFromPostDatabase(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
@@ -108,7 +117,8 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
                 (System.currentTimeMillis() - constructionStartMillis) + "\n");
     }
 
-    /**
+    */
+/**
      * Given the database information, this makes userHashMap.
      *
      * <p>This also calls EDStatic.setPostUserHashMap(postUserHashMap)
@@ -117,7 +127,8 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
      * @param dataSource If null, DriverManager will be used to make the connection.
      *   If not null, DataSource will be used to get a connection from the pool.
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static HashMap makeUserHashMap(String dataSourceName, DataSource dataSource,
             String localSourceUrl, String driverName, String connectionProperties[], 
             String catalogName, String schemaName) throws Throwable {
@@ -295,7 +306,8 @@ boolean addTestPostUser = false;
         return finishedUserHashMap;
     }
 
-    /**
+    */
+/**
      * This returns a suggested fileName (no dir or extension).
      * It doesn't add a random number, so will return the same results 
      * if the inputs are the same.
@@ -306,7 +318,8 @@ boolean addTestPostUser = false;
      * @param fileTypeName
      * @return a suggested fileName (no dir or extension)
      * @throws Exception if trouble (in practice, it shouldn't)
-     */
+     *//*
+
     public String suggestFileName(String loggedInAs, String userDapQuery, String fileTypeName) {
 
         //decode userDapQuery to a canonical form to avoid slight differences in percent-encoding 
@@ -324,7 +337,8 @@ boolean addTestPostUser = false;
         return name;
     }
 
-    /** 
+    */
+/**
      * This returns the name of the file in datasetDir()
      * which has all of the distinct data combinations for the current subsetVariables.
      * The file is deleted by setSubsetVariablesCSV(), which is called whenever
@@ -334,13 +348,15 @@ boolean addTestPostUser = false;
      * @param loggedInAs POST datasets overwrite this method and use loggedInAs 
      *    since data for each loggedInAs is different; others don't use this
      * @throws Exception if trouble
-     */
+     *//*
+
     public String subsetVariablesFileName(String loggedInAs) throws Exception {
         return (loggedInAs == null? "" : String2.encodeFileNameSafe(loggedInAs) + "_") + 
             SUBSET_FILENAME; 
     }
 
-    /** 
+    */
+/**
      * This returns the name of the file in datasetDir()
      * which has all of the distinct values for the current subsetVariables.
      * The file is deleted by setSubsetVariablesCSV(), which is called whenever
@@ -350,13 +366,15 @@ boolean addTestPostUser = false;
      * @param loggedInAs POST datasets overwrite this method and use loggedInAs 
      *    since data for each loggedInAs is different; others don't use this
      * @throws Exception if trouble
-     */
+     *//*
+
     public String distinctSubsetVariablesFileName(String loggedInAs) throws Exception {
         return (loggedInAs == null? "" : String2.encodeFileNameSafe(loggedInAs) + "_") + 
             DISTINCT_SUBSET_FILENAME; 
     }
 
-    /** 
+    */
+/**
      * This gets the data (chunk by chunk) from this EDDTable for the 
      * OPeNDAP DAP-style query and writes it to the TableWriter. 
      * See the EDDTable method documentation.
@@ -371,7 +389,8 @@ boolean addTestPostUser = false;
      * @param userDapQuery the part of the user's request after the '?', still percentEncoded, may be null.
      * @param tableWriter
      * @throws Throwable if trouble (notably, WaitThenTryAgainException)
-     */
+     *//*
+
     public void getDataForDapQuery(String loggedInAs, String requestUrl, 
         String userDapQuery, TableWriter tableWriter) throws Throwable {
 
@@ -383,14 +402,16 @@ boolean addTestPostUser = false;
         super.getDataForDapQuery(loggedInAs, requestUrl, userDapQuery, tableWriter);
     }
 
-    /** 
+    */
+/**
      * This is used by getDataForDapQuery for this class and EDDTableFromPostNcFiles
      * to ensure userDapQuery includes PostRoleColumnName and PostDatePublicColumnName.
      *
      * @param loggedInAs (may be null)
      * @return the revised userDapQuery
      * @throws Throwable
-     */
+     *//*
+
     public static String reviseDapQueryForPost(String loggedInAs, String userDapQuery) 
         throws Throwable {
 
@@ -416,20 +437,24 @@ boolean addTestPostUser = false;
         return userDapQuery;
     }
 
-    /**
+    */
+/**
      * getDataForDapQuery always calls this right before standardizeResultsTable.
      * EDDTableFromPostDatabase uses this to remove data not accessible to this user.
-     */
+     *//*
+
     public void preStandardizeResultsTable(String loggedInAs, Table table) {
         staticPreStandardizeResultsTable(loggedInAs, table);
     }
 
-    /**
+    */
+/**
      * getDataForDapQuery always calls this right before standardizeResultsTable.
      * EDDTableFromPostDatabase uses this to remove data not accessible to this user.
      * <br>This can be static because userHashMap is static.
      * <br>If userHashMap hasn't been set, a new empty one is created (i.e., no valid users).
-     */
+     *//*
+
     public static void staticPreStandardizeResultsTable(String loggedInAs, Table table) {
 
         //needed for EDDTableCopy: if loggedInAsSuperuser, keep all data
@@ -495,11 +520,13 @@ boolean addTestPostUser = false;
     }
 
 
-    /**
+    */
+/**
      * This tests the post surgery3 dataset.
      *
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static void testPostSurg3() throws Throwable {
         String2.log("\n*** testPostSurg3");
         testVerboseOn();
@@ -1005,11 +1032,13 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
         }
     }
 
-    /**
+    */
+/**
      * This tests the post detection3 dataset.
      *
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static void testPostDet3() throws Throwable {
         String2.log("\n*** testPostDet3");
         testVerboseOn();
@@ -1018,7 +1047,9 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
         String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         try {
             EDDTableFromPostDatabase tedd = (EDDTableFromPostDatabase)oneFromDatasetsXml(null, "postDet3"); 
-/* */
+*/
+/* *//*
+
             //das
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
                 tedd.className() + "_pd3_Data", ".das"); 
@@ -1323,7 +1354,9 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results.substring(0, 4000));
             String2.log("*** testPostDet3 1roleL FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
 
-/* */
+*/
+/* *//*
+
         } catch (Throwable t) {
             String2.pressEnterToContinue(MustBe.throwableToString(t) + 
                 "Unexpected EDDTableFromPostDatabase.testPostDet3 error."); 
@@ -1331,11 +1364,13 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
     }
 
 
-    /** This tests getting all of the data for one tag (like how EDDTableCopyPost does it). 
+    */
+/** This tests getting all of the data for one tag (like how EDDTableCopyPost does it).
      * This is to try to resolve the problem of 2010-04-08.
      * For testPostTag, you have to change datasets2.xml to create separate
      * <dataset type="EDDTableFromPostDatabase" datasetID="testPostDet3">
-     */
+     *//*
+
     public static void testPostTag()  throws Throwable {
         String2.log("\n*** testPostTag");
         testVerboseOn();
@@ -1393,11 +1428,13 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
         }
     }
 
-    /**
+    */
+/**
      * This tests the testPostSurgery3 dataset (direct test of database, not the local copy).
      *
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static void testPostSurg3Direct() throws Throwable {
         String2.log("\n*** testPostSurg3");
         testVerboseOn();
@@ -1412,7 +1449,7 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
             table = new Table();
             table.readFlatNc(dir + tName, null, 1);
             table.removeRows(5, Math.max(5, table.nRows()));
-            results = table.dataToCSVString();
+            results = table.dataToString();
             expected = 
 "unique_tag_id,PI,longitude,latitude,time,activation_time,channel,code_label,comments,common_name,date_public,delay_max,delay_min,delay_start,delay_type,dna_sampled,est_tag_life,frequency,implant_type,project,provenance,role,scientific_name,stock,surgery_id,surgery_location,surgery_longitude,surgery_latitude,surgery_time,tag_id_code,tagger,treatment_type,water_temp\n" +
 "1000_A69-1204_1030201,DAVID WELCH,-121.0529,49.8615,1.1165265E9,1.1152512E9,D,A69-1204,ADIPOSE FIN CLIPPED,COHO,1.222730913E9,90,30,0,RANDOM,0,,,INTERNAL,KINTAMA RESEARCH,HATCHERY,WELCH_DAVID_ONCORHYNCHUS_KISUTCH_SPIUSCREEK,ONCORHYNCHUS KISUTCH,SPIUS CREEK,1148,SPIUS CREEK HATCHERY,-121.0253,50.1415,1.116288E9,1000,MELINDA JACOBS,NOT ENTERED,7.5\n" +
@@ -1432,12 +1469,12 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
                     dir, tedd.className() + "_ps3_tag" + tag, ".nc"); 
                 Table table2 = new Table();
                 table2.readFlatNc(dir + tName, null, 1);
-                results = table.dataToCSVString();
+                results = table.dataToString();
 
                 Table table1 = (Table)table.clone();
                 table1.removeRows(0, tag);
                 table1.removeRows(tag + 1, table1.nRows());
-                expected = table.dataToCSVString();
+                expected = table.dataToString();
 
                 Test.ensureEqual(results, expected, "tag=" + tag + " results=\n" + results);
             }
@@ -1449,11 +1486,13 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
         }
     }
 
-    /**
+    */
+/**
      * This tests the methods in this class.
      *
      * @throws Throwable if trouble
-     */
+     *//*
+
     public static void test() throws Throwable {
         String2.log("\n****************** EDDTableFromPostDatabase.test() *****************\n");
 
@@ -1467,3 +1506,4 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
 
 }
 
+*/
