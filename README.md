@@ -36,7 +36,7 @@
         On my machine, I run:
 
         ```
-        mvn compile war:exploded && pushd . && cd target/erddap-1.74-axiom-r2/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
+        mvn compile war:exploded && pushd . && cd target/erddap-1.80-axiom-r1/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
         ```
 8. Package WAR - Run the `package` Run Configuration
 
@@ -65,10 +65,10 @@ To test this package, there is a main() method, so you can just run the file lik
 
 ```bash
 # All stations
-$ mvn compile war:exploded && pushd . && cd target/erddap-1.74-axiom-r2/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd
+$ mvn compile war:exploded && pushd . && cd target/erddap-1.80-axiom-r1/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; popd
 
 # Individual stations
-$ mvn compile war:exploded && pushd . && cd target/erddap-1.74-axiom-r2/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
+$ mvn compile war:exploded && pushd . && cd target/erddap-1.80-axiom-r1/WEB-INF/ && java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*:/opt/tomcat/apache-tomcat-8.0.18/lib/servlet-api.jar" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; popd
 ```
 
 

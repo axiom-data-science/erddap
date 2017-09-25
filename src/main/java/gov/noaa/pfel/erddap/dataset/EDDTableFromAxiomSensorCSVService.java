@@ -609,11 +609,11 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
 
         EDD edd = EDD.oneFromXmlFragment(null, "" +
                 "<dataset type=\"EDDTableFromAxiomSensorCSVService\" datasetID=\"sensor_service\">\n" +
-                "    <sourceUrl>http://pdx.axiomalaska.com/stationsensorservice/</sourceUrl>\n" +
+                "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
                 "</dataset>"
         );
         // Test specific station and sensor
-        String query = "&station=%22urn:ioos:station:wmo:46027%22&parameter=%22Air Temperature%22&time>=2014-11-01T00:00:00Z&time<=2014-12-01T00:00:00Z";
+        String query = "&station=%22urn:ioos:station:wmo:46027%22&parameter=%22Air Temperature%22&time>=2016-11-01T00:00:00Z&time<=2016-12-01T00:00:00Z";
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         String results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
@@ -629,7 +629,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         //        String2.log(results);
 
         // Specific a specific station and sensor with time bounds
-        query = "&station=%22urn:ioos:station:cencoos:MossLanding%22&time%3Enow-7days";
+        query = "&station=%22urn:ioos:station:mlml:mlml-met%22&time%3Enow-7days";
         tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                     edd.className() + "_station_sensor_time_" + edd.datasetID(), ".csv");
         results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());

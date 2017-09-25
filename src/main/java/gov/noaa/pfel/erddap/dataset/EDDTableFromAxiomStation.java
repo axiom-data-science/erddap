@@ -629,7 +629,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                                 values_array.add(new Float(-9999.99));
                             }
                         }
-                        // TODO: This will only work if each device is measured at the same depths
+                        // This will only work if each device is measured at the same depths
                         // If not, the indexes will be all messed up.  We should probably error here, or
                         // Add a column for each device depth value.
                         Double depth = vari.getJSONObject("metadata").getDouble("depth");
