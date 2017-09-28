@@ -1,4 +1,4 @@
-FROM axiom/docker-erddap:1.80
+FROM registry.axiom/docker-erddap:latest
 MAINTAINER Kyle Wilcox <kyle@axiomdatascience.com>
 
 ENV MAVEN_VERSION 3.3.9
