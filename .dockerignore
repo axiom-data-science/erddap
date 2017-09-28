@@ -3,6 +3,7 @@
 .settings/
 .gitignore
 target/
+lib/
 
 .classpath
 .project
