@@ -153,7 +153,7 @@ public class EDStatic {
      * <br>1.78 released on 2017-05-27
      * <br>1.80 released on 2017-08-04
      */   
-    public static String erddapVersion = "1.80-axiom-r1";
+    public static String erddapVersion = "1.80-axiom-r2";
 
     /** 
      * This is almost always false.  
