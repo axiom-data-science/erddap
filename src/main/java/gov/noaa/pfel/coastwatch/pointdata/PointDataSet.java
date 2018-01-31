@@ -436,7 +436,7 @@ public abstract class PointDataSet implements Comparable {
         //for timePeriodNHours == 0, just return the raw data  (no averaging)
         if (timePeriodNHours == 0) {
             if (verbose) String2.log("\\\\**** PointDataSet.makeAveragedTimeSeries done. nRows=" + 
-                rawTable.nRows() + " TIME=" + (System.currentTimeMillis() - time));
+                rawTable.nRows() + " TIME=" + (System.currentTimeMillis() - time) + "ms");
             return rawTable;
         }
 
@@ -501,7 +501,7 @@ public abstract class PointDataSet implements Comparable {
         double timePeriodCenteredTime[] = tCenteredTime.toArray(); tCenteredTime = null;
         if (nTimePeriods == 0) {
             if (verbose) String2.log("\\\\**** PointDataSet.makeAveragedTimeSeries done. nRows=" + 
-                resultTable.nRows() + " TIME=" + (System.currentTimeMillis() - time));
+                resultTable.nRows() + " TIME=" + (System.currentTimeMillis() - time) + "ms");
             return resultTable;
         }
 
@@ -626,7 +626,7 @@ public abstract class PointDataSet implements Comparable {
         //String2.log("PointDataSet.makeAveragedTS resultsTable=" + resultsTable);
         //String2.log("PointDataSet.makeAveragedTS resultsTable data stats=" + resultsTable.getColumn(5).statsString());
         if (verbose) String2.log("\\\\**** PointDataSet.makeAveragedTimeSeries done. nRows=" + 
-            resultTable.nRows() + " TIME=" + (System.currentTimeMillis() - time) + "\n");
+            resultTable.nRows() + " TIME=" + (System.currentTimeMillis() - time) + "ms\n");
         return resultTable;
 
     }
@@ -742,7 +742,7 @@ public abstract class PointDataSet implements Comparable {
         globalAttributes.set("naming_authority", "gov.noaa.pfel.coastwatch");
         globalAttributes.set("cdm_data_type", "Other");
         //skip 'history'
-        String todaysDate = Calendar2.getCurrentISODateTimeStringLocal().substring(0, 10) + "Z";
+        String todaysDate = Calendar2.getCurrentISODateTimeStringLocalTZ().substring(0, 10) + "Z";
         globalAttributes.set("date_created", todaysDate); 
         globalAttributes.set("creator_name", DataHelper.CW_CREATOR_NAME);
         globalAttributes.set("creator_url", "http://coastwatch.pfeg.noaa.gov");

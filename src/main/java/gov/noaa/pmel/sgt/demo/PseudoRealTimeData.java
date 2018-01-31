@@ -204,7 +204,7 @@ public class PseudoRealTimeData implements SGTLine, ActionListener {
 
   /**
    * Handle timer ActionEvents
-   * <BR><B>Property Change:</B> <code>rangeModified</code> and
+   * <BR><strong>Property Change:</strong> <code>rangeModified</code> and
    * <code>DataModified</code>
    */
   public void actionPerformed(ActionEvent e) {
@@ -236,9 +236,5 @@ public class PseudoRealTimeData implements SGTLine, ActionListener {
 
   private double tSeries(int val) {
     return A0_*Math.sin(omega0_*val)+A1_*Math.sin(omega1_*val)+A2_*Math.random();
-  }
-  @Override
-  public void releaseResources() throws Exception {
-	// TODO Auto-generated method stub
   }
 }

@@ -1,4 +1,4 @@
-/* 
+/*
  * RegexFilenameFilter Copyright 2005, NOAA.
  * See the LICENSE.txt file in this file's directory.
  */
@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 /**
- * A filter to find files (and directories!) whose names match a specified 
+ * A filter to find files (and directories!) whose names match a specified
  * regular expression.
  * See regEx documentation in Java Docs for java.util.regex.Pattern.
  *
@@ -37,12 +37,12 @@ public class RegexFilenameFilter implements FilenameFilter {
     private Pattern pattern;
 
     //ideally, not static, but used for informational purposes only
-    public static long getTime, matchTime, sortTime; 
+    public static long getTime, matchTime, sortTime;
 
     /**
      * The constructor.
      *
-     * @param regex the regular expression.  
+     * @param regex the regular expression.
      * See regEx documentation in Java Docs for java.util.regex.Pattern.
      */
     public RegexFilenameFilter(String regex) {
@@ -53,8 +53,8 @@ public class RegexFilenameFilter implements FilenameFilter {
     /**
      * Determines whether a file is accepted.
      * This is part of the FilenameFilter implementation.
-     * 
-     * <p>Note that this doesn't check if the name 
+     *
+     * <p>Note that this doesn't check if the name
      * represents a file or a directory (and there is no way
      * I know of to specify that distinction as part of the regex).
      *
@@ -78,8 +78,8 @@ public class RegexFilenameFilter implements FilenameFilter {
         for (int i = 0; i < zipFiles.length; i++)
             SSR.unzip(dir + zipFiles[i], dir, true, null);
        </pre>
-     * 
-     * <p>Note that this doesn't check if the name 
+     *
+     * <p>Note that this doesn't check if the name
      * represents a file or a directory (and there is no way
      * I know of no way to specify that distinction as part of the regex).
      *
@@ -96,7 +96,7 @@ public class RegexFilenameFilter implements FilenameFilter {
             if (!dirFile.isDirectory())
                 return list.toArray(new String[0]);
 
-            //get all names    
+            //get all names
             String[] allNames = dirFile.list();
             if (allNames == null)
                 return null;
@@ -104,10 +104,10 @@ public class RegexFilenameFilter implements FilenameFilter {
 
             //determine which match the regex
             tTime = System.currentTimeMillis();
-            RegexFilenameFilter filter = new RegexFilenameFilter(regex); 
+            RegexFilenameFilter filter = new RegexFilenameFilter(regex);
             int n = allNames.length;
-            for (int i = 0; i < n; i++) 
-                if (filter.accept(null, allNames[i])) 
+            for (int i = 0; i < n; i++)
+                if (filter.accept(null, allNames[i]))
                     list.add(allNames[i]);
             matchTime += System.currentTimeMillis() - tTime;
 
@@ -116,7 +116,7 @@ public class RegexFilenameFilter implements FilenameFilter {
             Collections.sort(list);
             sortTime += System.currentTimeMillis() - tTime;
 
-            //return 
+            //return
             return list.toArray(new String[0]);
         } catch (Exception e) {
             String2.log(MustBe.throwableToString(e));
@@ -129,16 +129,16 @@ public class RegexFilenameFilter implements FilenameFilter {
      * This gathers information about all subdirectories (regardless of regex)
      * and all files matching the regex
      * in the specified directory (e.g., "c:/cohort");
-     * 
+     *
      * @param dir the directory of interest (with or without a trailing slash)
      * @param regex  See regEx documentation in Java Docs for java.util.regex.Pattern.
-     * @return PrimitiveArray[] [0]=dirNames(StringArray) with trailing / or \\, 
-     *   [1]=fileNames(StringArray), 
+     * @return PrimitiveArray[] [0]=dirNames(StringArray) with trailing / or \\,
+     *   [1]=fileNames(StringArray),
      *   [2]=fileLastModified(LongArray), [3]=fileSize(LongArray).
      *   dirNames will not include parent ("..") or self (".").
      *   The sizes of [1], [2], [3] will be the same.
      *   [0] and [1] will each be sorted (ignoringCase).
-     *   
+     *
      * @throws RuntimeException if trouble
      */
     public static PrimitiveArray[] gatherInfo(String dir, String regex) {
@@ -147,12 +147,12 @@ public class RegexFilenameFilter implements FilenameFilter {
         dir = File2.addSlash(dir);
 
         StringArray dirNames         = new StringArray();
-        StringArray fileNames        = new StringArray(); 
+        StringArray fileNames        = new StringArray();
         LongArray   fileLastModified = new LongArray();
         LongArray   fileSize         = new LongArray();
         PrimitiveArray paAr[] = new PrimitiveArray[]{dirNames,
             fileNames, fileLastModified, fileSize};
-        
+
         //get a list of files and dirs
         String[] names = (new File(dir)).list();
         if (names == null)
@@ -174,7 +174,7 @@ public class RegexFilenameFilter implements FilenameFilter {
                     fileSize.add(tFile.length());
                 }
             } else String2.log(
-                String2.ERROR + " in RegexFilenameFilter.gatherInfo: \"" + 
+                String2.ERROR + " in RegexFilenameFilter.gatherInfo: \"" +
                   dir + tName + "\" isn't a file or a directory.  (symbolic link?)");
         }
         return paAr;
@@ -182,14 +182,14 @@ public class RegexFilenameFilter implements FilenameFilter {
 
     /**
      * This is like list(), but returns the full file names.
-     * 
-     * <p>Note that this doesn't check if the name 
+     *
+     * <p>Note that this doesn't check if the name
      * represents a file or a directory (and there is no way
      * I know of no way to specify that distinction as part of the regex).
      *
      * @param dir the directory of interest (with or without a trailing slash)
      * @param regex  See regEx documentation in Java Docs for java.util.regex.Pattern.
-     * @return a sorted list of the matching dir + file names 
+     * @return a sorted list of the matching dir + file names
      *     or null if trouble (e.g., dir doesn't exist).
      *     The slashes will match the slashes in dir (\\ or /).
      */
@@ -206,10 +206,10 @@ public class RegexFilenameFilter implements FilenameFilter {
 
     /**
      * This adds file names which match the regex
-     * in the specified directory (e.g., "c:/cohort") 
+     * in the specified directory (e.g., "c:/cohort")
      * AND IN RECURSIVELY FOUND SUBDIRECTORIES to an arrayList.
-     * 
-     * <p>Note that this *does* check if the name 
+     *
+     * <p>Note that this *does* check if the name
      * represents a file or a directory -- see directoriesToo.
      *
      * @param arrayList to which full file names will be added.
@@ -217,17 +217,17 @@ public class RegexFilenameFilter implements FilenameFilter {
      *    If the dir doesn't exist or is empty, this adds nothing to the arrayList.
      * @param dir the directory of interest (with or without a trailing slash)
      * @param regex  See regEx documentation in Java Docs for java.util.regex.Pattern.
-     * @param directoriesToo if true, directory names are also added to the 
-     *    arrayList, with "/" or "\\" (to match dir) added to the end to 
+     * @param directoriesToo if true, directory names are also added to the
+     *    arrayList, with "/" or "\\" (to match dir) added to the end to
      *    identify them as directories.
      * @throws RuntimeException if trouble
      */
-    public static void recursiveFullNameList(ArrayList<String> arrayList, String dir, 
+    public static void recursiveFullNameList(ArrayList<String> arrayList, String dir,
         String regex, boolean directoriesToo) {
 
         //add slash to end of dir (if none)
         dir = File2.addSlash(dir);
-        
+
         //get a list of files and dirs
         String[] names = (new File(dir)).list();
         if (names == null)
@@ -243,12 +243,12 @@ public class RegexFilenameFilter implements FilenameFilter {
                 if (tName.matches(regex))
                     arrayList.add(dir + tName);
             } else if (tFile.isDirectory()) {
-                String tDir = File2.addSlash(dir + tName); 
+                String tDir = File2.addSlash(dir + tName);
                 if (directoriesToo) arrayList.add(tDir);
                 //String2.log("directory=" + tDir);
                 recursiveFullNameList(arrayList, tDir, regex, directoriesToo);
             } else String2.log(
-                String2.ERROR + " in RegexFilenameFilter.recursiveFullNameList: \"" + 
+                String2.ERROR + " in RegexFilenameFilter.recursiveFullNameList: \"" +
                   dir + tName + "\" isn't a file or a directory.  (symbolic link?)");
         }
     }
@@ -256,20 +256,20 @@ public class RegexFilenameFilter implements FilenameFilter {
 
     /**
      * This returns a String[] with the file names which match the regex
-     * in the specified directory (e.g., "c:\\cohort") 
+     * in the specified directory (e.g., "c:\\cohort")
      * AND IN RECURSIVELY FOUND SUBDIRECTORIES.
      *
-     * <p>Note that this *does* check if the name 
+     * <p>Note that this *does* check if the name
      * represents a file or a directory -- see directoriesToo.
      *
      * @param dir the directory of interest
      * @param regex  See regEx documentation in Java Docs for java.util.regex.Pattern.
-     * @param directoriesToo if true, directory names are also added to the 
+     * @param directoriesToo if true, directory names are also added to the
      *    arrayList, with "/" added to the end to identify them as directories.
-     * @return an array of the matching file names 
+     * @return an array of the matching file names
      * @throws RuntimeException if trouble
      */
-    public static String[] recursiveFullNameList(String dir, String regex, 
+    public static String[] recursiveFullNameList(String dir, String regex,
         boolean directoriesToo) {
 
         ArrayList<String> arrayList = new ArrayList();
@@ -280,7 +280,7 @@ public class RegexFilenameFilter implements FilenameFilter {
     }
 
 
-    /** 
+    /**
      * This deletes the specified files in a directory.
      * BEWARE: THIS IS VERY POWERFUL!!!!
      *
@@ -297,7 +297,7 @@ public class RegexFilenameFilter implements FilenameFilter {
             String2.log("WARNING: regexDelete says: \"" + dir + "\" isn't a directory.");
             return 0;
         }
-        String names[] = recursive? 
+        String names[] = recursive?
             recursiveFullNameList(dir, regex, false) :
             fullNameList(dir, regex);
         int notDeleted = 0;
@@ -307,31 +307,47 @@ public class RegexFilenameFilter implements FilenameFilter {
         return notDeleted;
     }
 
-    /** 
+    /**
      * This deletes all the files and subdirectories in a directory.
      * BEWARE: THIS IS VERY POWERFUL!!!!
      * See also com.cohort.util.File2.deleteAllFiles().
      *
      * @param dir a full file directory (e.g., c:/u00/satellite/temp/)
      *    (trailing slash is optional)
-     * @throws RuntimeException if trouble
+     * @returns all the error messages, or "" if no trouble.
+     *   If dir is not a directory, this returns "".
      */
-    public static void recursiveDelete(String dir) {
+    public static String recursiveDelete(String dir) {
         if (!File2.isDirectory(dir))
-            return;
+            return "";
+        String msg = String2.ERROR + ": RegexFilenameFilter.recursiveDelete is unable to delete ";
         String names[] = recursiveFullNameList(dir, ".+", true);
         //work backwards, because need to delete files before delete containing directory
+        StringBuilder sb = new StringBuilder();
         for (int i = names.length - 1; i >= 0; i--) {
-            File file = new File(names[i]);
-            String2.log("recursiveDelete " + names[i]);
-            //Math2.sleep(5000);
-            Test.ensureTrue(file.delete(),
-                String2.ERROR + " in RegexFilenameFilter.recursiveDelete: unable to delete " +
-                names[i]);
+            try {
+                File file = new File(names[i]);
+                //Math2.sleep(5000);
+                if (!file.delete()) {
+                    String2.log(msg + names[i]);
+                    sb.append(msg);
+                    sb.append(names[i]);
+                    sb.append('\n');
+                }
+            } catch (Exception e) {
+                String2.log(msg + names[i]);
+                sb.append(msg);
+                sb.append(names[i]);
+                sb.append('\n');
+            }
         }
-        Test.ensureTrue(File2.delete(dir), 
-            String2.ERROR + " in RegexFilenameFilter.recursiveDelete: unable to delete " + 
-            dir);
+        if (!File2.delete(dir)) {
+            String2.log(msg + dir);
+            sb.append(msg);
+            sb.append(dir);
+            sb.append('\n');
+        }
+        return sb.toString();
     }
 
 
@@ -383,7 +399,7 @@ public class RegexFilenameFilter implements FilenameFilter {
             coastwatchDir + "util/",
             coastwatchDir + "util/SSR.java",
             coastwatchDir + "util/SimpleXMLReader.java",
-            coastwatchDir + "util/StringObject.java"             
+            coastwatchDir + "util/StringObject.java"
             };
         Test.ensureEqual(sar, shouldBe, "RegexFilenameFilter.recursiveFullNameList");
 
@@ -403,7 +419,7 @@ public class RegexFilenameFilter implements FilenameFilter {
             coastwatchDir + "sgt/SgtUtil.java",
             coastwatchDir + "util/SSR.java",
             coastwatchDir + "util/SimpleXMLReader.java",
-            coastwatchDir + "util/StringObject.java"             
+            coastwatchDir + "util/StringObject.java"
             };
         Test.ensureEqual(sar, shouldBe, "RegexFilenameFilter.recursiveFullNameList");
 
@@ -413,14 +429,14 @@ public class RegexFilenameFilter implements FilenameFilter {
         StringArray lastMod = new StringArray();
         for (int i = 0; i < tn; i++)
             lastMod.add(Calendar2.safeEpochSecondsToIsoStringTZ(info[2].getLong(i) / 1000.0, "ERROR"));
-        Test.ensureEqual(info[0].toString(), 
+        Test.ensureEqual(info[0].toString(),
             "BiotaDiGIRProvider, DiGIR_Portal_Engine, DiGIRprov", "");
-        Test.ensureEqual(info[1].toString(), 
+        Test.ensureEqual(info[1].toString(),
             "obis.xsd, obisInventory.txt", "");
         //lastMod and size verified by using DOS dir command
-        Test.ensureEqual(lastMod.toString(),                                 
+        Test.ensureEqual(lastMod.toString(),
             "2007-04-23T18:24:38Z, 2007-05-02T19:18:33Z", "");
-        Test.ensureEqual(info[3].toString(), 
+        Test.ensureEqual(info[3].toString(),
             "21509, 3060", "");
     }
 

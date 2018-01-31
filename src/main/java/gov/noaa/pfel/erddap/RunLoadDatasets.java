@@ -104,7 +104,7 @@ public class RunLoadDatasets extends Thread {
             //********** Main loop
             try {
                 String2.log("\n*** RunLoadDatasets is starting a new MAJOR LoadDatasets thread at " + 
-                    Calendar2.getCurrentISODateTimeStringLocal());
+                    Calendar2.getCurrentISODateTimeStringLocalTZ());
 
                 //delete old files in cache
                 int nCacheFiles = File2.deleteIfOld(EDStatic.fullCacheDirectory, //won't throw exception
@@ -134,7 +134,7 @@ public class RunLoadDatasets extends Thread {
                 }
                 try {
                     String subject = "RunLoadDatasets(main loop) error at " + 
-                        Calendar2.getCurrentISODateTimeStringLocal();
+                        Calendar2.getCurrentISODateTimeStringLocalTZ();
                     String content = MustBe.throwableToString(t); 
                     String2.log(subject + ": " + content);
                     EDStatic.email(EDStatic.emailEverythingToCsv, subject, content);
@@ -159,7 +159,7 @@ public class RunLoadDatasets extends Thread {
                     if (loadDatasets != null && !loadDatasets.isAlive()) {
 
                         String2.log("\n*** RunLoadDatasets notes that LoadDatasets has finished running as of " + 
-                            Calendar2.getCurrentISODateTimeStringLocal());
+                            Calendar2.getCurrentISODateTimeStringLocalTZ());
 
                         //get rid of reference
                         loadDatasets = null;
@@ -186,9 +186,16 @@ public class RunLoadDatasets extends Thread {
 
                             for (int hs = 0; hs < 2; hs++) {
 
-                                String[] listAr = new File(fDir[hs]).list();
-                                //if (listAr.length() > 0) String2.log(fDirName[hs] + " files found: " + String2.toCSSVString(listAr));
-                                StringArray tFlagNames = new StringArray(listAr);
+                                StringArray tFlagNames = new StringArray(); 
+                                try {                                    
+                                    if (File2.isDirectory(fDir[hs])) {
+                                        tFlagNames = new StringArray(new File(fDir[hs]).list());
+                                    } else {
+                                        File2.makeDirectory(fDir[hs]); //throws exception
+                                    }
+                                } catch (Exception et) {
+                                    String2.log(MustBe.throwableToString(et));
+                                }
 
                                 //check flag names
                                 for (int i = tFlagNames.size() - 1; i >= 0; i--) { //work backwards since deleting some from list
@@ -254,7 +261,7 @@ public class RunLoadDatasets extends Thread {
                                 if (tFlagNames.size() > 0) {
                                     String tRegex = "(" + String2.toSVString(tFlagNames.toArray(), "|", false) + ")";
                                     String2.log("\n*** RunLoadDatasets is starting a new " + fDirName[hs] + " LoadDatasets thread at " + 
-                                        Calendar2.getCurrentISODateTimeStringLocal());
+                                        Calendar2.getCurrentISODateTimeStringLocalTZ());
                                     //...StartTimeMillis = System.currentTimeMillis();
                                     loadDatasets = new LoadDatasets(erddap, tRegex, null, false);
                                     //make a lower priority    
@@ -284,7 +291,7 @@ public class RunLoadDatasets extends Thread {
                 }
                 try {
                     String subject = "RunLoadDatasets(flag loop) error at " + 
-                        Calendar2.getCurrentISODateTimeStringLocal();
+                        Calendar2.getCurrentISODateTimeStringLocalTZ();
                     String content = MustBe.throwableToString(t); 
                     String2.log(subject + ": " + content);
                     EDStatic.email(EDStatic.emailEverythingToCsv, subject, content);
@@ -333,7 +340,7 @@ public class RunLoadDatasets extends Thread {
                     String tError = "RunLoadDatasets is interrupting a stalled LoadDatasets thread (" +
                         Calendar2.elapsedTimeString(System.currentTimeMillis() - lastMajorLoadDatasetsStartTimeMillis) +
                         " > " + Calendar2.elapsedTimeString(EDStatic.loadDatasetsMaxMillis) + ") at " + 
-                        Calendar2.getCurrentISODateTimeStringLocal();
+                        Calendar2.getCurrentISODateTimeStringLocalTZ();
                     EDStatic.email(EDStatic.emailEverythingToCsv, 
                         "RunLoadDatasets Stalled", tError);
                     String2.log("\n*** " + tError);
@@ -354,7 +361,7 @@ public class RunLoadDatasets extends Thread {
                 }
                 try {
                     String subject = "RunLoadDatasets(loadDatasets.stop loop) error at " + 
-                        Calendar2.getCurrentISODateTimeStringLocal();
+                        Calendar2.getCurrentISODateTimeStringLocalTZ();
                     String content = MustBe.throwableToString(t); 
                     String2.log(subject + ": " + content);
                     EDStatic.email(EDStatic.emailEverythingToCsv, subject, content);
@@ -368,7 +375,7 @@ public class RunLoadDatasets extends Thread {
 
         //erddap is shutting down; deal with interruption
         String2.log("\n*** RunLoadDatasets noticed that it was interrupted at " + 
-            Calendar2.getCurrentISODateTimeStringLocal());
+            Calendar2.getCurrentISODateTimeStringLocalTZ());
         if (loadDatasets != null && loadDatasets.isAlive()) {
             EDStatic.stopThread(loadDatasets, 60);
             loadDatasets = null;
@@ -380,7 +387,5 @@ public class RunLoadDatasets extends Thread {
         }
         erddap = null;
     }
-
-
 
 }

@@ -340,8 +340,10 @@ public class MustBe {
      * This returns a String with stack traces for all active threads in this JVM.
      *
      * @param hideThisThread hides this thread
-     * @param hideTomcatWaitingThreads if true, this tries to not show tomcat threads 
-     *   that are waiting (not really active)
+     * @param hideTomcatWaitingThreads if true, this tries to not show details of 
+     *   tomcat threads that are waiting (not really active) and just counts them
+     *   (just because there are so many of them and they aren't interesting).
+     *   
      */
     public static String allStackTraces(boolean hideThisThread, boolean hideTomcatWaitingThreads) {
         try {
@@ -404,6 +406,7 @@ public class MustBe {
             //write to StringBuilder
             StringBuilder sb = new StringBuilder();
             sb.append("Number of threads: " + 
+                //LoadDatasets has code which depends on this format/order/words.
                 (hideTomcatWaitingThreads? 
                     "Tomcat-waiting=" + tomcatWaiting + 
                     ", inotify=" + inotify + ", other=" : "") + 
@@ -411,7 +414,7 @@ public class MustBe {
                 "(format: #threadNumber Thread[threadName,threadPriority,threadGroup] threadStatus)\n\n");
             for (int i = 0; i < count; i++) 
                 sb.append("#" + (i + 1) + " " + sar[i]);
-            //sb.append("gather thread info time=" + (System.currentTimeMillis() - tTime) + "\n\n");
+            //sb.append("gather thread info time=" + (System.currentTimeMillis() - tTime) + "ms\n\n");
             return sb.toString();
 
         } catch (Exception e) {

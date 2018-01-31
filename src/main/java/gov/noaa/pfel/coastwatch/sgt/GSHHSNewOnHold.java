@@ -22,8 +22,8 @@ import java.util.Collections;
 import java.util.Map;
 
 
-/*2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
-When it is time to resucitate this, merge changes from this into GSHHS.java.*/
+2014-01-07 EEEEK! I made a lot of changes to GSHHS.java.
+When it is time to resucitate this, merge changes from this into GSHHS.java.
 
 /**
  *
@@ -550,7 +550,7 @@ public class GSHHSNewOnHold  {
         dis.close();
         if (reallyVerbose) String2.log("  GSHHS.getPathInfo done. res=" + resolution +
             " level=" + (desiredLevel==1? "land" : desiredLevel==2? "lake" : "" + desiredLevel) + 
-            " TIME=" + (System.currentTimeMillis() - time));
+            " TIME=" + (System.currentTimeMillis() - time) + "ms");
     }
 
     /**

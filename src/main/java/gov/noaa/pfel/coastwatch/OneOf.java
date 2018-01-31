@@ -276,7 +276,7 @@ public class OneOf {
                 true, String2.logFileDefaultMaxSize); //append?
             Math2.gcAndWait();  //before get memoryString() in OneOf constructor
             String2.log("*** Constructing OneOf for " + shortClassName + " at " + 
-                Calendar2.getCurrentISODateTimeStringLocal() + "\n" +
+                Calendar2.getCurrentISODateTimeStringLocalTZ() + "\n" +
                 "logFile=" + String2.logFileName() + "\n" +
                 String2.standardHelpAboutMessage());
 
@@ -620,10 +620,10 @@ public class OneOf {
             regionsImageMinYPixel   = regionsResult[4];
             regionsImageMaxYPixel   = regionsResult[5];
             trouble = 
-                !Math2.isFinite(regionsImageMinXDegrees) ||
-                !Math2.isFinite(regionsImageMaxXDegrees) ||
-                !Math2.isFinite(regionsImageMinYDegrees) ||
-                !Math2.isFinite(regionsImageMaxYDegrees) ||
+                !Double.isFinite(regionsImageMinXDegrees) ||
+                !Double.isFinite(regionsImageMaxXDegrees) ||
+                !Double.isFinite(regionsImageMinYDegrees) ||
+                !Double.isFinite(regionsImageMaxYDegrees) ||
                 regionsImageMinXPixel == regionsImageMaxXPixel ||
                 regionsImageMinYPixel == regionsImageMaxYPixel ||
                 regionsImageMinXDegrees == regionsImageMaxXDegrees ||
@@ -873,7 +873,7 @@ public class OneOf {
 
     /** Gets the HTML tag to begin a row. */
     public String getBeginRowTag(boolean odd) {
-        return "<tr align=\"left\" bgcolor=\"#" + backgroundColors[odd? 1 : 2] + "\">"; 
+        return "<tr style=\"background-color:#" + backgroundColors[odd? 1 : 2] + "\">"; 
     }
 
     /** The relative url for the web page.*/
@@ -935,7 +935,7 @@ public class OneOf {
             //get the urlResponse
             String catalog = null;
             try {
-                catalog = SSR.getUrlResponseString(dataServerCatalogUrl);
+                catalog = SSR.getUrlResponseStringUnchanged(dataServerCatalogUrl);
             } catch (Exception e) {
                 throw new Exception(error + e, e);
             }
@@ -952,8 +952,9 @@ public class OneOf {
                 }
             }
             if (verbose)
-                String2.log("ensureDataServerIsUp says the data server is UP at " + Calendar2.getCurrentISODateTimeStringLocal() +
-                  "\n  catalogUrl=" + dataServerCatalogUrl);
+                String2.log("ensureDataServerIsUp says the data server is UP at " + 
+                    Calendar2.getCurrentISODateTimeStringLocalTZ() +
+                    "\n  catalogUrl=" + dataServerCatalogUrl);
             
         }
 

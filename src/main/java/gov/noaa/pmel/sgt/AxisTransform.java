@@ -52,7 +52,7 @@ public abstract class AxisTransform implements Transform {
     public void releaseResources() throws Exception {
         try {  
             changes_ = null;
-            if (JPane.debug) String2.log("sgt.LinearTransform.releaseResources() finished");
+            if (JPane.debug) String2.log("sgt.AxisTransform.releaseResources() finished");
         } catch (Throwable t) {
             String2.log(MustBe.throwableToString(t));
             if (JPane.debug) 
@@ -181,7 +181,7 @@ public abstract class AxisTransform implements Transform {
   }
   /**
    * Set physical coordinate range.
-   * <BR><B>Property Change:</B> <code>rangeP</code>.
+   * <BR><strong>Property Change:</strong> <code>rangeP</code>.
    *
    * @param p1 minimum value, physical coordinates
    * @param p2 maximum value, physical coordinates
@@ -235,7 +235,7 @@ public abstract class AxisTransform implements Transform {
   }
   /**
    * Set the user coordinate range for space values.
-   * <BR><B>Property Change:</B> <code>rangeU</code>.
+   * <BR><strong>Property Change:</strong> <code>rangeU</code>.
    *
    * @param u1 minimum value, user coordinates
    * @param u2 maximum value, user coordinates
@@ -274,7 +274,7 @@ public abstract class AxisTransform implements Transform {
   }
   /**
    * Set the user coordinate range for <code>GeoDate</code> values.
-   * <BR><B>Property Change:</B> <code>rangeU</code>.
+   * <BR><strong>Property Change:</strong> <code>rangeU</code>.
    *
    * @param t1 minimum time
    * @param t2 maximum time

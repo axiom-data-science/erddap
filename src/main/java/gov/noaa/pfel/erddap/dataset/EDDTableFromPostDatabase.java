@@ -1,8 +1,7 @@
 /* 
  * EDDTableFromPostDatabase Copyright 2009, NOAA.
  * See the LICENSE.txt file in this file's directory.
- *//*
-
+ */
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
@@ -34,28 +33,23 @@ import java.util.BitSet;
 import java.util.HashMap;    //isn't synchronized, but after construction it is just read, so doesn't need to be
 import java.util.HashSet;    //isn't synchronized, but after construction it is just read, so doesn't need to be
 
-*/
-/**
+/** 
  * This is a special-purpose class to handle data from the POST database.
  * 
  * @author Bob Simons (bob.simons@noaa.gov) 2009-09-03
- *//*
-
+ */
 public class EDDTableFromPostDatabase extends EDDTableFromDatabase { 
 
     
-    */
-/**
+    /** 
      * set by the constructor. static so various datasets all use same/latest info. 
      * private since this info mustn't leak out.
      * <br>The hashmap holds userName -&gt; roleHashset.
-     *//*
-
+     */
     private static HashMap userHashMap; 
 
 
-    */
-/**
+    /**
      * This constructs an EDDTableFromPostDatabase based on the information in an .xml file.
      * 
      * @param erddap if known in this context, else null
@@ -64,18 +58,15 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
      * @return an EDDTableFromPostDatabase.
      *    When this returns, xmlReader will have just read &lt;erddapDatasets&gt;&lt;/dataset&gt; .
      * @throws Throwable if trouble
-     *//*
-
+     */
     public static EDDTableFromPostDatabase fromXml(Erddap erddap,
         SimpleXMLReader xmlReader) throws Throwable {
         return (EDDTableFromPostDatabase)lowFromXml(erddap, xmlReader, "Post");
     }
 
-    */
-/**
+    /**
      * The constructor. See EDDTableFromDatabase for details.
-     *//*
-
+     */
     public EDDTableFromPostDatabase(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
@@ -114,11 +105,10 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
 
         if (verbose) String2.log(
             "\n*** EDDTableFromPostDatabase " + datasetID + " constructor finished. TIME=" + 
-                (System.currentTimeMillis() - constructionStartMillis) + "\n");
+                (System.currentTimeMillis() - constructionStartMillis) + "ms\n");
     }
 
-    */
-/**
+    /**
      * Given the database information, this makes userHashMap.
      *
      * <p>This also calls EDStatic.setPostUserHashMap(postUserHashMap)
@@ -127,8 +117,7 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
      * @param dataSource If null, DriverManager will be used to make the connection.
      *   If not null, DataSource will be used to get a connection from the pool.
      * @throws Throwable if trouble
-     *//*
-
+     */
     public static HashMap makeUserHashMap(String dataSourceName, DataSource dataSource,
             String localSourceUrl, String driverName, String connectionProperties[], 
             String catalogName, String schemaName) throws Throwable {
@@ -306,8 +295,7 @@ boolean addTestPostUser = false;
         return finishedUserHashMap;
     }
 
-    */
-/**
+    /**
      * This returns a suggested fileName (no dir or extension).
      * It doesn't add a random number, so will return the same results 
      * if the inputs are the same.
@@ -318,8 +306,7 @@ boolean addTestPostUser = false;
      * @param fileTypeName
      * @return a suggested fileName (no dir or extension)
      * @throws Exception if trouble (in practice, it shouldn't)
-     *//*
-
+     */
     public String suggestFileName(String loggedInAs, String userDapQuery, String fileTypeName) {
 
         //decode userDapQuery to a canonical form to avoid slight differences in percent-encoding 
@@ -337,8 +324,7 @@ boolean addTestPostUser = false;
         return name;
     }
 
-    */
-/**
+    /** 
      * This returns the name of the file in datasetDir()
      * which has all of the distinct data combinations for the current subsetVariables.
      * The file is deleted by setSubsetVariablesCSV(), which is called whenever
@@ -348,15 +334,13 @@ boolean addTestPostUser = false;
      * @param loggedInAs POST datasets overwrite this method and use loggedInAs 
      *    since data for each loggedInAs is different; others don't use this
      * @throws Exception if trouble
-     *//*
-
+     */
     public String subsetVariablesFileName(String loggedInAs) throws Exception {
         return (loggedInAs == null? "" : String2.encodeFileNameSafe(loggedInAs) + "_") + 
             SUBSET_FILENAME; 
     }
 
-    */
-/**
+    /** 
      * This returns the name of the file in datasetDir()
      * which has all of the distinct values for the current subsetVariables.
      * The file is deleted by setSubsetVariablesCSV(), which is called whenever
@@ -366,15 +350,13 @@ boolean addTestPostUser = false;
      * @param loggedInAs POST datasets overwrite this method and use loggedInAs 
      *    since data for each loggedInAs is different; others don't use this
      * @throws Exception if trouble
-     *//*
-
+     */
     public String distinctSubsetVariablesFileName(String loggedInAs) throws Exception {
         return (loggedInAs == null? "" : String2.encodeFileNameSafe(loggedInAs) + "_") + 
             DISTINCT_SUBSET_FILENAME; 
     }
 
-    */
-/**
+    /** 
      * This gets the data (chunk by chunk) from this EDDTable for the 
      * OPeNDAP DAP-style query and writes it to the TableWriter. 
      * See the EDDTable method documentation.
@@ -389,8 +371,7 @@ boolean addTestPostUser = false;
      * @param userDapQuery the part of the user's request after the '?', still percentEncoded, may be null.
      * @param tableWriter
      * @throws Throwable if trouble (notably, WaitThenTryAgainException)
-     *//*
-
+     */
     public void getDataForDapQuery(String loggedInAs, String requestUrl, 
         String userDapQuery, TableWriter tableWriter) throws Throwable {
 
@@ -402,16 +383,14 @@ boolean addTestPostUser = false;
         super.getDataForDapQuery(loggedInAs, requestUrl, userDapQuery, tableWriter);
     }
 
-    */
-/**
+    /** 
      * This is used by getDataForDapQuery for this class and EDDTableFromPostNcFiles
      * to ensure userDapQuery includes PostRoleColumnName and PostDatePublicColumnName.
      *
      * @param loggedInAs (may be null)
      * @return the revised userDapQuery
      * @throws Throwable
-     *//*
-
+     */
     public static String reviseDapQueryForPost(String loggedInAs, String userDapQuery) 
         throws Throwable {
 
@@ -437,24 +416,20 @@ boolean addTestPostUser = false;
         return userDapQuery;
     }
 
-    */
-/**
+    /**
      * getDataForDapQuery always calls this right before standardizeResultsTable.
      * EDDTableFromPostDatabase uses this to remove data not accessible to this user.
-     *//*
-
+     */
     public void preStandardizeResultsTable(String loggedInAs, Table table) {
         staticPreStandardizeResultsTable(loggedInAs, table);
     }
 
-    */
-/**
+    /**
      * getDataForDapQuery always calls this right before standardizeResultsTable.
      * EDDTableFromPostDatabase uses this to remove data not accessible to this user.
      * <br>This can be static because userHashMap is static.
      * <br>If userHashMap hasn't been set, a new empty one is created (i.e., no valid users).
-     *//*
-
+     */
     public static void staticPreStandardizeResultsTable(String loggedInAs, Table table) {
 
         //needed for EDDTableCopy: if loggedInAsSuperuser, keep all data
@@ -520,15 +495,13 @@ boolean addTestPostUser = false;
     }
 
 
-    */
-/**
+    /**
      * This tests the post surgery3 dataset.
      *
      * @throws Throwable if trouble
-     *//*
-
+     */
     public static void testPostSurg3() throws Throwable {
-        String2.log("\n*** testPostSurg3");
+        String2.log("\n*** EDDTableFromPostDatabase.testPostSurg3");
         testVerboseOn();
         long eTime;
         int po;
@@ -540,7 +513,7 @@ boolean addTestPostUser = false;
             //das
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
                 tedd.className() + "_ps3_Data", ".das"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected = 
 "Attributes {\n" +
 " s {\n" +
@@ -877,7 +850,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
             //.dds 
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
                 tedd.className() + "_ps3_Data", ".dds"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected = 
 "Dataset {\n" +
 "  Sequence {\n" +
@@ -934,23 +907,23 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
             tQuery = "&role=\"WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE\"";
             tName = tedd.makeNewFileForDapQuery(null, null, tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_1role", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected =   
 "unique_tag_id, pi, longitude, latitude, time, activation_time, anaesthetic_conc_recirc, anaesthetic_conc_surgery, buffer_conc_anaesthetic, buffer_conc_recirc, buffer_conc_surgery, channel, code_label, comments, common_name, date_public, delay_max, delay_min, delay_start, delay_type, dna_sampled, est_tag_life, fork_length, frequency, implant_type, length_hood, length_pcl, length_standard, project, provenance, role, scientific_name, sedative_conc_surgery, stock, surgery_id, surgery_location, surgery_longitude, surgery_latitude, surgery_time, tagger, treatment_type, water_temp, weight\n" +
 ", , degrees_east, degrees_north, UTC, UTC, ppm, ppm, ppm, ppm, ppm, , , , , UTC, ms, ms, days, , , days, mm, kHz, , mm, mm, mm, , , , , ppm, , , , degrees_east, degrees_north, UTC, , , degree_C, grams\n" +
 "19835, DAVID WELCH, -121.97974, 49.07988, 2007-05-16T22:00:00Z, 2007-05-13T07:00:00Z, NaN, 70.0, 140.0, NaN, NaN, A, A69-1105-AE, , \"SOCKEYE, KOKANEE\", 2008-09-29T23:29:37Z, 90, 30, 0, RANDOM, 0, 2055.0, 204.0, 69.0, INTERNAL, NaN, NaN, NaN, KINTAMA RESEARCH, Hatchery, WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE, ONCORHYNCHUS NERKA, 1.0, CULTUS LAKE, 7991, INCH CREEK HATCHERY, -122.16152, 49.17132, 2007-05-13T07:00:00Z, ADRIAN LADOUCEUR, SHADE, 6.7, NaN\n";
             Test.ensureEqual(results, expected, "\nresults=\n" + results);
-            String2.log("*** testPostSurg3 1role FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 1role FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test 1 role, public data   loggedIn for other data
             eTime = System.currentTimeMillis();
             tQuery = "&role=\"WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE\"";
             tName = tedd.makeNewFileForDapQuery(null, "ROBICHAUD_DAVID", tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_1roleLIOD", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             //same expected
             Test.ensureEqual(results, expected, "\nresults=\n" + results);
-            String2.log("*** testPostSurg3 1roleLIOD FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 1roleLIOD FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
 
             //test 1 role, private data, not loggedIn
@@ -959,14 +932,14 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
             try {
                 tName = tedd.makeNewFileForDapQuery(null, null, tQuery, 
                     EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_1roleP", ".csv"); 
-                results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+                results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
                 throw new Exception("Shouldn't get here.");
             } catch (Throwable t) {
                 if (t.toString().indexOf(MustBe.THERE_IS_NO_DATA) < 0)
                     throw new Exception("Should have been THERE_IS_NO_DATA: " +
                         MustBe.throwableToString(t));
             }
-            String2.log("*** testPostSurg3 1roleP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 1roleP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test 1 role, wrong log in
             eTime = System.currentTimeMillis();
@@ -974,21 +947,21 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
             try {
                 tName = tedd.makeNewFileForDapQuery(null, "WELCH_DAVID", tQuery, 
                     EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_1roleWP", ".csv"); 
-                results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+                results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
                 throw new Exception("Shouldn't get here.");
             } catch (Throwable t) {
                 if (t.toString().indexOf(MustBe.THERE_IS_NO_DATA) < 0)
                     throw new Exception("Should have been THERE_IS_NO_DATA: " +
                         MustBe.throwableToString(t));
             }
-            String2.log("*** testPostSurg3 1roleWP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 1roleWP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test 1 role, public data, logged in
             eTime = System.currentTimeMillis();
             tQuery = "&role=\"ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER\"";
             tName = tedd.makeNewFileForDapQuery(null, "ROBICHAUD_DAVID", tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_1roleL", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected =   
 "unique_tag_id, pi, longitude, latitude, time, activation_time, anaesthetic_conc_recirc, anaesthetic_conc_surgery, buffer_conc_anaesthetic, buffer_conc_recirc, buffer_conc_surgery, channel, code_label, comments, common_name, date_public, delay_max, delay_min, delay_start, delay_type, dna_sampled, est_tag_life, fork_length, frequency, implant_type, length_hood, length_pcl, length_standard, project, provenance, role, scientific_name, sedative_conc_surgery, stock, surgery_id, surgery_location, surgery_longitude, surgery_latitude, surgery_time, tagger, treatment_type, water_temp, weight\n" +
 ", , degrees_east, degrees_north, UTC, UTC, ppm, ppm, ppm, ppm, ppm, , , , , UTC, ms, ms, days, , , days, mm, kHz, , mm, mm, mm, , , , , ppm, , , , degrees_east, degrees_north, UTC, , , degree_C, grams\n" +
@@ -996,14 +969,14 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
 "23670, DAVID ROBICHAUD, -122.816286671098, 49.2235994918324, 2008-08-24T14:50:00Z, 2008-08-23T07:00:00Z, NaN, NaN, NaN, NaN, NaN, , A69-1303-AC, def in lower lobe of caudal fin, WHITE STURGEON, 2010-01-23T21:25:29Z, NaN, NaN, NaN, , 0, NaN, 1070.0, NaN, INTERNAL, NaN, NaN, NaN, LGL LIMITED, Wild, ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER, ACIPENSER TRANSMONTANUS, NaN, Lower Fraser, 7993, FRASER RIVER JUST UPSTREAM OF PORT MANN BRIDGE, -122.816286671098, 49.2235994918324, 2008-08-23T07:00:00Z, Lucia Ferreira, SUMMER, NaN, NaN\n" +
 "23671, DAVID ROBICHAUD, -122.788286819502, 49.2229398886514, 2008-08-30T15:56:00Z, 2008-08-30T07:00:00Z, NaN, NaN, NaN, NaN, NaN, , A69-1303-AC, small scrape near incision, WHITE STURGEON, 2010-01-23T21:25:29Z, NaN, NaN, NaN, , 0, NaN, 715.0, NaN, INTERNAL, NaN, NaN, NaN, LGL LIMITED, Wild, ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER, ACIPENSER TRANSMONTANUS, NaN, Lower Fraser, 7994, FRASER RIVER JUST UPSTREAM OF PORT MANN BRIDGE, -122.788286819502, 49.2229398886514, 2008-08-30T07:00:00Z, Lucia Ferreira, SUMMER, NaN, NaN\n";
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-            String2.log("*** testPostSurg3 1roleL FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 1roleL FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test public data + logged in
             eTime = System.currentTimeMillis();
             tQuery = "";
             tName = tedd.makeNewFileForDapQuery(null, "ROBICHAUD_DAVID", tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_1rolePDLI", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected =   
 "unique_tag_id, pi, longitude, latitude, time, activation_time, anaesthetic_conc_recirc, anaesthetic_conc_surgery, buffer_conc_anaesthetic, buffer_conc_recirc, buffer_conc_surgery, channel, code_label, comments, common_name, date_public, delay_max, delay_min, delay_start, delay_type, dna_sampled, est_tag_life, fork_length, frequency, implant_type, length_hood, length_pcl, length_standard, project, provenance, role, scientific_name, sedative_conc_surgery, stock, surgery_id, surgery_location, surgery_longitude, surgery_latitude, surgery_time, tagger, treatment_type, water_temp, weight\n" +
 ", , degrees_east, degrees_north, UTC, UTC, ppm, ppm, ppm, ppm, ppm, , , , , UTC, ms, ms, days, , , days, mm, kHz, , mm, mm, mm, , , , , ppm, , , , degrees_east, degrees_north, UTC, , , degree_C, grams\n" +
@@ -1011,7 +984,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
 "23669, DAVID ROBICHAUD, -122.816286671098, 49.2235994918324, 2008-08-24T14:50:00Z, 2008-08-23T07:00:00Z, NaN, NaN, NaN, NaN, NaN, , A69-1303-AC, Missing L pec fin, WHITE STURGEON, 2010-01-23T21:25:29Z, NaN, NaN, NaN, , 0, NaN, 850.0, NaN, INTERNAL, NaN, NaN, NaN, LGL LIMITED, Wild, ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER, ACIPENSER TRANSMONTANUS, NaN, Lower Fraser, 7992, FRASER RIVER JUST UPSTREAM OF PORT MANN BRIDGE, -122.816286671098, 49.2235994918324, 2008-08-23T07:00:00Z, Lucia Ferreira, SUMMER, NaN, NaN\n" +
 "23670, DAVID ROBICHAUD, -122.816286671098, 49.2235994918324, 2008-08-24T14:50:00Z, 2008-08-23T07:00:00Z, NaN, NaN, NaN, NaN, NaN, , A69-1303-AC, def in lower lobe of caudal fin, WHITE STURGEON, 2010-01-23T21:25:29Z, NaN, NaN, NaN, , 0, NaN, 1070.0, NaN, INTERNAL, NaN, NaN, NaN, LGL LIMITED, Wild, ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER, ACIPENSER TRANSMONTANUS, NaN, Lower Fraser, 7993, FRASER RIVER JUST UPSTREAM OF PORT MANN BRIDGE, -122.816286671098, 49.2235994918324, 2008-08-23T07:00:00Z, Lucia Ferreira, SUMMER, NaN, NaN\n";
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-            String2.log("*** testPostSurg3 1rolePDLI FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 1rolePDLI FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
 
             //test public data all have lat/lon/time?
@@ -1019,12 +992,12 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
             tQuery = "longitude,latitude,time&time>=2007-05-01&time<2007-09-01";
             tName = tedd.makeNewFileForDapQuery(null, null, tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_ps3_LLT", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             //String2.log("results=\n" + results.substring(0, Math.min(results.length(), 10000)));
             po = results.indexOf("NaN");
             String2.log("\nresults.length()=" + results.length() + "  NaN po=" + po);
             Test.ensureEqual(po, -1, "\nresults=\n" + results.substring(0, Math.min(results.length(), 10000)));
-            String2.log("*** testPostSurg3 LLT FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostSurg3 LLT FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
         } catch (Throwable t) {
             String2.pressEnterToContinue(MustBe.throwableToString(t) + 
@@ -1032,28 +1005,24 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
         }
     }
 
-    */
-/**
+    /**
      * This tests the post detection3 dataset.
      *
      * @throws Throwable if trouble
-     *//*
-
+     */
     public static void testPostDet3() throws Throwable {
-        String2.log("\n*** testPostDet3");
+        String2.log("\n*** EDDTableFromPostDatabase.testPostDet3");
         testVerboseOn();
         long eTime;
         String tQuery, tName, results, expected;
         String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         try {
             EDDTableFromPostDatabase tedd = (EDDTableFromPostDatabase)oneFromDatasetsXml(null, "postDet3"); 
-*/
-/* *//*
-
+/* */
             //das
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
                 tedd.className() + "_pd3_Data", ".das"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected = 
 "Attributes {\n" +
 " s {\n" +
@@ -1243,7 +1212,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
             //.dds 
             tName = tedd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
                 tedd.className() + "_pd3_Data", ".dds"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected = 
 "Dataset {\n" +
 "  Sequence {\n" +
@@ -1274,7 +1243,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
             tQuery = "&unique_tag_id=\"19835\"";
             tName = tedd.makeNewFileForDapQuery(null, null, tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_pd3_1tag", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
 //the row from the surgery table is
 //"19835, DAVID WELCH, -121.97974, 49.07988, 2007-05-16T22:00:00Z, 2007-05-13T07:00:00Z, NaN, 70.0, 140.0, NaN, NaN, A, A69-1105-AE, , /"SOCKEYE, KOKANEE/", 2008-09-29T23:29:37Z, 90, 30, 0, RANDOM, 0, 2055.0, 204.0, 69.0, INTERNAL, NaN, NaN, NaN, KINTAMA RESEARCH, Hatchery, WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE, ONCORHYNCHUS NERKA, 1.0, CULTUS LAKE, 7991, INCH CREEK HATCHERY, -122.16152, 49.17132, 2007-05-13T07:00:00Z, ADRIAN LADOUCEUR, SHADE, 6.7, NaN\n";
             expected =   
@@ -1284,7 +1253,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
 "19835, DAVID WELCH, -122.59574, 49.20158, 2007-05-20T23:34:31Z, 1.3, \"SOCKEYE, KOKANEE\", 2008-09-29T23:29:37Z, , KINTAMA RESEARCH, NaN, WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE, ONCORHYNCHUS NERKA, CULTUS LAKE, 2007-05-13T07:00:00Z, INCH CREEK HATCHERY, ADRIAN LADOUCEUR\n" +
 "19835, DAVID WELCH, -122.59574, 49.20158, 2007-05-20T23:35:49Z, 1.3, \"SOCKEYE, KOKANEE\", 2008-09-29T23:29:37Z, , KINTAMA RESEARCH, NaN, WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE, ONCORHYNCHUS NERKA, CULTUS LAKE, 2007-05-13T07:00:00Z, INCH CREEK HATCHERY, ADRIAN LADOUCEUR\n";
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-            String2.log("*** testPostDet3 1tag FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostDet3 1tag FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
 
             //test 1 role, public data   not loggedIn
@@ -1292,20 +1261,20 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
             tQuery = "&role=\"WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE\"";
             tName = tedd.makeNewFileForDapQuery(null, null, tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_pd3_1role", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             //expected = same
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-            String2.log("*** testPostDet3 1role FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostDet3 1role FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test 1 role, public data   loggedIn for other data
             eTime = System.currentTimeMillis();
             tQuery = "&role=\"WELCH_DAVID_ONCORHYNCHUSNERKA_CULTUSLAKE\"";
             tName = tedd.makeNewFileForDapQuery(null, "ROBICHAUD_DAVID", tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_pd3_1roleLIOD", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             //same expected
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-            String2.log("*** testPostDet3 1roleLIOD FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostDet3 1roleLIOD FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
 
             //test 1 role, private data, not loggedIn
@@ -1314,14 +1283,14 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
             try {
                 tName = tedd.makeNewFileForDapQuery(null, null, tQuery, 
                     EDStatic.fullTestCacheDirectory, tedd.className() + "_pd3_1roleP", ".csv"); 
-                results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+                results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
                 throw new Exception("Shouldn't get here.");
             } catch (Throwable t) {
                 if (t.toString().indexOf(MustBe.THERE_IS_NO_DATA) < 0)
                     throw new Exception("Should have been THERE_IS_NO_DATA: " +
                         MustBe.throwableToString(t));
             }
-            String2.log("*** testPostDet3 1roleP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostDet3 1roleP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test 1 role, wrong log in
             eTime = System.currentTimeMillis();
@@ -1329,21 +1298,21 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
             try {
                 tName = tedd.makeNewFileForDapQuery(null, "WELCH_DAVID", tQuery, 
                     EDStatic.fullTestCacheDirectory, tedd.className() + "_pd3_1roleWP", ".csv"); 
-                results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+                results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
                 throw new Exception("Shouldn't get here.");
             } catch (Throwable t) {
                 if (t.toString().indexOf(MustBe.THERE_IS_NO_DATA) < 0)
                     throw new Exception("Should have been THERE_IS_NO_DATA: " +
                         MustBe.throwableToString(t));
             }
-            String2.log("*** testPostDet3 1roleWP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostDet3 1roleWP FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
             //test 1 role, private data, logged in
             eTime = System.currentTimeMillis();
             tQuery = "&role=\"ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER\"";
             tName = tedd.makeNewFileForDapQuery(null, "ROBICHAUD_DAVID", tQuery, 
                 EDStatic.fullTestCacheDirectory, tedd.className() + "_pd3_1roleL", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
 String2.log("\n" + results.substring(0, 4000) + "\n");
             expected =   
 "unique_tag_id, pi, longitude, latitude, time, bottom_depth, common_name, date_public, position_on_subarray, project, riser_height, role, scientific_name, stock, surgery_time, surgery_location, tagger\n" +
@@ -1352,11 +1321,9 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
 "23669, DAVID ROBICHAUD, -122.816287004559, 49.2235095396314, 2008-08-24T03:23:59Z, 3.5, WHITE STURGEON, 2010-01-23T21:25:29Z, 1, LGL LIMITED, NaN, ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER, ACIPENSER TRANSMONTANUS, Lower Fraser, 2008-08-23T07:00:00Z, FRASER RIVER JUST UPSTREAM OF PORT MANN BRIDGE, Lucia Ferreira\n" +
 "23669, DAVID ROBICHAUD, -122.816287004559, 49.2235095396314, 2008-08-24T03:29:33Z, 3.5, WHITE STURGEON, 2010-01-23T21:25:29Z, 1, LGL LIMITED, NaN, ROBICHAUD_DAVID_ACIPENSERTRANSMONTANUS_LOWERFRASER, ACIPENSER TRANSMONTANUS, Lower Fraser, 2008-08-23T07:00:00Z, FRASER RIVER JUST UPSTREAM OF PORT MANN BRIDGE, Lucia Ferreira\n"; 
             Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results.substring(0, 4000));
-            String2.log("*** testPostDet3 1roleL FINISHED.  TIME=" + (System.currentTimeMillis() - eTime)); 
+            String2.log("*** testPostDet3 1roleL FINISHED.  TIME=" + (System.currentTimeMillis() - eTime) + "ms"); 
 
-*/
-/* *//*
-
+/* */
         } catch (Throwable t) {
             String2.pressEnterToContinue(MustBe.throwableToString(t) + 
                 "Unexpected EDDTableFromPostDatabase.testPostDet3 error."); 
@@ -1364,15 +1331,13 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
     }
 
 
-    */
-/** This tests getting all of the data for one tag (like how EDDTableCopyPost does it).
+    /** This tests getting all of the data for one tag (like how EDDTableCopyPost does it). 
      * This is to try to resolve the problem of 2010-04-08.
      * For testPostTag, you have to change datasets2.xml to create separate
      * <dataset type="EDDTableFromPostDatabase" datasetID="testPostDet3">
-     *//*
-
+     */
     public static void testPostTag()  throws Throwable {
-        String2.log("\n*** testPostTag");
+        String2.log("\n*** EDDTableFromPostDatabase.testPostTag");
         testVerboseOn();
         long eTime;
         String tQuery, tName, results, expected;
@@ -1415,7 +1380,7 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
 
                 EDStatic.fullTestCacheDirectory, 
                 tedd.className() + "_pd3_tag", ".csv"); 
-            results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+            results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
             expected = 
 "unique_tag_id, PI, longitude, latitude, time, bottom_depth, common_name, date_public, position_on_subarray, project, riser_height, role, scientific_name, serial_number, stock, surgery_time, surgery_location, tagger\n" +
 ", , degrees_east, degrees_north, UTC, m, , UTC, , , m, , , , , UTC, , \n" +
@@ -1428,15 +1393,13 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
         }
     }
 
-    */
-/**
+    /**
      * This tests the testPostSurgery3 dataset (direct test of database, not the local copy).
      *
      * @throws Throwable if trouble
-     *//*
-
+     */
     public static void testPostSurg3Direct() throws Throwable {
-        String2.log("\n*** testPostSurg3");
+        String2.log("\n*** EDDTableFromPostDatabase.testPostSurg3Direct");
         testVerboseOn();
         String dir = EDStatic.fullTestCacheDirectory;
         String tName, tQuery, results, expected;
@@ -1481,20 +1444,18 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
 
         } catch (Throwable t) {
             String2.pressEnterToContinue(
-                "\n*** Unexpected EDDTableFromDatabase.testPostSurg3 error:\n" +
+                "\n*** Unexpected EDDTableFromDatabase.testPostSurg3Direct error:\n" +
                 MustBe.throwableToString(t)); 
         }
     }
 
-    */
-/**
+    /**
      * This tests the methods in this class.
      *
      * @throws Throwable if trouble
-     *//*
-
+     */
     public static void test() throws Throwable {
-        String2.log("\n****************** EDDTableFromPostDatabase.test() *****************\n");
+        String2.log("\n*** EDDTableFromPostDatabase.test()\n");
 
         //tests usually run
         testPostSurg3Direct();
@@ -1506,4 +1467,3 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
 
 }
 
-*/
