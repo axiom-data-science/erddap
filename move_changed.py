@@ -10,7 +10,7 @@ import subprocess
 dev = os.environ['ERDDAP_DEV_ROOT']
 upstream = os.environ['ERDDAP_UPSTREAM_ROOT']
 
-files = subprocess.run(['git', 'diff', '--name-status', 'HEAD~3', 'HEAD'], stdout=subprocess.PIPE, cwd=upstream)
+files = subprocess.run(['git', 'diff', '--name-status', 'HEAD~1', 'HEAD'], stdout=subprocess.PIPE, cwd=upstream)
 for code, contents in [ x.split('\t', maxsplit=2) for x in files.stdout.decode('utf-8').split('\n') if x ]:
 
     if code == 'D':
@@ -25,11 +25,13 @@ for code, contents in [ x.split('\t', maxsplit=2) for x in files.stdout.decode('
         if contents.startswith('download/'):
             continue
         elif contents.startswith('WEB-INF/classes/'):
-            new_path = contents.replace('WEB-INF/classes/', os.path.join(dev, 'src/main/java/'))
+            new_path = contents.replace('WEB-INF/classes/', os.path.join(dev, 'src/main/java/'), 1)
         elif contents.startswith('WEB-INF/images/'):
-            new_path = contents.replace('WEB-INF/images/', os.path.join(dev, 'src/main/webapp/images/'))
+            new_path = contents.replace('WEB-INF/images/', os.path.join(dev, 'src/main/webapp/WEB-INF/images/'), 1)
+        elif contents.startswith('images/'):
+            new_path = contents.replace('images/', os.path.join(dev, 'src/main/webapp/images/'), 1)
         elif contents.startswith('WEB-INF/'):
-            new_path = contents.replace('WEB-INF/', os.path.join(dev, 'src/main/webapp/WEB-INF/'))
+            new_path = contents.replace('WEB-INF/', os.path.join(dev, 'src/main/webapp/WEB-INF/'), 1)
 
         if new_path is not None:
             try:
