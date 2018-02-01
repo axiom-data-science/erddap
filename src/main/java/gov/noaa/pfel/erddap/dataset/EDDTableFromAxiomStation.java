@@ -449,7 +449,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
             depatts.set("actual_range", new DoubleArray(new double[]{Collections.min(depths), Collections.max(depths)}));
             tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
 
-            String2.log(String.join(",", cdm_timeseries_variables));
+            //String2.log(String.join(",", cdm_timeseries_variables));
             tGlobalAttributes.set("cdm_timeseries_variables", String.join(",", cdm_timeseries_variables));
 
             int ndv = tDataVariables.size();
@@ -509,11 +509,11 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         StringArray constraintValues    = new StringArray();
         getSourceQueryFromDapQuery(userDapQuery, resultsVariables, constraintVariables, constraintOps, constraintValues);
 
-        String2.log("userDapQuery: " + userDapQuery);
-        String2.log("resultsVariables: " + resultsVariables.toCSVString());
-        String2.log("constraintVariables: " + constraintVariables.toCSVString());
-        String2.log("constraintOps: " + constraintOps.toCSVString());
-        String2.log("constraintValues: " + constraintValues.toCSVString());
+//        String2.log("userDapQuery: " + userDapQuery);
+//        String2.log("resultsVariables: " + resultsVariables.toCSVString());
+//        String2.log("constraintVariables: " + constraintVariables.toCSVString());
+//        String2.log("constraintOps: " + constraintOps.toCSVString());
+//        String2.log("constraintValues: " + constraintValues.toCSVString());
 
         double beginSeconds = 0;
         // Default endTime is an hour ahead of now (for safety)
@@ -604,7 +604,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                         OikosDevice od = this.station.getDevice(vari.getJSONObject("metadata").getInt("device_id"));
 
                         // Using a Double here resulted in crazy sigfigs.
-                        FloatArray values_array = new FloatArray();
+                        DoubleArray values_array = new DoubleArray();
 
                         String unitString = vari.getJSONObject("metadata").getString("unit");
                         String columnName = od.prettyString();
@@ -623,10 +623,10 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                         JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
                         for (int e = 0 ; e < values.length() ; e++) {
                             try {
-                                values_array.add(new Float(values.getDouble(e)));
+                                values_array.add(values.getDouble(e));
                             } catch (JSONException ex) {
                                 // Most likely the "null" string which is used for a fill value in the sensor service.
-                                values_array.add(new Float(-9999.99));
+                                values_array.add(-9999.99);
                             }
                         }
                         // This will only work if each device is measured at the same depths
@@ -762,6 +762,19 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         String  tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
         String results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        String2.log(results);
+
+        // Test for missing value masking
+        edd = EDD.oneFromXmlFragment(null, "" +
+            "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"wmo_46023\">\n" +
+            "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
+            "    <stationId>20595</stationId>\n" +
+            "</dataset>"
+            );
+        query = "sea_surface_wave_significant_height,time,latitude,longitude&time>=2010-09-02T00:00:00Z&time<2010-09-03T00:00:00Z";
+        tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
+                edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");
+        results = new String((new ByteArray(EDStatic.fullTestCacheDirectory + tName)).toArray());
         String2.log(results);
 
         // Test station with a cell method
