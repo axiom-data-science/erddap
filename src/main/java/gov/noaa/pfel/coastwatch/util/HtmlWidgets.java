@@ -355,9 +355,10 @@ public class HtmlWidgets {
      * This is based on the idea for
      *   CSS-only image tooltip at https://codepen.io/electricalbah/pen/eJRLVd
      *
-     * @param imgUrl for the image for the user to hover over, e.g., questionMarkImageUrl.
+     * @param img1Url for the image for the user to hover over, e.g., questionMarkImageUrl.
      *   It must be in the images directory.
      * @param img1Alt alt text for the imgUrl, e.g., "?". It will be encoded as HTML attribute.
+     * @param img1Other
      * @param img2Url
      * @param img2ID  a unique (for the document) id, e.g., img1. 
      *   Just simple chars -- it isn't further encoded.
@@ -491,7 +492,6 @@ public class HtmlWidgets {
     /** 
      * This returns an HTML audio control.
      *
-     * @param ext the file extension (e.g., .wav)
      * @param htmlAttEncodedUrlFileName
      * @return an HTML audio control (or "" if trouble)
      */
@@ -578,7 +578,7 @@ public class HtmlWidgets {
     /** 
      * This creates the HTML code to begin a table.
      *
-     * @param other attributes e.g., "style=\"width:100%;\" class=\"b0p0\"" 
+     * @param otherAtts attributes e.g., "style=\"width:100%;\" class=\"b0p0\""
      * @return the HTML code to begin a table.
      */
     public String beginTable(String otherAtts) { 
@@ -687,7 +687,7 @@ public class HtmlWidgets {
     /**
      * This create the HTML code for a comment.
      *
-     * @param commentText
+     * @param comment
      * @return the HTML code for a comment.
      */
     public String comment(String comment) {

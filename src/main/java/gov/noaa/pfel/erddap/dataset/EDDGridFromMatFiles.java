@@ -396,7 +396,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                 NcHelper.getVariableAttributes(var, sourceAtts);
                 dataSourceTable.addColumn(dataSourceTable.nColumns(), varName, pa, sourceAtts);
                 dataAddTable.addColumn(   dataAddTable.nColumns(),    varName, 
-                    makeDestPAForGDX(sourceAtts, pa), 
+                    makeDestPAForGDX(pa, sourceAtts),
                     makeReadyToUseAddVariableAttributesForDatasetsXml(
                         axisSourceTable.globalAttributes(),
                         sourceAtts, null, varName, true, false)); //addColorBarMinMax, tryToFindLLAT
@@ -727,7 +727,7 @@ directionsForGenerateDatasetsXml() +
         String2.log("\n*** .nc test das dds for entire dataset\n");
         tName = eddGrid.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Entire", ".das"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 "Attributes {\n" +
@@ -884,7 +884,7 @@ expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das
         //*** test getting dds for entire dataset
         tName = eddGrid.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Entire", ".dds"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 "Dataset {\n" +
@@ -929,7 +929,7 @@ expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das
         userDapQuery = "y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".csv"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 //verified with 
@@ -958,7 +958,7 @@ String csvExpected =
         userDapQuery = "y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".csvp"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 //verified with 
@@ -972,7 +972,7 @@ csvExpected;
         userDapQuery = "y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".csv0"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = csvExpected;
 //verified with 
@@ -985,7 +985,7 @@ csvExpected;
         userDapQuery = "y_wind[(1.1991888e9):3:(1.1999664e9)][0][(36.5)][(230)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".csv"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 //verified with 
@@ -1004,7 +1004,7 @@ csvExpected;
         userDapQuery = "y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".tsv"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 //verified with 
@@ -1033,7 +1033,7 @@ String tsvExpected =
         userDapQuery = "y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".tsvp"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
 //verified with 
@@ -1047,7 +1047,7 @@ tsvExpected;
         userDapQuery = "y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]";
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             eddGrid.className() + "_Data1", ".tsv0"); 
-        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName)).toArray());
+        results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = tsvExpected;
 //verified with 
