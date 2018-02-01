@@ -166,7 +166,7 @@ public class EDStatic {
      * A request to http.../erddap/version will return just the number (as text).
      * A request to http.../erddap/version_string will return the full string.
      */   
-    public static String erddapVersion = "1.82"; //see comment above
+    public static String erddapVersion = "1.82_axiom-r1"; //see comment above
 
     /** 
      * This is almost always false.  

@@ -26,7 +26,7 @@ RUN cd / && \
     JAVA_HOME=${JDK_HOME} /mvn/apache-maven-$MAVEN_VERSION/bin/mvn dependency:resolve
 
 # Install ERDDAP WAR
-ENV AXIOM_ERDDAP_VERSION 1.80-axiom-r2
+ENV AXIOM_ERDDAP_VERSION 1.82_axiom-r1
 COPY . /app
 RUN cd /app && \
     JAVA_HOME=${JDK_HOME} /mvn/apache-maven-$MAVEN_VERSION/bin/mvn clean compile war:war && \
