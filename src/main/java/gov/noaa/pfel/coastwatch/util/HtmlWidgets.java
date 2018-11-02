@@ -129,7 +129,7 @@ public class HtmlWidgets {
         return 
         "<!-- Big HTML tooltips are generated with wz_tooltip from \n" +
         "    http://wztip.info/index.php/Main_Page (LGPL license) -->\n" +
-        "<script src=\"" + dir + "wz_tooltip.js\"" +
+        "<script src=\"/erddap/images/wz_tooltip.js\"" +
             //This is disabled for now because Chrome requires CORS header in order to validate integrity.
             //" integrity=\"sha256-uXgD4ZNgdSBPIemQ5E8Vh5H9GEwMAQ3vXg4xJ6fhP/o=\" crossorigin=\"anonymous\"" +
             "></script>\n" +
@@ -145,8 +145,8 @@ public class HtmlWidgets {
     public static String leafletHead(String tErddapUrl) {
          return
             //leaflet.css assumes related images will be in /images/... within ERDDAP's /images
-            "  <link rel=\"stylesheet\" href=\"" + tErddapUrl + "/images/leaflet.css\" >\n" +
-            "  <script src=\"" + tErddapUrl + "/images/leaflet.js\"" +
+            "  <link rel=\"stylesheet\" href=\"/erddap/images/leaflet.css\" >\n" +
+            "  <script src=\"/erddap/images/leaflet.js\"" +
                 //This is disabled for now because Chrome requires CORS header in order to validate integrity.
                 //" integrity=\"sha256-UqKncSCrVxkH5z3QnoMGJ/98YTVI+LaVeUjXx/StJd4=\" crossorigin=\"anonymous\"" +
                 "></script>\n";
@@ -182,7 +182,7 @@ public class HtmlWidgets {
         return
         "<!-- Drag and Drop is performed by wz_dragdrop from\n" +
         "     http://www.walterzorn.com/dragdrop/dragdrop_e.htm (LGPL license) -->\n" +
-        "<script src=\"" + XML.encodeAsHTMLAttribute(dir) + "wz_dragdrop.js\"" +
+        "<script src=\"/erddap/images/wz_dragdrop.js\"" +
             //This is disabled for now because Chrome requires CORS header in order to validate integrity.
             //" integrity=\"sha256-1i6DzhgAgCuch5/AP2XX+XTBm0B+0hV63hSDgqNuyoQ=\" crossorigin=\"anonymous\"" +
             "></script>\n" +
