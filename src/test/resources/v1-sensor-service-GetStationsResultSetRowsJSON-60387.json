@@ -1,0 +1,591 @@
+{
+  "currentTime": 1539824858,
+  "stations": [
+    {
+      "id": 60387,
+      "label": "42013 - C10 - WFS Central Buoy, 25m Isobath",
+      "urn": "urn:ioos:station:edu.usf.marine.comps:C10",
+      "url": "http://comps.marine.usf.edu/index?view=station&id=C10",
+      "dataAvailable": true,
+      "startDate": 1449788400,
+      "endDate": 1539822900,
+      "latitude": 27.173,
+      "longitude": -82.924,
+      "sourceId": 144,
+      "secondary_sources": [],
+      "ioos_secondary_sources": [
+        130,
+        93
+      ],
+      "publisherId": 144,
+      "additional_agents": [
+        {
+          "id": 234,
+          "affiliation": "supporter"
+        }
+      ],
+      "platformId": 6,
+      "sensors": [
+        {
+          "id": 14,
+          "startDate": 1539002100,
+          "endDate": 1539822900,
+          "parameterIds": [
+            50
+          ]
+        },
+        {
+          "id": 89,
+          "startDate": 1449788700,
+          "endDate": 1470141300,
+          "parameterIds": [
+            191
+          ]
+        },
+        {
+          "id": 6,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "parameterIds": [
+            3
+          ]
+        },
+        {
+          "id": 137,
+          "startDate": 1449788700,
+          "endDate": 1470141300,
+          "parameterIds": [
+            158
+          ]
+        },
+        {
+          "id": 9,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "parameterIds": [
+            14
+          ]
+        },
+        {
+          "id": 22,
+          "startDate": 1462284300,
+          "endDate": 1539822900,
+          "parameterIds": [
+            4
+          ]
+        },
+        {
+          "id": 7,
+          "startDate": 1462284300,
+          "endDate": 1539822900,
+          "parameterIds": [
+            41
+          ]
+        },
+        {
+          "id": 186,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "parameterIds": [
+            7
+          ]
+        },
+        {
+          "id": 8,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "parameterIds": [
+            5,
+            6
+          ]
+        },
+        {
+          "id": 15,
+          "startDate": 1449788400,
+          "endDate": 1470142800,
+          "parameterIds": [
+            67,
+            68
+          ]
+        }
+      ],
+      "parameters": [
+        {
+          "id": 5,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:wind_speed",
+          "devices": [
+            {
+              "id": 441842,
+              "enhancedParameterId": 5,
+              "startDate": 1449788700,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:air_pressure",
+          "devices": [
+            {
+              "id": 441846,
+              "enhancedParameterId": 14,
+              "startDate": 1449788700,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "startDate": 1449788700,
+          "endDate": 1539178500,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:wind_from_direction",
+          "devices": [
+            {
+              "id": 441844,
+              "enhancedParameterId": 6,
+              "startDate": 1449788700,
+              "endDate": 1539178500,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "startDate": 1462284300,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:sea_water_temperature",
+          "devices": [
+            {
+              "id": 470492,
+              "enhancedParameterId": 41,
+              "startDate": 1462284300,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": null,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 191,
+          "startDate": 1449788700,
+          "endDate": 1470141300,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:sea_surface_temperature",
+          "devices": [
+            {
+              "id": 441847,
+              "enhancedParameterId": 223,
+              "startDate": 1449788700,
+              "endDate": 1470141300,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:wind_speed_of_gust",
+          "devices": [
+            {
+              "id": 441843,
+              "enhancedParameterId": 7,
+              "startDate": 1449788700,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "startDate": 1449788700,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:air_temperature",
+          "devices": [
+            {
+              "id": 441845,
+              "enhancedParameterId": 3,
+              "startDate": 1449788700,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 50,
+          "startDate": 1539002100,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:sea_water_practical_salinity",
+          "devices": [
+            {
+              "id": 631455,
+              "enhancedParameterId": 50,
+              "startDate": 1539002100,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": null,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 67,
+          "startDate": 1449788400,
+          "endDate": 1470142800,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:sea_water_velocity_to_direction",
+          "devices": [
+            {
+              "id": 441850,
+              "enhancedParameterId": 67,
+              "startDate": 1449788400,
+              "endDate": 1470142800,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 0,
+              "depthMin": 3.27,
+              "depthMax": 22.38
+            }
+          ]
+        },
+        {
+          "id": 158,
+          "startDate": 1449788700,
+          "endDate": 1470141300,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:short_wave_radiation",
+          "devices": [
+            {
+              "id": 441848,
+              "enhancedParameterId": 158,
+              "startDate": 1449788700,
+              "endDate": 1470141300,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 1800,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "startDate": 1462284300,
+          "endDate": 1539822900,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:relative_humidity",
+          "devices": [
+            {
+              "id": 470493,
+              "enhancedParameterId": 4,
+              "startDate": 1462284300,
+              "endDate": 1539822900,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": null,
+              "depthMin": 0,
+              "depthMax": 0
+            }
+          ]
+        },
+        {
+          "id": 68,
+          "startDate": 1449788400,
+          "endDate": 1470142800,
+          "urn": "urn:ioos:sensor:edu.usf.marine.comps:c10:sea_water_speed",
+          "devices": [
+            {
+              "id": 441849,
+              "enhancedParameterId": 68,
+              "startDate": 1449788400,
+              "endDate": 1470142800,
+              "cellMethods": "",
+              "interval": "",
+              "verticalDatum": "",
+              "discriminant": "",
+              "time_interval": 0,
+              "depthMin": 4.27,
+              "depthMax": 22.38
+            }
+          ]
+        }
+      ],
+      "wmo": "",
+      "usage_note": null
+    }
+  ],
+  "sources": {
+    "144": {
+      "id": 144,
+      "label": "USF CMS - Coastal Ocean Monitoring and Prediction System",
+      "url": "http://comps.marine.usf.edu/",
+      "operator_sector": "academic",
+      "country": "USA"
+    },
+    "234": {
+      "id": 234,
+      "label": "Southeast Coastal Ocean Observing Regional Association (SECOORA)",
+      "url": "http://secoora.org/",
+      "operator_sector": "ioos_ra",
+      "country": "USA"
+    }
+  },
+  "sensors": {
+    "89": {
+      "id": 89,
+      "sensorType": "Sea Surface Temperature",
+      "label": "Sea Surface Temperature",
+      "parameterIds": [
+        191
+      ]
+    },
+    "8": {
+      "id": 8,
+      "sensorType": "WINDS",
+      "label": "Winds: Speed and Direction",
+      "parameterIds": [
+        224,
+        38,
+        5,
+        6
+      ]
+    },
+    "15": {
+      "id": 15,
+      "sensorType": "CURRENTS",
+      "label": "Currents",
+      "parameterIds": [
+        68,
+        67
+      ]
+    },
+    "9": {
+      "id": 9,
+      "sensorType": "BAROMETRIC_PRESSURE",
+      "label": "Barometric Pressure",
+      "parameterIds": [
+        14
+      ]
+    },
+    "186": {
+      "id": 186,
+      "sensorType": "Wind Gust",
+      "label": "Winds: Gusts",
+      "parameterIds": [
+        226,
+        7,
+        75
+      ]
+    },
+    "22": {
+      "id": 22,
+      "sensorType": "RELATIVE_HUMIDITY",
+      "label": "Relative Humidity",
+      "parameterIds": [
+        4,
+        98,
+        96,
+        97
+      ]
+    },
+    "137": {
+      "id": 137,
+      "sensorType": "Short Wave Radiation",
+      "label": "Short Wave Radiation",
+      "parameterIds": [
+        158
+      ]
+    },
+    "6": {
+      "id": 6,
+      "sensorType": "AIR_TEMPERATURE",
+      "label": "Air Temperature",
+      "parameterIds": [
+        19,
+        70,
+        20,
+        3
+      ]
+    },
+    "14": {
+      "id": 14,
+      "sensorType": "SALINITY",
+      "label": "Salinity",
+      "parameterIds": [
+        50
+      ]
+    },
+    "7": {
+      "id": 7,
+      "sensorType": "WATER_TEMPERATURE",
+      "label": "Water Temperature",
+      "parameterIds": [
+        42,
+        41
+      ]
+    }
+  },
+  "platforms": {
+    "6": "Buoy"
+  },
+  "parameters": {
+    "67": "http://mmisw.org/ont/fake/parameter/sea_water_velocity_to_direction",
+    "158": "http://mmisw.org/ont/fake/parameter/short_wave_radiation",
+    "4": "http://mmisw.org/ont/cf/parameter/relative_humidity",
+    "50": "http://mmisw.org/ont/cf/parameter/sea_water_practical_salinity",
+    "68": "http://mmisw.org/ont/cf/parameter/sea_water_speed",
+    "5": "http://mmisw.org/ont/cf/parameter/wind_speed",
+    "6": "http://mmisw.org/ont/cf/parameter/wind_from_direction",
+    "14": "http://mmisw.org/ont/cf/parameter/air_pressure",
+    "191": "http://mmisw.org/ont/fake/parameter/sea_surface_temperature",
+    "7": "http://mmisw.org/ont/cf/parameter/wind_speed_of_gust",
+    "41": "http://mmisw.org/ont/cf/parameter/sea_water_temperature",
+    "3": "http://mmisw.org/ont/cf/parameter/air_temperature"
+  },
+  "enhancedParameters": {
+    "67": {
+      "id": 67,
+      "parameterId": 67,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "158": {
+      "id": 158,
+      "parameterId": 158,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "223": {
+      "id": 223,
+      "parameterId": 191,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "4": {
+      "id": 4,
+      "parameterId": 4,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "50": {
+      "id": 50,
+      "parameterId": 50,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "68": {
+      "id": 68,
+      "parameterId": 68,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "5": {
+      "id": 5,
+      "parameterId": 5,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "6": {
+      "id": 6,
+      "parameterId": 6,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "14": {
+      "id": 14,
+      "parameterId": 14,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "7": {
+      "id": 7,
+      "parameterId": 7,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "41": {
+      "id": 41,
+      "parameterId": 41,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    },
+    "3": {
+      "id": 3,
+      "parameterId": 3,
+      "cellMethods": "",
+      "interval": "",
+      "verticalDatum": ""
+    }
+  },
+  "affiliations": [
+    "contributor",
+    "operator",
+    "sponsor",
+    "supporter",
+    "affiliate"
+  ]
+}

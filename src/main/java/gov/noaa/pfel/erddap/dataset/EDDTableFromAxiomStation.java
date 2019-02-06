@@ -17,110 +17,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.util.*;
 
-
-class OikosUnit {
-
-    public int id;
-    public String unit;
-    public String label;
-    public String unitSystem;
-
-    public static OikosUnit fromJson(JSONObject j) {
-
-        return new OikosUnit(j.getInt("id"),
-                             j.getString("unit"),
-                             j.getString("label"),
-                             j.getString("unitSystem"));
-    }
-
-    public OikosUnit(int id, String unit, String label, String unitSystem) {
-        this.id = id;
-        this.unit = unit;
-        this.label = label;
-        this.unitSystem = unitSystem;
-    }
-}
-
-class OikosParameterTypeUnit {
-
-    public int id;
-    public OikosUnit unit;
-    public boolean unitSystemDefault;
-    public boolean parameterTypeDefault;
-
-    public static OikosParameterTypeUnit fromJson(JSONObject j, HashMap<Integer, OikosUnit> unitMap) {
-
-        return new OikosParameterTypeUnit(j.getInt("idParameterType"),
-                                          unitMap.get(j.getInt("idUnit")),
-                                          j.getBoolean("unitSystemDefault"),
-                                          j.getBoolean("parameterTypeDefault"));
-    }
-
-    public OikosParameterTypeUnit(int id, OikosUnit unit, boolean unitSystemDefault, boolean parameterTypeDefault) {
-        this.id = id;
-        this.unit = unit;
-        this.unitSystemDefault = unitSystemDefault;
-        this.parameterTypeDefault = parameterTypeDefault;
-    }
-}
-
-class OikosParameter {
-
-    public int id;
-    public ArrayList<OikosParameterTypeUnit> parameterTypeUnits;
-    public String urn;
-    public String name;
-    public String label;
-
-    public static OikosParameter fromJson(JSONObject j, HashMap<Integer, ArrayList<OikosParameterTypeUnit>> parameterTypeUnitMap) {
-
-        ArrayList<OikosParameterTypeUnit> ptms;
-
-        if (!j.isNull("idParameterType")) {
-            ptms = parameterTypeUnitMap.get(j.getInt("idParameterType"));
-            if (ptms == null) {
-                OikosUnit un = new OikosUnit(-1, "unknown", "unknown", "NON_STANDARD");
-                OikosParameterTypeUnit ptm = new OikosParameterTypeUnit(-1, un, true, true);
-                ptms = new ArrayList<>();
-                ptms.add(ptm);
-            }
-        } else {
-            OikosUnit un = new OikosUnit(-1, "unknown", "unknown", "NON_STANDARD");
-            OikosParameterTypeUnit ptm = new OikosParameterTypeUnit(-1, un, true, true);
-            ptms = new ArrayList<>();
-            ptms.add(ptm);
-        }
-
-        return new OikosParameter(j.getInt("id"),
-                                  ptms,
-                                  j.getString("urn"),
-                                  j.getString("parameterName"),
-                                  j.getString("label"));
-    }
-
-    public OikosParameter(int id, ArrayList<OikosParameterTypeUnit> parameterTypeUnits, String urn, String name, String label) {
-        this.id = id;
-        this.parameterTypeUnits = parameterTypeUnits;
-        this.urn = urn;
-        this.name = name;
-        this.label = label;
-    }
-
-    public OikosUnit defaultUnit() {
-        for (OikosParameterTypeUnit ptu : this.parameterTypeUnits) {
-            if (ptu.parameterTypeDefault) {
-                return ptu.unit;
-            }
-        }
-        return this.parameterTypeUnits.get(0).unit;
-    }
-}
 
 class OikosEnhancedParameter {
 
@@ -133,10 +34,10 @@ class OikosEnhancedParameter {
     public static OikosEnhancedParameter fromJson(JSONObject j, HashMap<Integer, OikosParameter> parameterMap) {
 
         return new OikosEnhancedParameter(j.getInt("id"),
-                                          parameterMap.get(j.getInt("parameterId")),
-                                          j.getString("cellMethods"),
-                                          j.getString("interval"),
-                                          j.getString("verticalDatum"));
+                parameterMap.get(j.getInt("parameterId")),
+                j.getString("cellMethods"),
+                j.getString("interval"),
+                j.getString("verticalDatum"));
     }
 
     public OikosEnhancedParameter(int id, OikosParameter parameter, String cellMethods, String interval, String verticalDatum) {
@@ -148,7 +49,7 @@ class OikosEnhancedParameter {
     }
 }
 
-class OikosDevice {
+class OikosDeviceV1 {
 
     public int id;
     public String discriminant;
@@ -156,21 +57,31 @@ class OikosDevice {
     public double depthMin;
     public double depthMax;
 
-    public static OikosDevice fromJson(JSONObject j, HashMap<Integer, OikosEnhancedParameter> enhancedParameterMap) {
+    public static OikosDeviceV1 fromJson(JSONObject j, HashMap<Integer, OikosEnhancedParameter> enhancedParameterMap) {
 
-        return new OikosDevice(j.getInt("id"),
-                               enhancedParameterMap.get(j.getInt("enhancedParameterId")),
-                               j.getString("discriminant"),
-                               j.getDouble("depthMin"),
-                               j.getDouble("depthMax"));
+        return new OikosDeviceV1(j.getInt("id"),
+                enhancedParameterMap.get(j.getInt("enhancedParameterId")),
+                j.getString("discriminant"),
+                j.getDouble("depthMin"),
+                j.getDouble("depthMax"));
     }
 
-    public OikosDevice(int id, OikosEnhancedParameter ep, String discriminant, double depthMin, double depthMax) {
+    public OikosDeviceV1(int id, OikosEnhancedParameter ep, String discriminant, double depthMin, double depthMax) {
         this.id = id;
         this.ep = ep;
         this.discriminant = discriminant;
         this.depthMin = depthMin;
         this.depthMax = depthMax;
+    }
+
+    private static String cleanup(String str) {
+        if (str == null || str.isEmpty()) {
+            return str;
+        }
+        return str.toLowerCase()
+                .replaceAll(": ", "_")
+                .replaceAll(" ", "_")
+                .replaceAll("[^a-zA-Z0-9_]", "_");
     }
 
     public String prettyString() {
@@ -179,34 +90,43 @@ class OikosDevice {
         if (this.ep.parameter.name.equals("depth")) {
             sb.append("depth_reading");
         } else {
-            sb.append(this.ep.parameter.name);
+            sb.append(cleanup(this.ep.parameter.name));
         }
 
         if (!this.ep.cellMethods.isEmpty()) {
             sb.append("_cm_");
-            String cm = this.ep.cellMethods.replaceAll(" ", "");  // Remove spaces
-            String rep = cm.replaceAll("[^a-zA-Z0-9_]", "_"); // Remove other chars
-            sb.append(rep);
+            sb.append(cleanup(this.ep.cellMethods));
         }
         if (!this.ep.interval.isEmpty()) {
             sb.append("_over_");
-            sb.append(this.ep.interval);
+            sb.append(cleanup(this.ep.interval));
         }
         if (!this.ep.verticalDatum.isEmpty()) {
             sb.append("_geoid_");
-            sb.append(this.ep.verticalDatum);
+            sb.append(cleanup(this.ep.verticalDatum));
         }
         if (!this.discriminant.isEmpty()) {
             sb.append("_");
-            sb.append(this.discriminant);
+            sb.append(cleanup(this.discriminant));
         }
 
         return sb.toString();
     }
+
+    @Override
+    public String toString() {
+        return "OikosDeviceV1{" +
+                "id=" + id +
+                ", discriminant='" + discriminant + '\'' +
+                ", ep=" + ep +
+                ", depthMin=" + depthMin +
+                ", depthMax=" + depthMax +
+                '}';
+    }
 }
 
 
-class OikosStation {
+class OikosStationV1 {
     public int id;
     public String label;
     public String urn;
@@ -214,9 +134,9 @@ class OikosStation {
     public double longitude;
     public int startDate;
     public int endDate;
-    public ArrayList<OikosDevice> devices;
+    public ArrayList<OikosDeviceV1> devices;
 
-    public OikosStation(int id, String label, String urn, double latitude, double longitude, int startDate, int endDate, ArrayList<OikosDevice> devices) {
+    public OikosStationV1(int id, String label, String urn, double latitude, double longitude, int startDate, int endDate, ArrayList<OikosDeviceV1> devices) {
         this.id = id;
         this.label = label;
         this.urn = urn;
@@ -228,7 +148,7 @@ class OikosStation {
     }
 
     public boolean hasDevice(int deviceId) {
-        for (OikosDevice d : this.devices) {
+        for (OikosDeviceV1 d : this.devices) {
             if (d.id == deviceId) {
                 return true;
             }
@@ -236,23 +156,268 @@ class OikosStation {
         return false;
     }
 
-    public OikosDevice getDevice(int deviceId) {
-        for (OikosDevice d : this.devices) {
+    public OikosDeviceV1 getDevice(int deviceId) {
+        for (OikosDeviceV1 d : this.devices) {
             if (d.id == deviceId) {
                 return d;
             }
         }
         return null;
     }
+
+    @Override
+    public String toString() {
+        return "OikosStationV1{" +
+                "id=" + id +
+                ", label='" + label + '\'' +
+                ", urn='" + urn + '\'' +
+                ", latitude=" + latitude +
+                ", longitude=" + longitude +
+                ", startDate=" + startDate +
+                ", endDate=" + endDate +
+                ", devices=" + devices +
+                '}';
+    }
+}
+
+// This is separated out so that it's easy to unit test
+class EDDTableFromAxiomStationUtils {
+
+    private final static String STANDARD_INFO_URL    = "http://axiomdatascience.com";
+    private final static String AXIOM_SENSOR_CONTACT = "data@axiomalaska.com";
+    private final static String AXIOM_SENSOR_LICENSE = "Unauthorized access is punishable by the use of sophisticated internet bullying tactics";
+
+    static OikosStationV1 mapMetadataForOikosStation(Attributes tGlobalAttributes, String tLocalSourceUrl, int tStationId, ArrayList<Object[]> tDataVariables, HashMap<Integer, OikosParameter> param_lookup, JSONObject json) throws Exception {
+        // Enhanced Parameters
+        HashMap<Integer, OikosEnhancedParameter> ep_lookup = new HashMap<>();
+        JSONObject ep_array = json.getJSONObject("enhancedParameters");
+        Iterator ep_keys = ep_array.keys();
+        while(ep_keys.hasNext()) {
+            String k = (String) ep_keys.next();
+            OikosEnhancedParameter ep = OikosEnhancedParameter.fromJson(ep_array.getJSONObject(k), param_lookup);
+            ep_lookup.put(Integer.parseInt(k), ep);
+        }
+
+        // Stations
+        JSONArray stations_array = json.getJSONArray("stations");
+        if (stations_array.length() == 0) {
+            throw new Exception("No Station with id=" + tStationId + " was found in Axiom Sensor Service.");
+        }
+
+        JSONObject stat = stations_array.getJSONObject(0);
+        if (tGlobalAttributes.get("title") == null) {
+            tGlobalAttributes.set("title", stat.getString("label"));
+        }
+        if (tGlobalAttributes.get("summary") == null) {
+            tGlobalAttributes.set("summary", "Timeseries data from '"+ stat.getString("label") + "' (" + stat.getString("urn") + ")");
+        }
+
+        // Devices
+        ArrayList<OikosDeviceV1> d_list = new ArrayList<>();
+
+        // Station Parameters
+        JSONArray station_parameters = stat.getJSONArray("parameters");
+        for (int j = 0 ; j < station_parameters.length() ; j++) {
+            JSONObject sp = station_parameters.getJSONObject(j);
+            JSONArray devices = sp.getJSONArray("devices");
+            for (int k = 0 ; k < devices.length() ; k++) {
+                JSONObject dv = devices.getJSONObject(k);
+                OikosDeviceV1 device = OikosDeviceV1.fromJson(dv, ep_lookup);
+                d_list.add(device);
+            }
+        }
+
+        OikosStationV1 station = new OikosStationV1(stat.getInt("id"),
+                stat.getString("label"),
+                stat.getString("urn"),
+                stat.getDouble("latitude"),
+                stat.getDouble("longitude"),
+                stat.getInt("startDate"),
+                stat.getInt("endDate"),
+                d_list);
+
+        if (tGlobalAttributes.get(EDStatic.INSTITUTION) == null) {
+            tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
+        }
+        if (tGlobalAttributes.get("infoUrl") == null) {
+            tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
+        }
+        tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
+        tGlobalAttributes.set("cdm_data_type", EDD.CDM_TIMESERIES);
+        tGlobalAttributes.set("geospatial_lon_min", station.longitude);
+        tGlobalAttributes.set("geospatial_lon_max", station.longitude);
+        tGlobalAttributes.set("geospatial_lat_min", station.latitude);
+        tGlobalAttributes.set("geospatial_lat_max", station.latitude);
+
+        // Time
+        Attributes tatts = new Attributes();
+        tatts.set("units", "seconds since 1970-01-01T00:00:00");
+        tatts.set("ioos_category", EDV.TIME_CATEGORY);
+        tatts.set("actual_range", new IntArray(new int[]{station.startDate, station.endDate}));
+        tDataVariables.add(new Object[] { "time", "time", tatts, "double" });
+        // Latitude
+        Attributes latats = new Attributes();
+        latats.set("ioos_category", EDV.LOCATION_CATEGORY);
+        latats.set("actual_range", new DoubleArray(new double[]{station.latitude, station.latitude}));
+        tDataVariables.add(new Object[] { "latitude", "latitude", latats, "double" });
+        // Longitude
+        Attributes lonats = new Attributes();
+        lonats.set("ioos_category", EDV.LOCATION_CATEGORY);
+        lonats.set("actual_range", new DoubleArray(new double[]{station.longitude, station.longitude}));
+        tDataVariables.add(new Object[] { "longitude", "longitude", lonats, "double" });
+        // Station
+        Attributes staatts = new Attributes();
+        staatts.set("ioos_category", "Identifier");
+        staatts.set("cf_role", "timeseries_id");
+        tDataVariables.add(new Object[] { "station", "station", staatts, "String" });
+        // Devices
+        ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
+        Attributes dvaatts;
+        ArrayList<Double> depths = new ArrayList<>();
+        for (OikosDeviceV1 d : d_list) {
+            dvaatts = new Attributes();
+            dvaatts.set("standard_name", d.ep.parameter.name);
+            dvaatts.set("long_name", d.ep.parameter.label);
+            dvaatts.set("units", d.ep.parameter.defaultUnit().unit);
+            dvaatts.set("ioos_category", "Other");
+            dvaatts.set("urn", d.ep.parameter.urn);
+            dvaatts.set("missing_value", -9999.99);
+            dvaatts.set("_FillValue", -9999.99);
+            depths.add(Double.valueOf(d.depthMin));
+            depths.add(Double.valueOf(d.depthMax));
+            if (!d.ep.cellMethods.isEmpty()) {
+                dvaatts.set("cell_methods", d.ep.cellMethods);
+            }
+            if (!d.ep.interval.isEmpty()) {
+                dvaatts.set("interval", d.ep.interval);
+            }
+            if (!d.ep.verticalDatum.isEmpty()) {
+                dvaatts.set("vertical_datum", d.ep.verticalDatum);
+            }
+            if (!d.ep.verticalDatum.isEmpty()) {
+                dvaatts.set("discriminant", d.discriminant);
+            }
+            tDataVariables.add(new Object[] { d.prettyString(), d.prettyString(), dvaatts, "double" });
+            cdm_timeseries_variables.add(d.prettyString());
+        }
+
+        // Depth
+        Attributes depatts = new Attributes();
+        depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
+        depatts.set("units", "m");
+        depatts.set("positive", "down");
+        depatts.set("actual_range", new DoubleArray(new double[]{Collections.min(depths), Collections.max(depths)}));
+        tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
+
+        //String2.log(String.join(",", cdm_timeseries_variables));
+        tGlobalAttributes.set("cdm_timeseries_variables", String.join(",", cdm_timeseries_variables));
+        return station;
+    }
+
+    static Table mapDataJsonToTable(TableWriter tableWriter, JSONArray results, OikosStationV1 station) throws Throwable {
+        JSONArray data = results.getJSONObject(0).getJSONArray("data");
+
+        Table table = new Table();
+
+        // Fill the station_urn column
+        StringArray stat = new StringArray();
+        table.addColumn("station", stat);
+
+        // Fill the longitude column
+        DoubleArray lons_array = new DoubleArray();
+        table.addColumn("longitude", lons_array);
+
+        // Fill the latitude column
+        DoubleArray lats_array = new DoubleArray();
+        table.addColumn("latitude", lats_array);
+
+        IntArray actual_times_array = new IntArray();
+        DoubleArray depth_array  = new DoubleArray();
+
+        for (int c = 0 ; c < data.length() ; c++) {
+            JSONObject vari = data.getJSONObject(c);
+            if (vari.getJSONObject("metadata").getString("label").equals("time")) {
+                // TIME
+                table.addColumn("time", actual_times_array);
+                JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
+                for (int d = 0 ; d < values.length() ; d++) {
+                    actual_times_array.add(values.getInt(d));
+                }
+            } else {
+                // DATA
+                if (station.hasDevice(vari.getJSONObject("metadata").getInt("device_id"))) {
+                    // DESIRED DEVICE
+                    OikosDeviceV1 od = station.getDevice(vari.getJSONObject("metadata").getInt("device_id"));
+
+                    // Using a Double here resulted in crazy sigfigs.
+                    DoubleArray values_array = new DoubleArray();
+
+                    String unitString = vari.getJSONObject("metadata").getString("unit");
+                    String columnName = od.prettyString();
+                    String columnDepthName = "depth";
+
+                    try {
+                        // Column already exists, so we have multiple depths.
+                        table.getColumn(columnName);
+                        table.getColumn(columnDepthName);
+                    } catch (IllegalArgumentException e) {
+                        // Column does not exist yet, so we create it
+                        table.addColumn(columnName, values_array);
+                        table.addColumn(columnDepthName, depth_array);
+                    }
+
+                    JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
+                    for (int e = 0 ; e < values.length() ; e++) {
+                        try {
+                            values_array.add(values.getDouble(e));
+                        } catch (JSONException ex) {
+                            // Most likely the "null" string which is used for a fill value in the sensor service.
+                            values_array.add(-9999.99);
+                        }
+                    }
+                    // This will only work if each device is measured at the same depths
+                    // If not, the indexes will be all messed up.  We should probably error here, or
+                    // Add a column for each device depth value.
+                    Double depth = vari.getJSONObject("metadata").getDouble("depth");
+                    if (depth_array.indexOf(depth) == -1) {
+                        depth_array.addN(values_array.size(), depth);
+                    }
+                    if (table.nRows() > 0) {
+                        tableWriter.writeSome(table);
+                    }
+                }
+            }
+        }
+
+        // Figure out nRows (some cols have data, some don't)
+        int nRows = 0;
+        int nDV = table.nColumns();
+        for (int dv = 0; dv < nDV; dv++) {
+            nRows = table.getColumn(dv).size();
+            if (nRows > 0) {
+                break;
+            }
+        }
+
+        // Fill the station_urn column
+        stat.addN(nRows, station.label);
+
+        // Fill the longitude column
+        lons_array.addNDoubles(nRows, station.longitude);
+
+        // Fill the latitude column
+        lats_array.addNDoubles(nRows, station.latitude);
+
+        return table;
+    }
+
+
 }
 
 
 public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
-    protected OikosStation station;
-    private final static String STANDARD_INFO_URL    = "http://axiomdatascience.com";
-    private final static String AXIOM_SENSOR_CONTACT = "data@axiomalaska.com";
-    private final static String AXIOM_SENSOR_LICENSE = "Unauthorized access is punishable by the use of sophisticated internet bullying tactics";
+    protected OikosStationV1 station;
 
     public static EDDTableFromAxiomStation fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
         String tDatasetID = xmlReader.attributeValue("datasetID");
@@ -316,6 +481,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
         // Query Sensor Service to get basic metadata
         InputStream is = new URL(tLocalSourceUrl + "getDataValues?method=GetStationsResultSetRowsJSON&version=3&stationids=" + String.valueOf(tStationId)+ "&region=all&realtimeonly=false&verbose=true&jsoncallback=false").openStream();
+        JSONObject json;
         try {
 
             BufferedReader rd = new BufferedReader(
@@ -326,150 +492,30 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 sb.append(line);
                 sb.append("\n");
             }
-            JSONObject json = new JSONObject(sb.toString());
+            json = new JSONObject(sb.toString());
 
-            // Enhanced Parameters
-            HashMap<Integer, OikosEnhancedParameter> ep_lookup = new HashMap<>();
-            JSONObject ep_array = json.getJSONObject("enhancedParameters");
-            Iterator ep_keys = ep_array.keys();
-            while(ep_keys.hasNext()) {
-                String k = (String) ep_keys.next();
-                OikosEnhancedParameter ep = OikosEnhancedParameter.fromJson(ep_array.getJSONObject(k), param_lookup);
-                ep_lookup.put(Integer.parseInt(k), ep);
-            }
-
-            // Stations
-            JSONArray stations_array = json.getJSONArray("stations");
-            if (stations_array.length() == 0) {
-                throw new Exception("No Station with id=" + tStationId + " was found in Axiom Sensor Service.");
-            }
-
-            JSONObject stat = stations_array.getJSONObject(0);
-            if (tGlobalAttributes.get("title") == null) {
-                tGlobalAttributes.set("title", stat.getString("label"));
-            }
-            if (tGlobalAttributes.get("summary") == null) {
-                tGlobalAttributes.set("summary", "Timeseries data from '"+ stat.getString("label") + "' (" + stat.getString("urn") + ")");
-            }
-
-            // Devices
-            ArrayList<OikosDevice> d_list = new ArrayList<>();
-
-            // Station Parameters
-            JSONArray station_parameters = stat.getJSONArray("parameters");
-            for (int j = 0 ; j < station_parameters.length() ; j++) {
-                JSONObject sp = station_parameters.getJSONObject(j);
-                JSONArray devices = sp.getJSONArray("devices");
-                for (int k = 0 ; k < devices.length() ; k++) {
-                    JSONObject dv = devices.getJSONObject(k);
-                    OikosDevice device = OikosDevice.fromJson(dv, ep_lookup);
-                    d_list.add(device);
-                }
-            }
-
-            OikosStation station = new OikosStation(stat.getInt("id"),
-                                                    stat.getString("label"),
-                                                    stat.getString("urn"),
-                                                    stat.getDouble("latitude"),
-                                                    stat.getDouble("longitude"),
-                                                    stat.getInt("startDate"),
-                                                    stat.getInt("endDate"),
-                                                    d_list);
-
-            if (tGlobalAttributes.get(EDStatic.INSTITUTION) == null) {
-                tGlobalAttributes.set(EDStatic.INSTITUTION, "Axiom Data Science");
-            }
-            if (tGlobalAttributes.get("infoUrl") == null) {
-                tGlobalAttributes.set("infoUrl", STANDARD_INFO_URL);
-            }
-            tGlobalAttributes.set("sourceUrl", tLocalSourceUrl);
-            tGlobalAttributes.set("cdm_data_type", EDD.CDM_TIMESERIES);
-            tGlobalAttributes.set("geospatial_lon_min", station.longitude);
-            tGlobalAttributes.set("geospatial_lon_max", station.longitude);
-            tGlobalAttributes.set("geospatial_lat_min", station.latitude);
-            tGlobalAttributes.set("geospatial_lat_max", station.latitude);
-
-            // Time
-            Attributes tatts = new Attributes();
-            tatts.set("units", "seconds since 1970-01-01T00:00:00");
-            tatts.set("ioos_category", EDV.TIME_CATEGORY);
-            tatts.set("actual_range", new IntArray(new int[]{station.startDate, station.endDate}));
-            tDataVariables.add(new Object[] { "time", "time", tatts, "double" });
-            // Latitude
-            Attributes latats = new Attributes();
-            latats.set("ioos_category", EDV.LOCATION_CATEGORY);
-            latats.set("actual_range", new DoubleArray(new double[]{station.latitude, station.latitude}));
-            tDataVariables.add(new Object[] { "latitude", "latitude", latats, "double" });
-            // Longitude
-            Attributes lonats = new Attributes();
-            lonats.set("ioos_category", EDV.LOCATION_CATEGORY);
-            lonats.set("actual_range", new DoubleArray(new double[]{station.longitude, station.longitude}));
-            tDataVariables.add(new Object[] { "longitude", "longitude", lonats, "double" });
-            // Station
-            Attributes staatts = new Attributes();
-            staatts.set("ioos_category", "Identifier");
-            staatts.set("cf_role", "timeseries_id");
-            tDataVariables.add(new Object[] { "station", "station", staatts, "String" });
-            // Devices
-            ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
-            Attributes dvaatts;
-            ArrayList<Double> depths = new ArrayList<>();
-            for (OikosDevice d : d_list) {
-                dvaatts = new Attributes();
-                dvaatts.set("standard_name", d.ep.parameter.name);
-                dvaatts.set("long_name", d.ep.parameter.label);
-                dvaatts.set("units", d.ep.parameter.defaultUnit().unit);
-                dvaatts.set("ioos_category", "Other");
-                dvaatts.set("urn", d.ep.parameter.urn);
-                dvaatts.set("missing_value", -9999.99);
-                dvaatts.set("_FillValue", -9999.99);
-                depths.add(Double.valueOf(d.depthMin));
-                depths.add(Double.valueOf(d.depthMax));
-                if (!d.ep.cellMethods.isEmpty()) {
-                    dvaatts.set("cell_methods", d.ep.cellMethods);
-                }
-                if (!d.ep.interval.isEmpty()) {
-                    dvaatts.set("interval", d.ep.interval);
-                }
-                if (!d.ep.verticalDatum.isEmpty()) {
-                    dvaatts.set("vertical_datum", d.ep.verticalDatum);
-                }
-                if (!d.ep.verticalDatum.isEmpty()) {
-                    dvaatts.set("discriminant", d.discriminant);
-                }
-                tDataVariables.add(new Object[] { d.prettyString(), d.prettyString(), dvaatts, "double" });
-                cdm_timeseries_variables.add(d.prettyString());
-            }
-
-            // Depth
-            Attributes depatts = new Attributes();
-            depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
-            depatts.set("units", "m");
-            depatts.set("positive", "down");
-            depatts.set("actual_range", new DoubleArray(new double[]{Collections.min(depths), Collections.max(depths)}));
-            tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
-
-            //String2.log(String.join(",", cdm_timeseries_variables));
-            tGlobalAttributes.set("cdm_timeseries_variables", String.join(",", cdm_timeseries_variables));
-
-            int ndv = tDataVariables.size();
-            Object ttDataVariables[][] = new Object[ndv][];
-            for (int i = 0; i < tDataVariables.size(); i++) {
-                ttDataVariables[i] = tDataVariables.get(i);
-            }
-
-            return new EDDTableFromAxiomStation(tDatasetID,
-                    null, null,
-                    null, null, null,
-                    tSosOfferingPrefix,
-                    tDefaultDataQuery, tDefaultGraphQuery,
-                    tGlobalAttributes,
-                    ttDataVariables,
-                    tReloadEveryNMinutes, tLocalSourceUrl,
-                    null, null, null,
-                    station);
 
         } finally { is.close(); }
+
+        OikosStationV1 station = EDDTableFromAxiomStationUtils.mapMetadataForOikosStation(tGlobalAttributes, tLocalSourceUrl, tStationId, tDataVariables, param_lookup, json);
+
+        int ndv = tDataVariables.size();
+        Object ttDataVariables[][] = new Object[ndv][];
+        for (int i = 0; i < tDataVariables.size(); i++) {
+            ttDataVariables[i] = tDataVariables.get(i);
+        }
+
+        return new EDDTableFromAxiomStation(tDatasetID,
+                null, null,
+                null, null, null,
+                tSosOfferingPrefix,
+                tDefaultDataQuery, tDefaultGraphQuery,
+                tGlobalAttributes,
+                ttDataVariables,
+                tReloadEveryNMinutes, tLocalSourceUrl,
+                null, null, null,
+                station);
+
     }
 
     public EDDTableFromAxiomStation(String tDatasetID,
@@ -481,7 +527,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                                     Object[][] tDataVariables,
                                     int tReloadEveryNMinutes, String tLocalSourceUrl,
                                     String tBeforeData[], String tAfterData, String tNoData,
-                                    OikosStation stat) throws Throwable {
+                                    OikosStationV1 stat) throws Throwable {
 
         super("EDDTableFromAxiomStation", tDatasetID,
                 tAccessibleTo, tGraphsAccessibleTo,
@@ -541,7 +587,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
         ArrayList<String> parameter_id_builder = new ArrayList<>();
         ArrayList<String> units_builder = new ArrayList<>();
-        for ( OikosDevice d : this.station.devices ) {
+        for ( OikosDeviceV1 d : this.station.devices ) {
             OikosUnit u = d.ep.parameter.defaultUnit();
             units_builder.add(d.ep.parameter.id + ";" + u.unit);
             parameter_id_builder.add(String.valueOf(d.ep.parameter.id));
@@ -558,7 +604,6 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 "&version=3" +
                 "&force_binned_data=false" +
                 "&method=GetSensorObservationsJSON";
-
         InputStream is = new URL(encodedSourceUrl).openStream();
         try {
             BufferedReader in = new BufferedReader(
@@ -568,99 +613,9 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
             while ((str = in.readLine()) != null) {
                 strb.append(str);
             }
-            JSONObject results = new JSONArray(strb.toString()).getJSONObject(0);
-            JSONArray data = results.getJSONArray("data");
+            JSONArray data = new JSONArray(strb.toString());
 
-            Table table = new Table();
-
-            // Fill the station_urn column
-            StringArray stat = new StringArray();
-            table.addColumn("station", stat);
-
-            // Fill the longitude column
-            DoubleArray lons_array = new DoubleArray();
-            table.addColumn("longitude", lons_array);
-
-            // Fill the latitude column
-            DoubleArray lats_array = new DoubleArray();
-            table.addColumn("latitude", lats_array);
-
-            IntArray actual_times_array = new IntArray();
-            DoubleArray depth_array  = new DoubleArray();
-
-            for (int c = 0 ; c < data.length() ; c++) {
-                JSONObject vari = data.getJSONObject(c);
-                if (vari.getJSONObject("metadata").getString("label").equals("time")) {
-                    // TIME
-                    table.addColumn("time", actual_times_array);
-                    JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
-                    for (int d = 0 ; d < values.length() ; d++) {
-                        actual_times_array.add(values.getInt(d));
-                    }
-                } else {
-                    // DATA
-                    if (this.station.hasDevice(vari.getJSONObject("metadata").getInt("device_id"))) {
-                        // DESIRED DEVICE
-                        OikosDevice od = this.station.getDevice(vari.getJSONObject("metadata").getInt("device_id"));
-
-                        // Using a Double here resulted in crazy sigfigs.
-                        DoubleArray values_array = new DoubleArray();
-
-                        String unitString = vari.getJSONObject("metadata").getString("unit");
-                        String columnName = od.prettyString();
-                        String columnDepthName = "depth";
-
-                        try {
-                            // Column already exists, so we have multiple depths.
-                            table.getColumn(columnName);
-                            table.getColumn(columnDepthName);
-                        } catch (IllegalArgumentException e) {
-                            // Column does not exist yet, so we create it
-                            table.addColumn(columnName, values_array);
-                            table.addColumn(columnDepthName, depth_array);
-                        }
-
-                        JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
-                        for (int e = 0 ; e < values.length() ; e++) {
-                            try {
-                                values_array.add(values.getDouble(e));
-                            } catch (JSONException ex) {
-                                // Most likely the "null" string which is used for a fill value in the sensor service.
-                                values_array.add(-9999.99);
-                            }
-                        }
-                        // This will only work if each device is measured at the same depths
-                        // If not, the indexes will be all messed up.  We should probably error here, or
-                        // Add a column for each device depth value.
-                        Double depth = vari.getJSONObject("metadata").getDouble("depth");
-                        if (depth_array.indexOf(depth) == -1) {
-                            depth_array.addN(values_array.size(), depth);
-                        }
-                        if (table.nRows() > 0) {
-                            tableWriter.writeSome(table);
-                        }
-                    }
-                }
-            }
-
-            // Figure out nRows (some cols have data, some don't)
-            int nRows = 0;
-            int nDV = table.nColumns();
-            for (int dv = 0; dv < nDV; dv++) {
-                nRows = table.getColumn(dv).size();
-                if (nRows > 0) {
-                    break;
-                }
-            }
-
-            // Fill the station_urn column
-            stat.addN(nRows, this.station.label);
-
-            // Fill the longitude column
-            lons_array.addNDoubles(nRows, this.station.longitude);
-
-            // Fill the latitude column
-            lats_array.addNDoubles(nRows, this.station.latitude);
+            Table table = EDDTableFromAxiomStationUtils.mapDataJsonToTable(tableWriter, data, this.station);
 
             standardizeResultsTable(requestUrl, userDapQuery, table);
 
@@ -766,11 +721,11 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
 
         // Test for missing value masking
         edd = EDD.oneFromXmlFragment(null, "" +
-            "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"wmo_46023\">\n" +
-            "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
-            "    <stationId>20595</stationId>\n" +
-            "</dataset>"
-            );
+                "<dataset type=\"EDDTableFromAxiomStation\" datasetID=\"wmo_46023\">\n" +
+                "    <sourceUrl>http://sensors.axds.co/stationsensorservice/</sourceUrl>\n" +
+                "    <stationId>20595</stationId>\n" +
+                "</dataset>"
+        );
         query = "sea_surface_wave_significant_height,time,latitude,longitude&time>=2010-09-02T00:00:00Z&time<2010-09-03T00:00:00Z";
         tName = edd.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory,
                 edd.className() + "_station_sensor_" + edd.datasetID(), ".csv");

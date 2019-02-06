@@ -425,6 +425,7 @@ public abstract class EDD {
             if (type.equals("EDDTableFromWFSFiles"))    return EDDTableFromWFSFiles.fromXml(erddap, xmlReader);
             if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(erddap, xmlReader);
             if (type.equals("EDDTableFromAxiomStation")) return EDDTableFromAxiomStation.fromXml(erddap, xmlReader);
+            if (type.equals("EDDTableFromAxiomStationV2")) return EDDTableFromAxiomStationV2.fromXml(erddap, xmlReader);
         } catch (Throwable t) {
             String msg = MustBe.getShortErrorMessage(t);
             throw new RuntimeException(
