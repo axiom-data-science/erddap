@@ -1,0 +1,369 @@
+{
+  "request": {
+    "requestTime": "2018-10-18T22:37:57Z",
+    "filter": {
+      "id": null,
+      "uuid": null,
+      "label": null,
+      "notes": null,
+      "regionId": null,
+      "polygon": null,
+      "stations": [
+        60387
+      ],
+      "devices": [],
+      "agents": [],
+      "sources": [],
+      "parameterGroups": [],
+      "agentsBlacklist": [],
+      "parameterGroupsBlacklist": [],
+      "customFilter": true
+    }
+  },
+  "data": {
+    "messages": [
+      {
+        "type": "info",
+        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=60387&appregion=all"
+      },
+      {
+        "type": "info",
+        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B60387%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22customFilter%22:true%7D"
+      }
+    ],
+    "deviceFeeds": [
+      {
+        "id": 10,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000011,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/10_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 5,
+        "parameterId": 5,
+        "parameterGroupId": 8,
+        "unitId": 27,
+        "units": "m.s-1",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 0.0,
+        "maxVal": 15.27,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 9,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000010,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/9_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 6,
+        "parameterId": 6,
+        "parameterGroupId": 8,
+        "unitId": 10,
+        "units": "degrees",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-10T13:35:00Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 0.0,
+        "maxVal": 360.0,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 7,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000008,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/7_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 341,
+        "parameterId": 357,
+        "parameterGroupId": 201,
+        "unitId": 34,
+        "units": "W.m-2",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 53.07,
+        "maxVal": 599.57,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 12,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000013,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/12_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 158,
+        "parameterId": 158,
+        "parameterGroupId": 137,
+        "unitId": 34,
+        "units": "W.m-2",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 0.0,
+        "maxVal": 1153.82,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 11,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000012,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/11_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 14,
+        "parameterId": 14,
+        "parameterGroupId": 9,
+        "unitId": 24,
+        "units": "millibars",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 899.2,
+        "maxVal": 1029.11,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 6,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000007,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/6_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 41,
+        "parameterId": 41,
+        "parameterGroupId": 7,
+        "unitId": 8,
+        "units": "degree_Celsius",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 0.0,
+        "maxVal": 33.36,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 8,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000009,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/8_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 7,
+        "parameterId": 7,
+        "parameterGroupId": 186,
+        "unitId": 23,
+        "units": "mile.hour-1",
+        "startDate": "2017-12-11T18:05:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 0.0,
+        "minVal": 0.0,
+        "maxVal": 64.47,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 13,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000015,
+        "platformType": null,
+        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/13_raw.nc",
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 4,
+        "parameterId": 4,
+        "parameterGroupId": 22,
+        "unitId": 1,
+        "units": "%",
+        "startDate": "2018-01-01T22:35:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": -10.0,
+        "maxZ": 0.0,
+        "minVal": 0.04,
+        "maxVal": 99.75,
+        "medianTimeIntervalSecs": null
+      },
+      {
+        "id": 1000051,
+        "version": 2,
+        "stationId": 60387,
+        "sourceAgentId": 451,
+        "deviceId": 1000099,
+        "platformType": null,
+        "archivePath": null,
+        "discriminant": null,
+        "z": null,
+        "sensorParameterId": 3,
+        "parameterId": 3,
+        "parameterGroupId": 6,
+        "unitId": 8,
+        "units": "degree_Celsius",
+        "startDate": "2018-09-24T13:55:00Z",
+        "endDate": "2018-10-18T21:34:59Z",
+        "minZ": 0.0,
+        "maxZ": 20.0,
+        "minVal": 24.65,
+        "maxVal": 31.05,
+        "medianTimeIntervalSecs": null
+      }
+    ],
+    "stations": [
+      {
+        "id": 60387,
+        "version": 2,
+        "uuid": "42013-c10-wfs-central-buoy-25",
+        "label": "42013 - C10 - WFS Central Buoy, 25m Isobath",
+        "location": {
+          "type": "Point",
+          "coordinates": [
+            -82.924,
+            27.173,
+            0.0
+          ]
+        },
+        "platformType": "buoy",
+        "publicNotice": null,
+        "feedStats": {
+          "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/station_60387.nc",
+          "startDate": "2017-12-11T18:05:00Z",
+          "endDate": "2018-10-18T21:34:59Z",
+          "bounds": {
+            "type": "Point",
+            "coordinates": [
+              -82.924,
+              27.173
+            ]
+          },
+          "numObservations": 98378,
+          "medianTimeIntervalSecs": 1800,
+          "hasQc": true,
+          "qcInfoUrl": "ftp://ocgweb.marine.usf.edu/pub/QC_Code/"
+        },
+        "affiliations": [
+          {
+            "type": "publisher",
+            "agentId": 451,
+            "foreignName": "C10",
+            "foreignUrl": "http://ocgtds.marine.usf.edu:8080/thredds/catalog/COMPS_C10_Month_MET/catalog.html"
+          },
+          {
+            "type": "owner",
+            "agentId": 144,
+            "foreignName": "C10",
+            "foreignUrl": "http://comps.marine.usf.edu/index?view=station&id=C10"
+          },
+          {
+            "type": "sponsor",
+            "agentId": 234,
+            "foreignName": "C10 buoy",
+            "foreignUrl": "http://secoora.org/C10"
+          },
+          {
+            "type": "operator",
+            "agentId": 178,
+            "foreignName": null,
+            "foreignUrl": null
+          }
+        ],
+        "deviceFeedGroups": {
+          "22": [
+            13
+          ],
+          "6": [
+            1000051
+          ],
+          "7": [
+            6
+          ],
+          "8": [
+            9,
+            10
+          ],
+          "201": [
+            7
+          ],
+          "137": [
+            12
+          ],
+          "9": [
+            11
+          ],
+          "186": [
+            8
+          ]
+        }
+      }
+    ],
+    "agents": [
+      {
+        "id": 144,
+        "label": "USF CMS - Coastal Ocean Monitoring and Prediction System",
+        "url": "http://comps.marine.usf.edu/",
+        "type": "academic"
+      },
+      {
+        "id": 234,
+        "label": "Southeast Coastal Ocean Observing Regional Association (SECOORA)",
+        "url": "http://secoora.org/",
+        "type": "ioos_ra"
+      },
+      {
+        "id": 451,
+        "label": "University of Southern Florida (USF)",
+        "url": "http://www.usf.edu/",
+        "type": "academic"
+      }
+    ]
+  },
+  "results": {
+    "numV1Stations": 0,
+    "numStations": 1,
+    "numDeviceFeeds": 9,
+    "numV2Stations": 1,
+    "messages": [
+      {
+        "type": "info",
+        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=60387&appregion=all"
+      },
+      {
+        "type": "info",
+        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B60387%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22customFilter%22:true%7D"
+      }
+    ],
+    "numAgents": 3,
+    "status": "success"
+  }
+}

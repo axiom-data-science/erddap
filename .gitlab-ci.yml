@@ -16,6 +16,16 @@ push_master:
     - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:latest
     - docker push registry.axiom/erddap-axiom:latest
 
+push_branch:
+  stage: push
+  only:
+    - branches
+  except:
+    - master
+  script:
+    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:$CI_BUILD_REF_NAME
+    - docker push registry.axiom/erddap-axiom:$CI_BUILD_REF_NAME
+
 push_tag:
   stage: push
   only:
