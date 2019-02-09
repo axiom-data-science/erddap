@@ -431,7 +431,7 @@ class OikosLookups {
     }
 
     static OikosLookups getOikosLookups() throws IOException {
-        URL url = new URL("http://oikos.axds.co/rest/minimal-portal-data");
+        URL url = new URL("http://oikos.axds.co/rest/context");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.addRequestProperty("Accept", "application/json");
         conn.setUseCaches(false);

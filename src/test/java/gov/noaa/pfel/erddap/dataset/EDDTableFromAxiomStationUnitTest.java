@@ -53,7 +53,6 @@ public class EDDTableFromAxiomStationUnitTest {
 
     @Test
     public void getOikosLookups_unitTest() throws IOException, URISyntaxException {
-        // http://oikos.axds.co/rest/minimal-portal-data
         OikosLookups oikosLookups = mapOikosLookups();
         verifyOikosLookups(oikosLookups);
     }
@@ -66,10 +65,10 @@ public class EDDTableFromAxiomStationUnitTest {
     }
 
     private void verifyOikosLookups(OikosLookups oikosLookups) {
-        assertEquals(261, oikosLookups.sensorParameterMap.size());
-        assertEquals(211, oikosLookups.parameterMap.size());
-        assertEquals(61, oikosLookups.unitMap.size());
-        assertEquals(213, oikosLookups.agentMap.size());
+        assertEquals(271, oikosLookups.sensorParameterMap.size());
+        assertEquals(216, oikosLookups.parameterMap.size());
+        assertEquals(64, oikosLookups.unitMap.size());
+        assertEquals(218, oikosLookups.agentMap.size());
         assertEquals(7, oikosLookups.agentAssociationTypeToRoleCodeMap.size());
 
         OikosSensorParameter cdomSensorParameter = oikosLookups.sensorParameterMap.get(346);
@@ -170,7 +169,7 @@ public class EDDTableFromAxiomStationUnitTest {
 
         ArrayList<Object[]> tDataVariables = new ArrayList<>();
 
-        // http://oikos.axds.co/rest/minimal-portal-data
+        // http://oikos.axds.co/rest/context
         OikosLookups oikosLookups = mapOikosLookups();
         HashMap<Integer, OikosParameter> param_lookup = oikosLookups.parameterMap;
 
@@ -259,7 +258,7 @@ public class EDDTableFromAxiomStationUnitTest {
 
         ArrayList<Object[]> tDataVariables = new ArrayList<>();
 
-        // http://oikos.axds.co/rest/minimal-portal-data
+        // http://oikos.axds.co/rest/context
         OikosLookups oikosLookups = mapOikosLookups();
 
         // https://sensors.axds.co/api/metadata/filter/custom?filter=%7B%22stations%22%3A%5B%2260387%22%5D%7D
@@ -494,8 +493,8 @@ public class EDDTableFromAxiomStationUnitTest {
     }
 
     static OikosLookups mapOikosLookups() throws URISyntaxException, IOException {
-        // http://oikos.axds.co/rest/minimal-portal-data
-        JSONObject jsonObject = jsonObjectFromTestResource("/oikos-minimal-portal-data.json");
+        // http://oikos.axds.co/rest/context
+        JSONObject jsonObject = jsonObjectFromTestResource("/oikos-context.json");
         return OikosLookups.mapOikosLookupsFromJson(jsonObject);
     }
 
