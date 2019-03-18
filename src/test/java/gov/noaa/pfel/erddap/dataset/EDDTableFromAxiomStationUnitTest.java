@@ -338,6 +338,7 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("USA", tGlobalAttributes.getString("creator_country"));
         assertEquals("academic", tGlobalAttributes.getString("creator_sector"));
         assertEquals("http://comps.marine.usf.edu/", tGlobalAttributes.getString("creator_url"));
+        assertEquals("institution", tGlobalAttributes.getString("creator_type"));
 
         assertEquals("University of Southern Florida (USF)", tGlobalAttributes.getString("publisher_name"));
         assertEquals("University of Southern Florida (USF)", tGlobalAttributes.getString("publisher_institution"));
@@ -345,6 +346,7 @@ public class EDDTableFromAxiomStationUnitTest {
         assertNull(tGlobalAttributes.getString("publisher_country"));
         assertEquals("academic", tGlobalAttributes.getString("publisher_sector"));
         assertEquals("http://www.usf.edu/", tGlobalAttributes.getString("publisher_url"));
+        assertEquals("institution", tGlobalAttributes.getString("publisher_type"));
 
         assertEquals("Southeast Coastal Ocean Observing Regional Association (SECOORA),LimnoTech,Axiom Data Science", tGlobalAttributes.getString("contributor_name"));
         assertEquals("sponsor,collaborator,processor", tGlobalAttributes.getString("contributor_role"));

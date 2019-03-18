@@ -739,6 +739,7 @@ class EDDTableFromAxiomStationV2Utils {
         tGlobalAttributes.set("creator_country", station.creator.agent.country);
         tGlobalAttributes.set("creator_sector", station.creator.agent.sectorType);
         tGlobalAttributes.set("creator_url", station.creator.agent.url);
+        tGlobalAttributes.set("creator_type", "institution");
 
         tGlobalAttributes.set("publisher_name", station.publisher.agent.label);
         tGlobalAttributes.set("publisher_institution", station.publisher.agent.label);
@@ -746,6 +747,7 @@ class EDDTableFromAxiomStationV2Utils {
         tGlobalAttributes.set("publisher_country", station.publisher.agent.country);
         tGlobalAttributes.set("publisher_sector", station.publisher.agent.sectorType);
         tGlobalAttributes.set("publisher_url", station.publisher.agent.url);
+        tGlobalAttributes.set("publisher_type", "institution");
 
         List<String> contributorNames = new ArrayList<>();
         List<String> contributorRoles = new ArrayList<>();
