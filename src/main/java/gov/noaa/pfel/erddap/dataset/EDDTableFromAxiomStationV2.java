@@ -461,6 +461,8 @@ class OikosLookups {
             "short_wave_radiation",
             "surface_downwelling_photosynthetic_radiative_flux_in_air",
             "turbidity",
+            "upward_sea_water_velocity",
+            "eastward_sea_water_velocity",
             "wind_from_direction",
             "wind_speed",
             "wind_speed_of_gust"
