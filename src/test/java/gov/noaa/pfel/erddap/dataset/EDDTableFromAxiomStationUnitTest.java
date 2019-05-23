@@ -367,6 +367,9 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("wind_speed,wind_from_direction,longwave_radiation,short_wave_radiation,air_pressure,sea_water_temperature,wind_speed_of_gust,relative_humidity,air_temperature",
                 tGlobalAttributes.getString("cdm_timeseries_variables"));
 
+        assertEquals("SC10B", tGlobalAttributes.getString("wmo_platform_code"));
+        assertEquals("true", tGlobalAttributes.getString("gts_ingest"));
+
         // check STATION platform data variable
 
         Object[] stationVar = findVariableWithName(tDataVariables, "station");
@@ -417,6 +420,7 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("millibars", airPressureVarAtts.getString("units"));
         assertEquals("Other", airPressureVarAtts.getString("ioos_category"));
         assertEquals("station", airPressureVarAtts.getString("platform"));
+        assertEquals("true", airPressureVarAtts.getString("gts_ingest"));
         assertEquals("air_pressure_qc_agg air_pressure_qc_tests", airPressureVarAtts.getString("ancillary_variables"));
         assertEquals("http://mmisw.org/ont/cf/parameter/air_pressure", airPressureVarAtts.getString("urn"));
         assertEquals(-9999, airPressureVarAtts.get("missing_value").getDouble(0), 0);
@@ -433,7 +437,6 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("air_pressure status_flag", airPressureQcTestsAtts.getString("standard_name"));
         assertEquals("Barometric Pressure QARTOD Individual Tests", airPressureQcTestsAtts.getString("long_name"));
         assertEquals("Other", airPressureQcTestsAtts.getString("ioos_category"));
-
     }
 
     @Test

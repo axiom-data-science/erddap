@@ -53,7 +53,10 @@
         "maxZ": 0.0,
         "minVal": 0.0,
         "maxVal": 15.27,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 9,
@@ -76,7 +79,10 @@
         "maxZ": 0.0,
         "minVal": 0.0,
         "maxVal": 360.0,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 7,
@@ -99,7 +105,10 @@
         "maxZ": 0.0,
         "minVal": 53.07,
         "maxVal": 599.57,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 12,
@@ -122,7 +131,10 @@
         "maxZ": 0.0,
         "minVal": 0.0,
         "maxVal": 1153.82,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 11,
@@ -145,7 +157,10 @@
         "maxZ": 0.0,
         "minVal": 899.2,
         "maxVal": 1029.11,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 6,
@@ -168,7 +183,10 @@
         "maxZ": 0.0,
         "minVal": 0.0,
         "maxVal": 33.36,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 8,
@@ -191,7 +209,10 @@
         "maxZ": 0.0,
         "minVal": 0.0,
         "maxVal": 64.47,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 13,
@@ -214,7 +235,10 @@
         "maxZ": 0.0,
         "minVal": 0.04,
         "maxVal": 99.75,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       },
       {
         "id": 1000051,
@@ -237,7 +261,10 @@
         "maxZ": 20.0,
         "minVal": 24.65,
         "maxVal": 31.05,
-        "medianTimeIntervalSecs": null
+        "numObservations": 19708,
+        "medianTimeIntervalSecs": 1800,
+        "hasQc": true,
+        "qcConfigId": null
       }
     ],
     "stations": [
@@ -296,7 +323,16 @@
             "agentId": 178,
             "foreignName": null,
             "foreignUrl": null
+          },
+          {
+            "type": "affiliate",
+            "agentId": 2009,
+            "foreignName": "SC10B",
+            "foreignUrl": null
           }
+        ],
+        "tags": [
+          "submit_to_ndbc"
         ],
         "deviceFeedGroups": {
           "22": [
@@ -346,7 +382,8 @@
         "url": "http://www.usf.edu/",
         "type": "academic"
       }
-    ]
+    ],
+    "qcConfigs": []
   },
   "results": {
     "numV1Stations": 0,

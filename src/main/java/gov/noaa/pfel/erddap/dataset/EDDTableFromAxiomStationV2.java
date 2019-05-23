@@ -18,9 +18,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.google.common.collect.Lists.newArrayList;
@@ -293,6 +291,7 @@ class OikosStation {
     public int id;
     public String label;
     public String urn;
+    public String wmoId;
     public String platformType;
     public String qcInfoUrl;
     public double latitude;
@@ -302,6 +301,7 @@ class OikosStation {
     public double minZ;
     public double maxZ;
     public String archivePath;
+    public boolean submitToNdbc;
 
     public OikosStationAgentAffiliation creator;
     public OikosStationAgentAffiliation publisher;
@@ -332,27 +332,42 @@ class OikosStation {
         double maxZ = deviceFeeds.stream().map(df -> df.maxZ).max(Double::compareTo).get();
 
         OikosStationAgentAffiliation creator = null, publisher = null;
+        String wmoId = null;
         List<OikosStationAgentAffiliation> contributors = new ArrayList<>();
         JSONArray affiliations = j.getJSONArray("affiliations");
         for (int i = 0; i < affiliations.length(); i++) {
-            JSONObject affiliation = affiliations.getJSONObject(i);
+            JSONObject affiliationObj = affiliations.getJSONObject(i);
 
-            int agentId = affiliation.getInt("agentId");
+            int agentId = affiliationObj.getInt("agentId");
             OikosAgent agent = agentMap.get(agentId);
 
-            String affiliationType = affiliation.getString("type");
-            if ("owner".equalsIgnoreCase(affiliationType)) {
-                creator = OikosStationAgentAffiliation.fromJson(affiliation, agent, agentAssociationTypeToRoleCodeMap);
-            } else if ("publisher".equalsIgnoreCase(affiliationType)) {
-                publisher = OikosStationAgentAffiliation.fromJson(affiliation, agent, agentAssociationTypeToRoleCodeMap);
+            OikosStationAgentAffiliation affiliation = OikosStationAgentAffiliation.fromJson(affiliationObj, agent, agentAssociationTypeToRoleCodeMap);
+            if ("owner".equalsIgnoreCase(affiliation.type)) {
+                creator = affiliation;
+            } else if ("publisher".equalsIgnoreCase(affiliation.type)) {
+                publisher = affiliation;
             } else {
-                contributors.add(OikosStationAgentAffiliation.fromJson(affiliation, agent, agentAssociationTypeToRoleCodeMap));
+                contributors.add(affiliation);
+            }
+
+            if (OikosLookups.WMO_AGENT_UUID.equals(agent.uuid)) {
+                wmoId = affiliation.foreignName;
+            }
+        }
+
+        boolean submitToNdbc = false;
+        JSONArray tagsArr = j.getJSONArray("tags");
+        for (int i = 0; i < tagsArr.length(); i++) {
+            String tag = (String) tagsArr.get(i);
+            if ("submit_to_ndbc".equals(tag)) {
+                submitToNdbc = true;
             }
         }
 
         return new OikosStation(id,
                 j.getString("label"),
                 j.getString("uuid"),
+                wmoId,
                 j.getString("platformType"),
                 qcInfoUrl,
                 latitude,
@@ -361,6 +376,7 @@ class OikosStation {
                 endDate,
                 minZ, maxZ,
                 archivePath,
+                submitToNdbc,
                 creator,
                 publisher,
                 contributors,
@@ -368,15 +384,17 @@ class OikosStation {
 
     }
 
-    public OikosStation(int id, String label, String urn, String platformType, String qcInfoUrl,
+    public OikosStation(int id, String label, String urn, String wmoId, String platformType, String qcInfoUrl,
                         double latitude, double longitude,
                         int startDate, int endDate, double minZ, double maxZ,
-                        String archivePath, OikosStationAgentAffiliation creator,
+                        String archivePath, boolean submitToNdbc, OikosStationAgentAffiliation creator,
                         OikosStationAgentAffiliation publisher,
-                        List<OikosStationAgentAffiliation> contributors, ArrayList<OikosDeviceFeed> deviceFeeds) {
+                        List<OikosStationAgentAffiliation> contributors,
+                        ArrayList<OikosDeviceFeed> deviceFeeds) {
         this.id = id;
         this.label = label;
         this.urn = urn;
+        this.wmoId = wmoId;
         this.platformType = platformType;
         this.qcInfoUrl = qcInfoUrl;
         this.latitude = latitude;
@@ -386,6 +404,7 @@ class OikosStation {
         this.minZ = minZ;
         this.maxZ = maxZ;
         this.archivePath = archivePath;
+        this.submitToNdbc = submitToNdbc;
         this.creator = creator;
         this.publisher = publisher;
         this.contributors = contributors;
@@ -417,6 +436,35 @@ class OikosLookups {
     HashMap<Integer, OikosUnit> unitMap;
     HashMap<Integer, OikosAgent> agentMap;
     HashMap<String, String> agentAssociationTypeToRoleCodeMap;
+    static final String WMO_AGENT_UUID = "un.wmo";
+    static final Set<String> STANDARD_NAMES_TO_SUBMIT_TO_NDBC = new HashSet<>(Arrays.asList(
+            "air_pressure",
+            "air_temperature",
+            "depth",
+            "dew_point_temperature",
+            "downwelling_longwave_flux_in_air",
+            "eastward_sea_water_velocity",
+            "fractional_saturation_of_oxygen_in_sea_water",
+            "lwe_thickness_of_precipitation_amount",
+            "mass_concentration_of_chlorophyll_in_sea_water",
+            "mass_concentration_of_oxygen_in_sea_water",
+            "northward_sea_water_velocity",
+            "relative_humidity",
+            "sea_surface_dominant_wave_period",
+            "sea_surface_height_above_sea_level",
+            "sea_surface_wave_from_direction",
+            "sea_surface_wave_significant_height",
+            "sea_water_ph_reported_on_total_scale",
+            "sea_water_practical_salinity",
+            "sea_water_temperature",
+            "sea_water_turbidity",
+            "short_wave_radiation",
+            "surface_downwelling_photosynthetic_radiative_flux_in_air",
+            "turbidity",
+            "wind_from_direction",
+            "wind_speed",
+            "wind_speed_of_gust"
+    ));
 
     public OikosLookups(HashMap<Integer, OikosSensorParameter> sensorParameterMap,
                         HashMap<Integer, OikosParameter> parameterMap,
@@ -631,7 +679,8 @@ class EDDTableFromAxiomStationV2Utils {
         Attributes dvaatts;
         for (OikosDeviceFeed d : df_list) {
             dvaatts = new Attributes();
-            dvaatts.set("standard_name", d.sp.parameter.name);
+            String variableStandardName = d.sp.parameter.name;
+            dvaatts.set("standard_name", variableStandardName);
             dvaatts.set("long_name", d.sp.parameter.label);
             dvaatts.set("id", String.valueOf(d.id));
             dvaatts.set("units", d.sp.unit.unit);
@@ -652,6 +701,9 @@ class EDDTableFromAxiomStationV2Utils {
             if (!d.discriminant.isEmpty()) {
                 dvaatts.set("discriminant", d.discriminant);
             }
+            if (station.submitToNdbc && OikosLookups.STANDARD_NAMES_TO_SUBMIT_TO_NDBC.contains(variableStandardName)) {
+                dvaatts.set("gts_ingest", "true");
+            }
 
             tDataVariables.add(new Object[]{"value_" + d.id, d.prettyString(), dvaatts, "double"});
             cdm_timeseries_variables.add(d.prettyString());
@@ -660,7 +712,7 @@ class EDDTableFromAxiomStationV2Utils {
             // See Appendix B in https://cdn.ioos.noaa.gov/media/2017/12/QARTOD-Data-Flags-Manual_Final_version1.1.pdf
 
             Attributes qcAggAtts = new Attributes();
-            qcAggAtts.set("standard_name", d.sp.parameter.name + " status_flag");
+            qcAggAtts.set("standard_name", variableStandardName + " status_flag");
             qcAggAtts.set("long_name", d.sp.parameter.label + " QARTOD Aggregate Flag");
             qcAggAtts.set("ioos_category", "Other");
             qcAggAtts.set("flag_values", "1, 2, 3, 4, 9");
@@ -671,7 +723,7 @@ class EDDTableFromAxiomStationV2Utils {
             tDataVariables.add(new Object[]{"qc_agg_" + d.id, qcAggVarName, qcAggAtts, "int"});
 
             Attributes qcTestAtts = new Attributes();
-            qcTestAtts.set("standard_name", d.sp.parameter.name + " status_flag");
+            qcTestAtts.set("standard_name", variableStandardName + " status_flag");
             qcTestAtts.set("long_name", d.sp.parameter.label + " QARTOD Individual Tests");
             qcTestAtts.set("ioos_category", "Other");
             qcTestAtts.set("flag_values", "1, 2, 3, 4, 9");
@@ -785,6 +837,13 @@ class EDDTableFromAxiomStationV2Utils {
         tGlobalAttributes.set("sourceUrl", sourceUrl);
 
         tGlobalAttributes.set("history", "Downloaded from " + station.publisher.agent.label + " at " + station.publisher.foreignUrl);
+
+        if (station.wmoId != null) {
+            tGlobalAttributes.set("wmo_platform_code", station.wmoId);
+        }
+        if (station.submitToNdbc) {
+            tGlobalAttributes.set("gts_ingest", "true");
+        }
 
         // TODO: keywords? license (other than the default ERDDAP one)? acknowledgement?
 
