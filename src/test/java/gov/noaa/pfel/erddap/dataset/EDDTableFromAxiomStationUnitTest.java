@@ -296,10 +296,10 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("C10", station.publisher.foreignName);
         assertEquals("http://ocgtds.marine.usf.edu:8080/thredds/catalog/COMPS_C10_Month_MET/catalog.html", station.publisher.foreignUrl);
         assertNotNull(station.contributors);
-        assertEquals(2, station.contributors.size());
-        assertEquals(newHashSet(234, 178), station.contributors.stream().map(c -> c.agent.id).collect(Collectors.toSet()));
-        assertEquals(newHashSet("sponsor", "operator"), station.contributors.stream().map(c -> c.type).collect(Collectors.toSet()));
-        assertEquals(newHashSet("sponsor", "collaborator"), station.contributors.stream().map(c -> c.role).collect(Collectors.toSet()));
+        assertEquals(3, station.contributors.size());
+        assertEquals(newHashSet(234, 178, 2009), station.contributors.stream().map(c -> c.agent.id).collect(Collectors.toSet()));
+        assertEquals(newHashSet("sponsor", "operator", "affiliate"), station.contributors.stream().map(c -> c.type).collect(Collectors.toSet()));
+        assertEquals(newHashSet("sponsor", "collaborator", "contributor"), station.contributors.stream().map(c -> c.role).collect(Collectors.toSet()));
 
         // check GLOBAL ATTRIBUTES
 
@@ -348,11 +348,11 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("http://www.usf.edu/", tGlobalAttributes.getString("publisher_url"));
         assertEquals("institution", tGlobalAttributes.getString("publisher_type"));
 
-        assertEquals("Southeast Coastal Ocean Observing Regional Association (SECOORA),LimnoTech,Axiom Data Science", tGlobalAttributes.getString("contributor_name"));
-        assertEquals("sponsor,collaborator,processor", tGlobalAttributes.getString("contributor_role"));
+        assertEquals("Southeast Coastal Ocean Observing Regional Association (SECOORA),LimnoTech,World Meteorological Organization (WMO),Axiom Data Science", tGlobalAttributes.getString("contributor_name"));
+        assertEquals("sponsor,collaborator,contributor,processor", tGlobalAttributes.getString("contributor_role"));
         assertEquals("CI_RoleCode", tGlobalAttributes.getString("contributor_role_vocabulary"));
-        assertEquals("http://secoora.org/,http://www.limno.com/,https://www.axiomdatascience.com", tGlobalAttributes.getString("contributor_url"));
-        assertEquals("None,webmaster@limno.com,feedback@axiomdatascience.com", tGlobalAttributes.getString("contributor_email"));
+        assertEquals("http://secoora.org/,http://www.limno.com/,https://www.wmo.int/pages/prog/amp/mmop/wmo-number-rules.html,https://www.axiomdatascience.com", tGlobalAttributes.getString("contributor_url"));
+        assertEquals("None,webmaster@limno.com,,feedback@axiomdatascience.com", tGlobalAttributes.getString("contributor_email"));
 
         assertEquals("http://comps.marine.usf.edu/index?view=station&id=C10," +
                 "http://ocgtds.marine.usf.edu:8080/thredds/catalog/COMPS_C10_Month_MET/catalog.html," +

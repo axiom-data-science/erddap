@@ -8,6 +8,15 @@ build_image:
   script:
     - docker build -t erddap-axiom:$CI_BUILD_REF_NAME .
 
+test:
+  stage: test
+  image: maven:3
+  script: mvn -Dtest=RunAllUnitTests test
+  artifacts:
+    reports:
+      junit:
+        - target/surefire-reports/TEST-*.xml
+
 push_master:
   stage: push
   only:
