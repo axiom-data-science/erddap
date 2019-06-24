@@ -1,6 +1,6 @@
 stages:
-  - package
   - build
+  - test
   - push
 
 build_image:
