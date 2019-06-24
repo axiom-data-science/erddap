@@ -4,6 +4,7 @@ import com.cohort.array.Attributes;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.StringArray;
+import com.cohort.util.File2;
 import com.cohort.util.String2;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
@@ -1042,6 +1043,8 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             ttDataVariables[i] = tDataVariables.get(i);
         }
 
+        String archiveDir = File2.getDirectory(station.archivePath);
+        String archiveName = File2.getNameAndExtension(station.archivePath);
         return new EDDTableFromAxiomStationV2(tDatasetID,
                 null, null,
                 null, null, null,
@@ -1050,7 +1053,7 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
                 tGlobalAttributes,
                 ttDataVariables,
                 tReloadEveryNMinutes,
-                tUpdateEveryNMillis, station.archivePath, null, false,
+                tUpdateEveryNMillis, archiveDir, archiveName, false,
                 null, "last", null,
                 0, 1, null,
                 null, null, null, null, null, null, false,
