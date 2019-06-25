@@ -11,7 +11,7 @@ build_image:
 test:
   stage: test
   image: erddap-axiom:$CI_PIPELINE_ID
-  script: run-unit-tests.sh
+  script: ./run-unit-tests.sh
   artifacts:
     reports:
       junit:
