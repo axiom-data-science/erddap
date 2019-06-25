@@ -6,12 +6,12 @@ stages:
 build_image:
   stage: build
   script:
-    - docker build -t erddap-axiom:$CI_BUILD_REF_NAME .
+    - docker build -t erddap-axiom:$CI_PIPELINE_ID .
 
 test:
   stage: test
-  image: maven:3
-  script: mvn -Dtest=RunAllUnitTests test
+  image: erddap-axiom:$CI_PIPELINE_ID
+  script: run-unit-tests.sh
   artifacts:
     reports:
       junit:
@@ -22,7 +22,7 @@ push_master:
   only:
     - master
   script:
-    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:latest
+    - docker tag erddap-axiom:$CI_PIPELINE_ID registry.axiom/erddap-axiom:latest
     - docker push registry.axiom/erddap-axiom:latest
 
 push_branch:
@@ -32,15 +32,15 @@ push_branch:
   except:
     - master
   script:
-    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:$CI_BUILD_REF_NAME
-    - docker push registry.axiom/erddap-axiom:$CI_BUILD_REF_NAME
+    - docker tag erddap-axiom:$CI_PIPELINE_ID registry.axiom/erddap-axiom:$CI_PIPELINE_ID
+    - docker push registry.axiom/erddap-axiom:$CI_PIPELINE_ID
 
 push_tag:
   stage: push
   only:
     - tags
   script:
-    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:$CI_BUILD_TAG
+    - docker tag erddap-axiom:$CI_PIPELINE_ID registry.axiom/erddap-axiom:$CI_BUILD_TAG
     - docker push registry.axiom/erddap-axiom:$CI_BUILD_TAG
-    - docker tag erddap-axiom:$CI_BUILD_REF_NAME registry.axiom/erddap-axiom:prod
+    - docker tag erddap-axiom:$CI_PIPELINE_ID registry.axiom/erddap-axiom:prod
     - docker push registry.axiom/erddap-axiom:prod
