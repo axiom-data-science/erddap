@@ -32,8 +32,8 @@ push_branch:
   except:
     - master
   script:
-    - docker tag erddap-axiom:$CI_PIPELINE_ID registry.axiom/erddap-axiom:$CI_PIPELINE_ID
-    - docker push registry.axiom/erddap-axiom:$CI_PIPELINE_ID
+    - docker tag erddap-axiom:$CI_PIPELINE_ID registry.axiom/erddap-axiom:$CI_COMMIT_REF_NAME
+    - docker push registry.axiom/erddap-axiom:$CI_COMMIT_REF_NAME
 
 push_tag:
   stage: push
