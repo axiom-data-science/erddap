@@ -156,7 +156,7 @@ class OikosSensorParameter {
     }
 }
 
-class OikosDeviceFeed {
+class OikosDevice {
 
     public int id;
     public String discriminant;
@@ -164,20 +164,20 @@ class OikosDeviceFeed {
     public double minZ;
     public double maxZ;
 
-    public static OikosDeviceFeed fromJson(JSONObject j, HashMap<Integer, OikosSensorParameter> sensorParameterMap) {
+    public static OikosDevice fromJson(JSONObject j, HashMap<Integer, OikosSensorParameter> sensorParameterMap) {
 
         double minZ = j.getDouble("minZ");
         double maxZ = j.getDouble("maxZ");
         String discriminant = j.get("discriminant") == JSONObject.NULL ? "" : j.getString("discriminant");
 
-        return new OikosDeviceFeed(j.getInt("id"),
+        return new OikosDevice(j.getInt("deviceId"),
                 sensorParameterMap.get(j.getInt("sensorParameterId")),
                 discriminant,
                 minZ,
                 maxZ);
     }
 
-    public OikosDeviceFeed(int id, OikosSensorParameter sp, String discriminant, double minZ, double maxZ) {
+    public OikosDevice(int id, OikosSensorParameter sp, String discriminant, double minZ, double maxZ) {
         this.id = id;
         this.sp = sp;
         this.discriminant = discriminant;
@@ -308,10 +308,10 @@ class OikosStation {
     public OikosStationAgentAffiliation publisher;
     public List<OikosStationAgentAffiliation> contributors;
 
-    public ArrayList<OikosDeviceFeed> deviceFeeds;
+    public List<OikosDevice> devices;
 
     public static OikosStation fromJson(JSONObject j,
-                                        ArrayList<OikosDeviceFeed> deviceFeeds,
+                                        List<OikosDevice> devices,
                                         HashMap<Integer, OikosAgent> agentMap,
                                         HashMap<String, String> agentAssociationTypeToRoleCodeMap) {
 
@@ -329,8 +329,8 @@ class OikosStation {
 
         String archivePath = stats.getString("archivePath");
 
-        double minZ = deviceFeeds.stream().map(df -> df.minZ).min(Double::compareTo).get();
-        double maxZ = deviceFeeds.stream().map(df -> df.maxZ).max(Double::compareTo).get();
+        double minZ = devices.stream().map(df -> df.minZ).min(Double::compareTo).get();
+        double maxZ = devices.stream().map(df -> df.maxZ).max(Double::compareTo).get();
 
         OikosStationAgentAffiliation creator = null, publisher = null;
         String wmoId = null;
@@ -381,7 +381,7 @@ class OikosStation {
                 creator,
                 publisher,
                 contributors,
-                deviceFeeds);
+                devices);
 
     }
 
@@ -391,7 +391,7 @@ class OikosStation {
                         String archivePath, boolean submitToNdbc, OikosStationAgentAffiliation creator,
                         OikosStationAgentAffiliation publisher,
                         List<OikosStationAgentAffiliation> contributors,
-                        ArrayList<OikosDeviceFeed> deviceFeeds) {
+                        List<OikosDevice> devices) {
         this.id = id;
         this.label = label;
         this.urn = urn;
@@ -409,26 +409,9 @@ class OikosStation {
         this.creator = creator;
         this.publisher = publisher;
         this.contributors = contributors;
-        this.deviceFeeds = deviceFeeds;
+        this.devices = devices;
     }
 
-    public boolean hasDeviceFeed(int deviceFeedId) {
-        for (OikosDeviceFeed d : this.deviceFeeds) {
-            if (d.id == deviceFeedId) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public OikosDeviceFeed getDeviceFeed(int deviceFeedId) {
-        for (OikosDeviceFeed d : this.deviceFeeds) {
-            if (d.id == deviceFeedId) {
-                return d;
-            }
-        }
-        return null;
-    }
 }
 
 class OikosLookups {
@@ -636,16 +619,22 @@ class EDDTableFromAxiomStationV2Utils {
         }
         JSONObject stationJson = stations_array.getJSONObject(0);
 
-        // Extract device feeds
-        ArrayList<OikosDeviceFeed> df_list = new ArrayList<>();
-        JSONArray device_feeds = metadata.getJSONArray("deviceFeeds");
-        for (int j = 0; j < device_feeds.length(); j++) {
-            JSONObject df = device_feeds.getJSONObject(j);
-            OikosDeviceFeed device_feed = OikosDeviceFeed.fromJson(df, oikosLookups.sensorParameterMap);
-            df_list.add(device_feed);
+        // Extract devices
+        List<OikosDevice> device_list = new ArrayList<>();
+        JSONArray station_figures = stationJson.getJSONArray("figures");
+        for (int figureIdx = 0; figureIdx < station_figures.length(); figureIdx++) {
+            JSONArray plots = station_figures.getJSONObject(figureIdx).getJSONArray("plots");
+            for (int plotIdx = 0; plotIdx < plots.length(); plotIdx++) {
+                JSONArray subPlots = plots.getJSONObject(plotIdx).getJSONArray("subPlots");
+                for (int subPlotIdx = 0; subPlotIdx < subPlots.length(); subPlotIdx++) {
+                    JSONObject subPlot = subPlots.getJSONObject(subPlotIdx);
+                    OikosDevice device = OikosDevice.fromJson(subPlot, oikosLookups.sensorParameterMap);
+                    device_list.add(device);
+                }
+            }
         }
 
-        OikosStation station = OikosStation.fromJson(stationJson, df_list, oikosLookups.agentMap, oikosLookups.agentAssociationTypeToRoleCodeMap);
+        OikosStation station = OikosStation.fromJson(stationJson, device_list, oikosLookups.agentMap, oikosLookups.agentAssociationTypeToRoleCodeMap);
 
         // DATA VARIABLES
 
@@ -677,10 +666,10 @@ class EDDTableFromAxiomStationV2Utils {
         zatts.set("actual_range", new DoubleArray(new double[]{station.minZ, station.maxZ}));
         tDataVariables.add(new Object[]{"z", "z", zatts, "double"});
 
-        // Device feeds
+        // Devices
         ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
         Attributes dvaatts;
-        for (OikosDeviceFeed d : df_list) {
+        for (OikosDevice d : device_list) {
             dvaatts = new Attributes();
             String variableStandardName = d.sp.parameter.name;
             dvaatts.set("standard_name", variableStandardName);
@@ -860,91 +849,6 @@ class EDDTableFromAxiomStationV2Utils {
         // or should this just be metadata in station stats that's provided by oikos?
 
         return station;
-    }
-
-    static Table mapDataJsonToTable(JSONObject results, OikosStation station) throws Throwable {
-        JSONArray feeds = results.getJSONObject("data").getJSONArray("groupedFeeds");
-
-        Table table = new Table();
-
-        // Fill the station_urn column
-        StringArray station_array = new StringArray();
-        table.addColumn("station", station_array);
-
-        int maxRows = 0;
-
-        for (int c = 0; c < feeds.length(); c++) {
-            JSONObject feed = feeds.getJSONObject(c);
-            JSONObject metadata = feed.getJSONObject("metadata");
-
-            int timeIdx = metadata.getJSONObject("time").getInt("index");
-            int lonIdx = metadata.get("lon") == JSONObject.NULL ? -1 : metadata.getJSONObject("lon").getInt("index");
-            int latIdx = metadata.get("lat") == JSONObject.NULL ? -1 : metadata.getJSONObject("lat").getInt("index");
-            int zIdx = metadata.get("z") == JSONObject.NULL ? -1 : metadata.getJSONObject("z").getInt("index");
-
-            IntArray times_array = new IntArray();
-            table.addColumn("time", times_array);
-
-            DoubleArray lons_array = new DoubleArray();
-            table.addColumn("longitude", lons_array);
-
-            DoubleArray lats_array = new DoubleArray();
-            table.addColumn("latitude", lats_array);
-
-            DoubleArray z_array = new DoubleArray();
-            table.addColumn("z", z_array);
-
-            // multiple feeds can be grouped together
-            JSONArray values = metadata.getJSONArray("values");
-            for (int vi = 0; vi < values.length(); vi++) {
-                JSONObject value = values.getJSONObject(vi);
-                int deviceFeedId = value.getJSONArray("deviceFeedIds").getInt(0);
-
-                OikosDeviceFeed df = station.getDeviceFeed(deviceFeedId);
-
-                int valueIdx = value.getInt("index");
-                DoubleArray values_array = new DoubleArray();
-                String valueName = df.prettyString();
-                table.addColumn(valueName, values_array);
-
-                int qcAggIdx = metadata.getJSONArray("qartod").getJSONObject(vi).getInt("index");
-                IntArray qc_agg_array = new IntArray();
-                table.addColumn(valueName + "_qcagg", z_array);
-
-                // add data for each feed
-                JSONArray data = feed.getJSONArray("data");
-                int nRows = data.length();
-                for (int di = 0; di < nRows; di++) {
-                    JSONArray d = data.getJSONArray(di);
-
-                    String time = d.getString(timeIdx);
-                    times_array.add(secondsSinceEpochFromUTCString(time));
-                    values_array.add(d.getDouble(valueIdx));
-                    qc_agg_array.add(d.getInt(qcAggIdx));
-
-                    if (zIdx >= 0) {
-                        z_array.add(d.getDouble(zIdx) * -1);
-                    } else {
-                        z_array.add(0.0);
-                    }
-                    if (lonIdx >= 0) {
-                        lons_array.add(d.getDouble(lonIdx));
-                        lats_array.add(d.getDouble(latIdx));
-                    } else {
-                        lons_array.add(station.longitude);
-                        lats_array.add(station.latitude);
-                    }
-                }
-
-                maxRows = (nRows > maxRows) ? nRows : maxRows;
-
-            }
-        }
-
-        // Fill the station_urn column
-        station_array.addN(maxRows, station.label);
-
-        return table;
     }
 
 }

@@ -78,11 +78,11 @@ public class EDDTableFromAxiomStationV2Test {
                 "</dataset>"
         );
         // Test specific station and sensor
-        writeDataTable(edd, "sea_water_temperature,time,latitude,longitude,z&time>=2018-09-20T00:00:00Z&time<2018-09-30T00:00:00Z");
-        writeDataTable(edd, "wind_speed,time,latitude,longitude,z&time>=2018-09-20T00:00:00Z&time<2018-09-30T00:00:00Z");
-        writeDataTable(edd, "sea_water_temperature,wind_speed,time&time>=2018-09-26T00:00:00Z&time<2018-09-30T00:00:00Z");
-        writeDataTable(edd, "sea_water_temperature,wind_speed,time&time>=2018-09-20T00:00:00Z&time<2018-09-30T00:00:00Z");
-        writeDataTable(edd, "sea_water_temperature,station,time&time>=2018-09-20T00:00:00Z&time<2018-09-30T00:00:00Z");
+        writeDataTable(edd, "sea_water_temperature,time,latitude,longitude,z&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z");
+        writeDataTable(edd, "wind_speed,time,latitude,longitude,z&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z");
+        writeDataTable(edd, "sea_water_temperature,wind_speed,time&time>=2017-12-11T12:00:00Z&time<2017-12-12T00:00:00Z");
+        writeDataTable(edd, "sea_water_temperature,wind_speed,time&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z");
+        writeDataTable(edd, "sea_water_temperature,station,time&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z");
 
     }
 
