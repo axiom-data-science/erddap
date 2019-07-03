@@ -1,10 +1,11 @@
 {
   "request": {
-    "requestTime": "2018-10-18T22:37:57Z",
+    "requestTime": "2019-07-03T18:58:04Z",
     "filter": {
       "id": null,
       "uuid": null,
       "label": null,
+      "description": null,
       "notes": null,
       "regionId": null,
       "polygon": null,
@@ -17,8 +18,36 @@
       "parameterGroups": [],
       "agentsBlacklist": [],
       "parameterGroupsBlacklist": [],
-      "customFilter": true
-    }
+      "portalSensorFilters": [],
+      "customFilter": true,
+      "v1Stations": [
+        60387
+      ],
+      "portalIds": []
+    },
+    "start": null,
+    "end": null,
+    "binInterval": "null",
+    "mostRecentOnly": false,
+    "includeStationVersions": "merged"
+  },
+  "results": {
+    "status": "success",
+    "messages": [
+      {
+        "type": "info",
+        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=60387&appregion=all"
+      },
+      {
+        "type": "info",
+        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22description%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B60387%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22portalSensorFilters%22:%5B%5D,%22customFilter%22:true,%22v1Stations%22:%5B60387%5D,%22portalIds%22:%5B%5D%7D"
+      }
+    ],
+    "numStations": 1,
+    "numV1Stations": 0,
+    "numV2Stations": 1,
+    "numAgents": 4,
+    "numDeviceFeeds": 23
   },
   "data": {
     "messages": [
@@ -28,243 +57,7 @@
       },
       {
         "type": "info",
-        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B60387%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22customFilter%22:true%7D"
-      }
-    ],
-    "deviceFeeds": [
-      {
-        "id": 10,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000011,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/10_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 5,
-        "parameterId": 5,
-        "parameterGroupId": 8,
-        "unitId": 27,
-        "units": "m.s-1",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 0.0,
-        "maxVal": 15.27,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 9,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000010,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/9_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 6,
-        "parameterId": 6,
-        "parameterGroupId": 8,
-        "unitId": 10,
-        "units": "degrees",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-10T13:35:00Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 0.0,
-        "maxVal": 360.0,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 7,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000008,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/7_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 341,
-        "parameterId": 357,
-        "parameterGroupId": 201,
-        "unitId": 34,
-        "units": "W.m-2",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 53.07,
-        "maxVal": 599.57,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 12,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000013,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/12_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 158,
-        "parameterId": 158,
-        "parameterGroupId": 137,
-        "unitId": 34,
-        "units": "W.m-2",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 0.0,
-        "maxVal": 1153.82,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 11,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000012,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/11_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 14,
-        "parameterId": 14,
-        "parameterGroupId": 9,
-        "unitId": 24,
-        "units": "millibars",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 899.2,
-        "maxVal": 1029.11,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 6,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000007,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/6_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 41,
-        "parameterId": 41,
-        "parameterGroupId": 7,
-        "unitId": 8,
-        "units": "degree_Celsius",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 0.0,
-        "maxVal": 33.36,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 8,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000009,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/8_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 7,
-        "parameterId": 7,
-        "parameterGroupId": 186,
-        "unitId": 23,
-        "units": "mile.hour-1",
-        "startDate": "2017-12-11T18:05:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 0.0,
-        "minVal": 0.0,
-        "maxVal": 64.47,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 13,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000015,
-        "platformType": null,
-        "archivePath": "/mnt/store/data/sensors/archive_v2/603/60387/13_raw.nc",
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 4,
-        "parameterId": 4,
-        "parameterGroupId": 22,
-        "unitId": 1,
-        "units": "%",
-        "startDate": "2018-01-01T22:35:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": -10.0,
-        "maxZ": 0.0,
-        "minVal": 0.04,
-        "maxVal": 99.75,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
-      },
-      {
-        "id": 1000051,
-        "version": 2,
-        "stationId": 60387,
-        "sourceAgentId": 451,
-        "deviceId": 1000099,
-        "platformType": null,
-        "archivePath": null,
-        "discriminant": null,
-        "z": null,
-        "sensorParameterId": 3,
-        "parameterId": 3,
-        "parameterGroupId": 6,
-        "unitId": 8,
-        "units": "degree_Celsius",
-        "startDate": "2018-09-24T13:55:00Z",
-        "endDate": "2018-10-18T21:34:59Z",
-        "minZ": 0.0,
-        "maxZ": 20.0,
-        "minVal": 24.65,
-        "maxVal": 31.05,
-        "numObservations": 19708,
-        "medianTimeIntervalSecs": 1800,
-        "hasQc": true,
-        "qcConfigId": null
+        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22description%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B60387%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22portalSensorFilters%22:%5B%5D,%22customFilter%22:true,%22v1Stations%22:%5B60387%5D,%22portalIds%22:%5B%5D%7D"
       }
     ],
     "stations": [
@@ -334,33 +127,439 @@
         "tags": [
           "submit_to_ndbc"
         ],
-        "deviceFeedGroups": {
-          "22": [
-            13
-          ],
-          "6": [
-            1000051
-          ],
-          "7": [
-            6
-          ],
-          "8": [
-            9,
-            10
-          ],
-          "201": [
-            7
-          ],
-          "137": [
-            12
-          ],
-          "9": [
-            11
-          ],
-          "186": [
-            8
-          ]
-        }
+        "figures": [
+          {
+            "label": "Air Temperature",
+            "parameterGroupId": 6,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Air Temperature",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000099,
+                    "sensorParameterId": 3,
+                    "discriminant": null,
+                    "parameterGroupId": 6,
+                    "parameterId": 3,
+                    "unitId": 8,
+                    "units": "degree_Celsius",
+                    "startDate": "2018-09-24T13:55:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 9.82,
+                    "maxVal": 31.05,
+                    "numObservations": 14849,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001327,
+                      1000051
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Barometric Pressure",
+            "parameterGroupId": 9,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Barometric Pressure",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000012,
+                    "sensorParameterId": 14,
+                    "discriminant": null,
+                    "parameterGroupId": 9,
+                    "parameterId": 14,
+                    "unitId": 24,
+                    "units": "millibars",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 899.2,
+                    "maxVal": 1029.11,
+                    "numObservations": 27474,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001323,
+                      11
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Longwave Radiation",
+            "parameterGroupId": 201,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Longwave Radiation",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000008,
+                    "sensorParameterId": 341,
+                    "discriminant": null,
+                    "parameterGroupId": 201,
+                    "parameterId": 357,
+                    "unitId": 34,
+                    "units": "W.m-2",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 53.07,
+                    "maxVal": 599.57,
+                    "numObservations": 27353,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      7,
+                      1001320
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Relative Humidity",
+            "parameterGroupId": 22,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Relative Humidity",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000015,
+                    "sensorParameterId": 4,
+                    "discriminant": null,
+                    "parameterGroupId": 22,
+                    "parameterId": 4,
+                    "unitId": 1,
+                    "units": "%",
+                    "startDate": "2018-01-01T22:35:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.04,
+                    "maxVal": 99.99,
+                    "numObservations": 15329,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001316,
+                      13
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Salinity",
+            "parameterGroupId": 14,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Salinity",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000268,
+                    "sensorParameterId": 50,
+                    "discriminant": null,
+                    "parameterGroupId": 14,
+                    "parameterId": 50,
+                    "unitId": 4,
+                    "units": "1e-3",
+                    "startDate": "2018-11-01T00:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 12.98,
+                    "maxVal": 36.57,
+                    "numObservations": 13425,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001326,
+                      1000213
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Short Wave Radiation",
+            "parameterGroupId": 137,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Short Wave Radiation",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000013,
+                    "sensorParameterId": 158,
+                    "discriminant": null,
+                    "parameterGroupId": 137,
+                    "parameterId": 158,
+                    "unitId": 34,
+                    "units": "W.m-2",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.0,
+                    "maxVal": 1197.2,
+                    "numObservations": 21313,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001322,
+                      12
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Water Temperature",
+            "parameterGroupId": 7,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Water Temperature",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000007,
+                    "sensorParameterId": 41,
+                    "discriminant": null,
+                    "parameterGroupId": 7,
+                    "parameterId": 41,
+                    "unitId": 8,
+                    "units": "degree_Celsius",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": -10.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.0,
+                    "maxVal": 33.36,
+                    "numObservations": 27473,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      6,
+                      1001317
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Winds: Gusts",
+            "parameterGroupId": 186,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Wind Gust",
+                    "plotLabel": "[default]",
+                    "deviceId": 1001371,
+                    "sensorParameterId": 370,
+                    "discriminant": null,
+                    "parameterGroupId": 186,
+                    "parameterId": 7,
+                    "unitId": 27,
+                    "units": "m.s-1",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.0,
+                    "maxVal": 28.82,
+                    "numObservations": 27383,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001319,
+                      8
+                    ]
+                  }
+                ]
+              },
+              {
+                "label": "sonic",
+                "subPlots": [
+                  {
+                    "label": "Wind Gust",
+                    "plotLabel": "sonic",
+                    "deviceId": 1001374,
+                    "sensorParameterId": 370,
+                    "discriminant": "sonic",
+                    "parameterGroupId": 186,
+                    "parameterId": 7,
+                    "unitId": 27,
+                    "units": "m.s-1",
+                    "startDate": "2019-03-01T00:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.0,
+                    "maxVal": 19.03,
+                    "numObservations": 5447,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001328
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Winds: Speed and Direction",
+            "parameterGroupId": 8,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Wind Speed",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000011,
+                    "sensorParameterId": 5,
+                    "discriminant": null,
+                    "parameterGroupId": 8,
+                    "parameterId": 5,
+                    "unitId": 27,
+                    "units": "m.s-1",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.0,
+                    "maxVal": 17.93,
+                    "numObservations": 27377,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001325,
+                      10
+                    ]
+                  },
+                  {
+                    "label": "Wind From Direction",
+                    "plotLabel": "[default]",
+                    "deviceId": 1000010,
+                    "sensorParameterId": 6,
+                    "discriminant": null,
+                    "parameterGroupId": 8,
+                    "parameterId": 6,
+                    "unitId": 10,
+                    "units": "degrees",
+                    "startDate": "2017-12-11T18:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": 0.0,
+                    "maxVal": 360.0,
+                    "numObservations": 26292,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      9,
+                      1001318
+                    ]
+                  }
+                ]
+              },
+              {
+                "label": "sonic",
+                "subPlots": [
+                  {
+                    "label": "Wind Speed",
+                    "plotLabel": "sonic",
+                    "deviceId": 1001373,
+                    "sensorParameterId": 5,
+                    "discriminant": "sonic",
+                    "parameterGroupId": 8,
+                    "parameterId": 5,
+                    "unitId": 27,
+                    "units": "m.s-1",
+                    "startDate": "2019-03-01T00:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 20.0,
+                    "maxZ": 20.0,
+                    "minVal": 0.0,
+                    "maxVal": 14.26,
+                    "numObservations": 5447,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001324
+                    ]
+                  },
+                  {
+                    "label": "Wind From Direction",
+                    "plotLabel": "sonic",
+                    "deviceId": 1001372,
+                    "sensorParameterId": 6,
+                    "discriminant": "sonic",
+                    "parameterGroupId": 8,
+                    "parameterId": 6,
+                    "unitId": 10,
+                    "units": "degrees",
+                    "startDate": "2019-03-01T00:05:00Z",
+                    "endDate": "2019-07-03T17:35:00Z",
+                    "minZ": 20.0,
+                    "maxZ": 20.0,
+                    "minVal": 0.0,
+                    "maxVal": 359.89,
+                    "numObservations": 5447,
+                    "medianTimeIntervalSecs": 1800,
+                    "hasQc": true,
+                    "qcConfigId": null,
+                    "feeds": [
+                      1001321
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       }
     ],
     "agents": [
@@ -384,23 +583,5 @@
       }
     ],
     "qcConfigs": []
-  },
-  "results": {
-    "numV1Stations": 0,
-    "numStations": 1,
-    "numDeviceFeeds": 9,
-    "numV2Stations": 1,
-    "messages": [
-      {
-        "type": "info",
-        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=60387&appregion=all"
-      },
-      {
-        "type": "info",
-        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B60387%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22customFilter%22:true%7D"
-      }
-    ],
-    "numAgents": 3,
-    "status": "success"
   }
 }

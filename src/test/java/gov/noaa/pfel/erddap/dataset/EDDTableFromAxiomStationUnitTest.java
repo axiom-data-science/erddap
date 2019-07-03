@@ -140,7 +140,7 @@ public class EDDTableFromAxiomStationUnitTest {
     }
 
     @Test
-    public void oikosDeviceFeedPrettyString() throws IOException, URISyntaxException {
+    public void oikosDevicePrettyString() throws IOException, URISyntaxException {
         OikosLookups oikosLookups = mapOikosLookups();
 
         OikosSensorParameter waterLevel_noDatum = oikosLookups.sensorParameterMap.get(46);
@@ -148,16 +148,16 @@ public class EDDTableFromAxiomStationUnitTest {
         OikosSensorParameter waterLevel_localDatum = oikosLookups.sensorParameterMap.get(352);
         OikosSensorParameter cdom_mean = oikosLookups.sensorParameterMap.get(346);
 
-        assertEquals("sea_surface_height_above_sea_level", feedPrettyString(waterLevel_noDatum, ""));
-        assertEquals("sea_surface_height_above_sea_level_pier_1", feedPrettyString(waterLevel_noDatum, "pier 1"));
-        assertEquals("sea_surface_height_above_sea_level_geoid_navd88", feedPrettyString(waterLevel_navd88, ""));
-        assertEquals("sea_surface_height_above_sea_level_geoid_local_station_datum", feedPrettyString(waterLevel_localDatum, ""));
-        assertEquals("colored_dissolved_organic_matter_cm_time__mean_over_pt6m", feedPrettyString(cdom_mean, ""));
+        assertEquals("sea_surface_height_above_sea_level", devicePrettyString(waterLevel_noDatum, ""));
+        assertEquals("sea_surface_height_above_sea_level_pier_1", devicePrettyString(waterLevel_noDatum, "pier 1"));
+        assertEquals("sea_surface_height_above_sea_level_geoid_navd88", devicePrettyString(waterLevel_navd88, ""));
+        assertEquals("sea_surface_height_above_sea_level_geoid_local_station_datum", devicePrettyString(waterLevel_localDatum, ""));
+        assertEquals("colored_dissolved_organic_matter_cm_time__mean_over_pt6m", devicePrettyString(cdom_mean, ""));
     }
 
-    private static String feedPrettyString(OikosSensorParameter sp, String discriminant) {
-        OikosDeviceFeed feed = new OikosDeviceFeed(123, sp, discriminant, 0.0, 0.0);
-        return feed.prettyString();
+    private static String devicePrettyString(OikosSensorParameter sp, String discriminant) {
+        OikosDevice device = new OikosDevice(123, sp, discriminant, 0.0, 0.0);
+        return device.prettyString();
     }
 
     @Test
@@ -278,13 +278,12 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals(1539898499, station.endDate);
         assertDoubleEquals(-10.0, station.minZ);
         assertDoubleEquals(20.0, station.maxZ);
-        assertEquals(9, station.deviceFeeds.size());
-        OikosDeviceFeed stationDeviceFeed = station.deviceFeeds.get(0);
-        assertEquals(10, stationDeviceFeed.id);
-        assertEquals("", stationDeviceFeed.discriminant);
-        assertEquals(5, stationDeviceFeed.sp.id);
-        assertDoubleEquals(0, stationDeviceFeed.minZ);
-        assertDoubleEquals(0, stationDeviceFeed.maxZ);
+        assertEquals(13, station.devices.size());
+        OikosDevice stationDevice = station.devices.stream().filter(d -> d.id == 1000007).findFirst().get();
+        assertEquals("", stationDevice.discriminant);
+        assertEquals(41, stationDevice.sp.id);
+        assertDoubleEquals(-10.0, stationDevice.minZ);
+        assertDoubleEquals(0, stationDevice.maxZ);
 
         // check station affiliations
         assertNotNull(station.creator);
@@ -364,7 +363,7 @@ public class EDDTableFromAxiomStationUnitTest {
                 "at http://ocgtds.marine.usf.edu:8080/thredds/catalog/COMPS_C10_Month_MET/catalog.html", tGlobalAttributes.getString("history"));
 
         assertEquals("TimeSeries", tGlobalAttributes.getString("cdm_data_type"));
-        assertEquals("wind_speed,wind_from_direction,longwave_radiation,short_wave_radiation,air_pressure,sea_water_temperature,wind_speed_of_gust,relative_humidity,air_temperature",
+        assertEquals("air_temperature,air_pressure,longwave_radiation,relative_humidity,sea_water_practical_salinity,short_wave_radiation,sea_water_temperature,wind_speed_of_gust,wind_speed_of_gust_sonic,wind_speed,wind_from_direction,wind_speed_sonic,wind_from_direction_sonic",
                 tGlobalAttributes.getString("cdm_timeseries_variables"));
 
         assertEquals("SC10B", tGlobalAttributes.getString("wmo_platform_code"));
@@ -383,8 +382,8 @@ public class EDDTableFromAxiomStationUnitTest {
 
         // check DATA VARIABLES
 
-        // time + lat + lon + z + station + 3*values
-        assertEquals(32, tDataVariables.size());
+        // time + lat + lon + z + station + 3*(num_devices=13)
+        assertEquals(44, tDataVariables.size());
 
         Object[] timeVar = findVariableWithName(tDataVariables, "time");
         Attributes timeVarAtts = (Attributes) timeVar[2];
@@ -412,11 +411,11 @@ public class EDDTableFromAxiomStationUnitTest {
         assertDoubleEquals(-10.0, zVarAtts.get("actual_range").getDouble(0));
         assertDoubleEquals(20.0, zVarAtts.get("actual_range").getDouble(1));
 
-        Object[] airPressureVar = findVariableWithName(tDataVariables, "value_11");
+        Object[] airPressureVar = findVariableWithName(tDataVariables, "value_1000012");
         Attributes airPressureVarAtts = (Attributes) airPressureVar[2];
         assertEquals("air_pressure", airPressureVarAtts.getString("standard_name"));
         assertEquals("Barometric Pressure", airPressureVarAtts.getString("long_name"));
-        assertEquals("11", airPressureVarAtts.getString("id"));
+        assertEquals("1000012", airPressureVarAtts.getString("id"));
         assertEquals("millibars", airPressureVarAtts.getString("units"));
         assertEquals("Other", airPressureVarAtts.getString("ioos_category"));
         assertEquals("station", airPressureVarAtts.getString("platform"));
@@ -426,13 +425,13 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals(-9999, airPressureVarAtts.get("missing_value").getDouble(0), 0);
         assertEquals(-9999, airPressureVarAtts.get("_FillValue").getDouble(0), 0);
 
-        Object[] airPressureQcAggVar = findVariableWithName(tDataVariables, "qc_agg_11");
+        Object[] airPressureQcAggVar = findVariableWithName(tDataVariables, "qc_agg_1000012");
         Attributes airPressureQcAggAtts = (Attributes) airPressureQcAggVar[2];
         assertEquals("air_pressure status_flag", airPressureQcAggAtts.getString("standard_name"));
         assertEquals("Barometric Pressure QARTOD Aggregate Flag", airPressureQcAggAtts.getString("long_name"));
         assertEquals("Other", airPressureQcAggAtts.getString("ioos_category"));
 
-        Object[] airPressureQcTestsVar = findVariableWithName(tDataVariables, "qc_tests_11");
+        Object[] airPressureQcTestsVar = findVariableWithName(tDataVariables, "qc_tests_1000012");
         Attributes airPressureQcTestsAtts = (Attributes) airPressureQcTestsVar[2];
         assertEquals("air_pressure status_flag", airPressureQcTestsAtts.getString("standard_name"));
         assertEquals("Barometric Pressure QARTOD Individual Tests", airPressureQcTestsAtts.getString("long_name"));
