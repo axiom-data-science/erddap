@@ -857,7 +857,7 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
 
     public static EDDTableFromAxiomStationV2 fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
         String tDatasetID = xmlReader.attributeValue("datasetID");
-        Attributes tGlobalAttributes = null;
+        Attributes tGlobalAttributeOverrides = null;
         String tLocalSourceUrl = null;
         int tStationId = -1;
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
@@ -881,7 +881,7 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             }
             String localTags = tags.substring(startOfTagsLength);
             if (localTags.equals("<addAttributes>")) {
-                tGlobalAttributes = getAttributesFromXml(xmlReader);
+                tGlobalAttributeOverrides = getAttributesFromXml(xmlReader);
             } else if (localTags.equals("<sourceUrl>")) {
             } else if (localTags.equals("</sourceUrl>")) {
                 tLocalSourceUrl = content;
@@ -906,10 +906,6 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             } else {
                 xmlReader.unexpectedTagException();
             }
-        }
-
-        if (tGlobalAttributes == null) {
-            tGlobalAttributes = new Attributes();
         }
 
         if (tStationId == -1) {
@@ -939,7 +935,11 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             is.close();
         }
 
+        Attributes tGlobalAttributes = new Attributes();
         OikosStation station = EDDTableFromAxiomStationV2Utils.mapMetadataForOikosStation(tGlobalAttributes, tStationId, tDataVariables, oikosLookups, json);
+        if (tGlobalAttributeOverrides != null) {
+            tGlobalAttributes.add(tGlobalAttributeOverrides);
+        }
 
         int ndv = tDataVariables.size();
         Object ttDataVariables[][] = new Object[ndv][];

@@ -75,6 +75,10 @@ public class EDDTableFromAxiomStationV2Test {
                 "<dataset type=\"EDDTableFromAxiomStationV2\" datasetID=\"60387\">\n" +
                 "    <sourceUrl>https://sensors.axds.co/api/</sourceUrl>\n" +
                 "    <stationId>60387</stationId>\n" +
+                "    <addAttributes>\n" +
+                "       <att name=\"foo_bar\">poop123</att>\n" +
+                "       <att name=\"creator_name\">bob.marley@alaska.edu</att >\n" +
+                "    </addAttributes>\n" +
                 "</dataset>"
         );
         // Test specific station and sensor
@@ -83,6 +87,10 @@ public class EDDTableFromAxiomStationV2Test {
         writeDataTable(edd, "sea_water_temperature,wind_speed,time&time>=2017-12-11T12:00:00Z&time<2017-12-12T00:00:00Z");
         writeDataTable(edd, "sea_water_temperature,wind_speed,time&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z");
         writeDataTable(edd, "sea_water_temperature,station,time&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z");
+
+        // test global attribute overrides
+        assertEquals("poop123", edd.combinedGlobalAttributes().get("foo_bar").toString());
+        assertEquals("bob.marley@alaska.edu", edd.combinedGlobalAttributes().get("creator_name").toString());
 
     }
 
