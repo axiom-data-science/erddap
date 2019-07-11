@@ -430,12 +430,16 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("air_pressure status_flag", airPressureQcAggAtts.getString("standard_name"));
         assertEquals("Barometric Pressure QARTOD Aggregate Flag", airPressureQcAggAtts.getString("long_name"));
         assertEquals("Other", airPressureQcAggAtts.getString("ioos_category"));
+        assertEquals("qartod_aggregate", airPressureQcAggAtts.getString("flag_method"));
+        assertEquals("ftp://ocgweb.marine.usf.edu/pub/QC_Code/", airPressureQcAggAtts.getString("references"));
 
         Object[] airPressureQcTestsVar = findVariableWithName(tDataVariables, "qc_tests_1000012");
         Attributes airPressureQcTestsAtts = (Attributes) airPressureQcTestsVar[2];
         assertEquals("air_pressure status_flag", airPressureQcTestsAtts.getString("standard_name"));
         assertEquals("Barometric Pressure QARTOD Individual Tests", airPressureQcTestsAtts.getString("long_name"));
         assertEquals("Other", airPressureQcTestsAtts.getString("ioos_category"));
+        assertEquals("qartod_tests", airPressureQcTestsAtts.getString("flag_method"));
+        assertEquals("ftp://ocgweb.marine.usf.edu/pub/QC_Code/", airPressureQcTestsAtts.getString("references"));
     }
 
     @Test

@@ -709,6 +709,10 @@ class EDDTableFromAxiomStationV2Utils {
             qcAggAtts.set("ioos_category", "Other");
             qcAggAtts.set("flag_values", "1, 2, 3, 4, 9");
             qcAggAtts.set("flag_meanings", "PASS NOT_EVALUATED SUSPECT FAIL MISSING");
+            qcAggAtts.set("flag_method", "qartod_aggregate");
+            if (station.qcInfoUrl != null) {
+                qcAggAtts.set("references", station.qcInfoUrl);
+            }
             qcAggAtts.set("missing_value", 9);
             qcAggAtts.set("_FillValue", 9);
             String qcAggVarName = d.prettyString() + "_qc_agg";
@@ -720,6 +724,10 @@ class EDDTableFromAxiomStationV2Utils {
             qcTestAtts.set("ioos_category", "Other");
             qcTestAtts.set("flag_values", "1, 2, 3, 4, 9");
             qcTestAtts.set("flag_meanings", "PASS NOT_EVALUATED SUSPECT FAIL MISSING");
+            qcTestAtts.set("flag_method", "qartod_tests");
+            if (station.qcInfoUrl != null) {
+                qcTestAtts.set("references", station.qcInfoUrl);
+            }
             qcTestAtts.set("comment", "11-character string with results of individual QARTOD tests. " +
                     "1: Gap Test, 2: Syntax Test, 3: Location Test, 4: Gross Range Test, 5: Climatology Test, " +
                     "6: Spike Test, 7: Rate of Change Test, 8: Flat-line Test, 9: Multi-variate Test, " +
