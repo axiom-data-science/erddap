@@ -95,7 +95,7 @@ public class EDDTableFromAxiomStationV1 extends EDDTableFromAsciiService {
         ArrayList<String> parameter_id_builder = new ArrayList<>();
         ArrayList<String> units_builder = new ArrayList<>();
         for (OikosDevice d : this.station.devices) {
-            OikosUnit u = d.sp.parameter.defaultUnit();
+            OikosUnit u = d.sp.unit;
             units_builder.add(d.sp.parameter.id + ";" + u.unit);
             parameter_id_builder.add(String.valueOf(d.sp.parameter.id));
         }
