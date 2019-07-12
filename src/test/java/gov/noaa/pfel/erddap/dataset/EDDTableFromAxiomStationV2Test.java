@@ -39,19 +39,12 @@ public class EDDTableFromAxiomStationV2Test {
 
         // Pull data into Table
         String archivePath = testResourcePath("/station_60387.nc");
-        EDDTableFromAxiomStationV2 tableFromStation = new EDDTableFromAxiomStationV2("60387",
-                null, null,
-                null, null, null,
-                null,
-                null, null,
-                tGlobalAttributes,
-                ttDataVariables,
-                Integer.MAX_VALUE,
-                0, archivePath, null, false,
-                null, "last", null,
-                0, 1, null,
-                null, null, null, null, null, null, false,
-                false, true, false);
+        EDDTableFromAxiomStationV2Shim d = new EDDTableFromAxiomStationV2Shim(null);
+        d.tDatasetID = "60387";
+        d.tGlobalAttributes = tGlobalAttributes;
+        d.ttDataVariables = ttDataVariables;
+        d.archiveDir = archivePath;
+        EDDTableFromAxiomStationV2 tableFromStation = new EDDTableFromAxiomStationV2(d);
         String query = "sea_water_temperature,wind_speed,station,time&time>=2017-12-11T00:00:00Z&time<2017-12-12T00:00:00Z";
         MockTableWriter tableWriter = new MockTableWriter(null, null, null);
         tableFromStation.getDataForDapQuery(null, null, query, tableWriter);

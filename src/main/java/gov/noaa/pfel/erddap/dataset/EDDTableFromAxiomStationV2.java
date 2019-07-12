@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.google.common.collect.Lists.newArrayList;
+import static gov.noaa.pfel.erddap.dataset.EDD.getAttributesFromXml;
 import static gov.noaa.pfel.erddap.dataset.EDDTableFromAxiomStationV2Utils.secondsSinceEpochFromUTCString;
 
 
@@ -327,7 +328,7 @@ class OikosStation {
 
         String qcInfoUrl = stats.isNull("qcInfoUrl") ? "" : stats.getString("qcInfoUrl");
 
-        String archivePath = stats.getString("archivePath");
+        String archivePath = stats.isNull("archivePath") ? "" : stats.getString("archivePath");
 
         double minZ = devices.stream().map(df -> df.minZ).min(Double::compareTo).get();
         double maxZ = devices.stream().map(df -> df.maxZ).max(Double::compareTo).get();
@@ -383,6 +384,14 @@ class OikosStation {
                 contributors,
                 devices);
 
+    }
+
+    public boolean hasDevice(int deviceId) {
+        return this.devices.stream().anyMatch(d -> d.id == deviceId);
+    }
+
+    public OikosDevice getDevice(int deviceId) {
+        return this.devices.stream().filter(d -> d.id == deviceId).findFirst().orElseGet(null);
     }
 
     public OikosStation(int id, String label, String urn, String wmoId, String platformType, String qcInfoUrl,
@@ -861,18 +870,41 @@ class EDDTableFromAxiomStationV2Utils {
 
 }
 
-public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
+// This class just exists so we can test the results of fromXml without having to invoke any ERDDAP static stuff in unit tests
+class EDDTableFromAxiomStationV2Shim {
+    public SimpleXMLReader xmlReader;
+    public String tDatasetID;
+    public String tSosOfferingPrefix;
+    public String tDefaultDataQuery;
+    public String tDefaultGraphQuery;
+    public Attributes tGlobalAttributes;
+    public Object[][] ttDataVariables;
+    public String tLocalSourceUrl;
+    public String v1DataSourceUrl;
+    public int tReloadEveryNMinutes;
+    public int tUpdateEveryNMillis;
+    public String archiveDir;
+    public String archiveName;
+    public boolean tRecursive = false;
+    public String tPathRegex = null;
+    public String tMetadataFrom = "last";
+    public int tColumnNamesRow = 0;
+    public int tFirstDataRow = 1;
+    public OikosStation station;
 
-    public static EDDTableFromAxiomStationV2 fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
-        String tDatasetID = xmlReader.attributeValue("datasetID");
+    public EDDTableFromAxiomStationV2Shim(SimpleXMLReader xmlReader) {
+        this.xmlReader = xmlReader;
+    }
+
+    public EDDTableFromAxiomStationV2Shim invoke() throws Throwable {
+        tDatasetID = xmlReader.attributeValue("datasetID");
         Attributes tGlobalAttributeOverrides = null;
-        String tLocalSourceUrl = null;
         int tStationId = -1;
-        int tReloadEveryNMinutes = Integer.MAX_VALUE;
-        int tUpdateEveryNMillis = Integer.MAX_VALUE;
-        String tDefaultDataQuery = null;
-        String tDefaultGraphQuery = null;
-        String tSosOfferingPrefix = null;
+        tReloadEveryNMinutes = Integer.MAX_VALUE;
+        tUpdateEveryNMillis = Integer.MAX_VALUE;
+        tDefaultDataQuery = null;
+        tDefaultGraphQuery = null;
+        tSosOfferingPrefix = null;
 
         ArrayList<Object[]> tDataVariables = new ArrayList<>();
 
@@ -893,6 +925,9 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             } else if (localTags.equals("<sourceUrl>")) {
             } else if (localTags.equals("</sourceUrl>")) {
                 tLocalSourceUrl = content;
+            } else if (localTags.equals("<v1DataSourceUrl>")) {
+            } else if (localTags.equals("</v1DataSourceUrl>")) {
+                v1DataSourceUrl = content;
             } else if (localTags.equals("<stationId>")) {
             } else if (localTags.equals("</stationId>")) {
                 tStationId = String2.parseInt(content);
@@ -929,8 +964,7 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
         JSONObject json;
         try {
 
-            BufferedReader rd = new BufferedReader(
-                    new InputStreamReader(is, Charset.forName("UTF-8")));
+            BufferedReader rd = new BufferedReader(new InputStreamReader(is, Charset.forName("UTF-8")));
             StringBuilder sb = new StringBuilder();
             String line;
             while ((line = rd.readLine()) != null) {
@@ -943,70 +977,50 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             is.close();
         }
 
-        Attributes tGlobalAttributes = new Attributes();
-        OikosStation station = EDDTableFromAxiomStationV2Utils.mapMetadataForOikosStation(tGlobalAttributes, tStationId, tDataVariables, oikosLookups, json);
+        tGlobalAttributes = new Attributes();
+        station = EDDTableFromAxiomStationV2Utils.mapMetadataForOikosStation(tGlobalAttributes, tStationId, tDataVariables, oikosLookups, json);
         if (tGlobalAttributeOverrides != null) {
             tGlobalAttributes.add(tGlobalAttributeOverrides);
         }
 
         int ndv = tDataVariables.size();
-        Object ttDataVariables[][] = new Object[ndv][];
+        ttDataVariables = new Object[ndv][];
         for (int i = 0; i < tDataVariables.size(); i++) {
             ttDataVariables[i] = tDataVariables.get(i);
         }
 
-        String archiveDir = File2.getDirectory(station.archivePath);
-        String archiveName = File2.getNameAndExtension(station.archivePath);
-        return new EDDTableFromAxiomStationV2(tDatasetID,
-                null, null,
-                null, null, null,
-                tSosOfferingPrefix,
-                tDefaultDataQuery, tDefaultGraphQuery,
-                tGlobalAttributes,
-                ttDataVariables,
-                tReloadEveryNMinutes,
-                tUpdateEveryNMillis, archiveDir, archiveName, false,
-                null, "last", null,
-                0, 1, null,
-                null, null, null, null, null, null, false,
-                false, true, false);
+        if (station.archivePath != null) {
+            archiveDir = File2.getDirectory(station.archivePath);
+            archiveName = File2.getNameAndExtension(station.archivePath);
+        }
+
+        return this;
+    }
+}
+
+// Reads metadata from V2 service (sensors.axds.co/api) and reads data from archive files on disk
+public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
+
+    public static EDDTableFromAxiomStationV2 fromXml(Erddap erddap, SimpleXMLReader xmlReader) throws Throwable {
+        EDDTableFromAxiomStationV2Shim shim = new EDDTableFromAxiomStationV2Shim(xmlReader).invoke();
+        return new EDDTableFromAxiomStationV2(shim);
 
     }
 
-    public EDDTableFromAxiomStationV2(String tDatasetID,
-                                      String tAccessibleTo, String tGraphsAccessibleTo,
-                                      StringArray tOnChange, String tFgdcFile, String tIso19115File,
-                                      String tSosOfferingPrefix,
-                                      String tDefaultDataQuery, String tDefaultGraphQuery,
-                                      Attributes tAddGlobalAttributes,
-                                      Object[][] tDataVariables,
-                                      int tReloadEveryNMinutes, int tUpdateEveryNMillis,
-                                      String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex,
-                                      String tMetadataFrom, String tCharset,
-                                      int tColumnNamesRow, int tFirstDataRow,
-                                      String tColumnSeparator, String tPreExtractRegex,
-                                      String tPostExtractRegex, String tExtractRegex,
-                                      String tColumnNameForExtract, String tSortedColumnSourceName,
-                                      String tSortFilesBySourceNames, boolean tSourceNeedsExpandedFP_EQ,
-                                      boolean tFileTableInMemory, boolean tAccessibleViaFiles,
-                                      boolean tRemoveMVRows) throws Throwable {
-        super("EDDTableFromAxiomStationV2", tDatasetID,
-                tAccessibleTo, tGraphsAccessibleTo,
-                tOnChange, tFgdcFile, tIso19115File,
-                tSosOfferingPrefix,
-                tDefaultDataQuery, tDefaultGraphQuery,
-                tAddGlobalAttributes,
-                tDataVariables,
-                tReloadEveryNMinutes, tUpdateEveryNMillis,
-                tFileDir, tFileNameRegex, tRecursive, tPathRegex,
-                tMetadataFrom, tCharset,
-                tColumnNamesRow, tFirstDataRow,
-                tColumnSeparator, tPreExtractRegex,
-                tPostExtractRegex, tExtractRegex,
-                tColumnNameForExtract, tSortedColumnSourceName,
-                tSortFilesBySourceNames, tSourceNeedsExpandedFP_EQ,
-                tFileTableInMemory, tAccessibleViaFiles,
-                tRemoveMVRows);
+    public EDDTableFromAxiomStationV2(EDDTableFromAxiomStationV2Shim d) throws Throwable {
+        super("EDDTableFromAxiomStationV2", d.tDatasetID,
+                null, null,
+                null, null, null,
+                d.tSosOfferingPrefix,
+                d.tDefaultDataQuery, d.tDefaultGraphQuery,
+                d.tGlobalAttributes,
+                d.ttDataVariables,
+                d.tReloadEveryNMinutes,
+                d.tUpdateEveryNMillis, d.archiveDir, d.archiveName, d.tRecursive,
+                d.tPathRegex, d.tMetadataFrom, null,
+                d.tColumnNamesRow, d.tFirstDataRow, null,
+                null, null, null, null, null, null, false,
+                false, true, false);
     }
 
     @Override
@@ -1022,4 +1036,5 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
 
         return table;
     }
+
 }

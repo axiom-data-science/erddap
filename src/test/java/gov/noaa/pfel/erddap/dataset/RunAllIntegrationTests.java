@@ -5,9 +5,9 @@ import org.junit.runners.Suite;
 
 @RunWith(Suite.class)
 @Suite.SuiteClasses({
-        EDDTableFromAxiomSensorCSVServiceTest.class,
         EDDTableFromAxiomStationTest.class,
-        EDDTableFromAxiomStationV2Test.class
+        EDDTableFromAxiomStationV2Test.class,
+        EDDTableFromAxiomStationV1Test.class
 })
 public class RunAllIntegrationTests {
 }
