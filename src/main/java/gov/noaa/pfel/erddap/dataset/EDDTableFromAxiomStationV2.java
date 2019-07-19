@@ -291,6 +291,7 @@ class OikosStationAgentAffiliation {
 
 class OikosStation {
     public int id;
+    public int version;
     public String label;
     public String urn;
     public String wmoId;
@@ -317,6 +318,7 @@ class OikosStation {
                                         HashMap<String, String> agentAssociationTypeToRoleCodeMap) {
 
         int id = j.getInt("id");
+        int version = j.getInt("version");
 
         JSONArray location = j.getJSONObject("location").getJSONArray("coordinates");
         double latitude = location.getDouble(1);
@@ -367,6 +369,7 @@ class OikosStation {
         }
 
         return new OikosStation(id,
+                version,
                 j.getString("label"),
                 j.getString("uuid"),
                 wmoId,
@@ -394,7 +397,7 @@ class OikosStation {
         return this.devices.stream().filter(d -> d.id == deviceId).findFirst().orElseGet(null);
     }
 
-    public OikosStation(int id, String label, String urn, String wmoId, String platformType, String qcInfoUrl,
+    public OikosStation(int id, int version, String label, String urn, String wmoId, String platformType, String qcInfoUrl,
                         double latitude, double longitude,
                         int startDate, int endDate, double minZ, double maxZ,
                         String archivePath, boolean submitToNdbc, OikosStationAgentAffiliation creator,
@@ -402,6 +405,7 @@ class OikosStation {
                         List<OikosStationAgentAffiliation> contributors,
                         List<OikosDevice> devices) {
         this.id = id;
+        this.version = version;
         this.label = label;
         this.urn = urn;
         this.wmoId = wmoId;
@@ -670,8 +674,12 @@ class EDDTableFromAxiomStationV2Utils {
         Attributes zatts = new Attributes();
         zatts.set("axis", "Z");
         zatts.set("ioos_category", EDV.LOCATION_CATEGORY);
+        zatts.set("long_name", "Z");
+        zatts.set("standard_name", "height");
         zatts.set("units", "m");
         zatts.set("positive", "up");
+        zatts.set("_CoordinateAxisType", "Height");
+        zatts.set("_CoordinateZisPositive", "up");
         zatts.set("actual_range", new DoubleArray(new double[]{station.minZ, station.maxZ}));
         tDataVariables.add(new Object[]{"z", "z", zatts, "double"});
 
@@ -688,8 +696,14 @@ class EDDTableFromAxiomStationV2Utils {
             dvaatts.set("ioos_category", "Other");
             dvaatts.set("platform", "station");
             dvaatts.set("urn", d.sp.parameter.urn);
-            dvaatts.set("missing_value", -9999);
-            dvaatts.set("_FillValue", -9999);
+            if (station.version == 1) {
+                // v1 netcdf files have a different _FillValue
+                dvaatts.set("missing_value", -9999.99);
+                dvaatts.set("_FillValue", -9999.99);
+            } else {
+                dvaatts.set("missing_value", -9999);
+                dvaatts.set("_FillValue", -9999);
+            }
             if (!d.sp.cellMethods.isEmpty()) {
                 dvaatts.set("cell_methods", d.sp.cellMethods);
             }
@@ -709,44 +723,45 @@ class EDDTableFromAxiomStationV2Utils {
             tDataVariables.add(new Object[]{"value_" + d.id, d.prettyString(), dvaatts, "double"});
             cdm_timeseries_variables.add(d.prettyString());
 
-            // QARTOD
+            // QARTOD (V2 only)
             // See Appendix B in https://cdn.ioos.noaa.gov/media/2017/12/QARTOD-Data-Flags-Manual_Final_version1.1.pdf
+            if (station.version == 2) {
+                Attributes qcAggAtts = new Attributes();
+                qcAggAtts.set("standard_name", variableStandardName + " status_flag");
+                qcAggAtts.set("long_name", d.sp.parameter.label + " QARTOD Aggregate Flag");
+                qcAggAtts.set("ioos_category", "Other");
+                qcAggAtts.set("flag_values", "1, 2, 3, 4, 9");
+                qcAggAtts.set("flag_meanings", "PASS NOT_EVALUATED SUSPECT FAIL MISSING");
+                qcAggAtts.set("flag_method", "qartod_aggregate");
+                if (station.qcInfoUrl != null) {
+                    qcAggAtts.set("references", station.qcInfoUrl);
+                }
+                qcAggAtts.set("missing_value", 9);
+                qcAggAtts.set("_FillValue", 9);
+                String qcAggVarName = d.prettyString() + "_qc_agg";
+                tDataVariables.add(new Object[]{"qc_agg_" + d.id, qcAggVarName, qcAggAtts, "int"});
 
-            Attributes qcAggAtts = new Attributes();
-            qcAggAtts.set("standard_name", variableStandardName + " status_flag");
-            qcAggAtts.set("long_name", d.sp.parameter.label + " QARTOD Aggregate Flag");
-            qcAggAtts.set("ioos_category", "Other");
-            qcAggAtts.set("flag_values", "1, 2, 3, 4, 9");
-            qcAggAtts.set("flag_meanings", "PASS NOT_EVALUATED SUSPECT FAIL MISSING");
-            qcAggAtts.set("flag_method", "qartod_aggregate");
-            if (station.qcInfoUrl != null) {
-                qcAggAtts.set("references", station.qcInfoUrl);
+                Attributes qcTestAtts = new Attributes();
+                qcTestAtts.set("standard_name", variableStandardName + " status_flag");
+                qcTestAtts.set("long_name", d.sp.parameter.label + " QARTOD Individual Tests");
+                qcTestAtts.set("ioos_category", "Other");
+                qcTestAtts.set("flag_values", "1, 2, 3, 4, 9");
+                qcTestAtts.set("flag_meanings", "PASS NOT_EVALUATED SUSPECT FAIL MISSING");
+                qcTestAtts.set("flag_method", "qartod_tests");
+                if (station.qcInfoUrl != null) {
+                    qcTestAtts.set("references", station.qcInfoUrl);
+                }
+                qcTestAtts.set("comment", "11-character string with results of individual QARTOD tests. " +
+                        "1: Gap Test, 2: Syntax Test, 3: Location Test, 4: Gross Range Test, 5: Climatology Test, " +
+                        "6: Spike Test, 7: Rate of Change Test, 8: Flat-line Test, 9: Multi-variate Test, " +
+                        "10: Attenuated Signal Test, 11: Neighbor Test");
+                qcTestAtts.set("missing_value", "");
+                qcTestAtts.set("_FillValue", "");
+                String qcTestsVarName = d.prettyString() + "_qc_tests";
+                tDataVariables.add(new Object[]{"qc_tests_" + d.id, qcTestsVarName, qcTestAtts, "String"});
+
+                dvaatts.set("ancillary_variables", qcAggVarName + " " + qcTestsVarName);
             }
-            qcAggAtts.set("missing_value", 9);
-            qcAggAtts.set("_FillValue", 9);
-            String qcAggVarName = d.prettyString() + "_qc_agg";
-            tDataVariables.add(new Object[]{"qc_agg_" + d.id, qcAggVarName, qcAggAtts, "int"});
-
-            Attributes qcTestAtts = new Attributes();
-            qcTestAtts.set("standard_name", variableStandardName + " status_flag");
-            qcTestAtts.set("long_name", d.sp.parameter.label + " QARTOD Individual Tests");
-            qcTestAtts.set("ioos_category", "Other");
-            qcTestAtts.set("flag_values", "1, 2, 3, 4, 9");
-            qcTestAtts.set("flag_meanings", "PASS NOT_EVALUATED SUSPECT FAIL MISSING");
-            qcTestAtts.set("flag_method", "qartod_tests");
-            if (station.qcInfoUrl != null) {
-                qcTestAtts.set("references", station.qcInfoUrl);
-            }
-            qcTestAtts.set("comment", "11-character string with results of individual QARTOD tests. " +
-                    "1: Gap Test, 2: Syntax Test, 3: Location Test, 4: Gross Range Test, 5: Climatology Test, " +
-                    "6: Spike Test, 7: Rate of Change Test, 8: Flat-line Test, 9: Multi-variate Test, " +
-                    "10: Attenuated Signal Test, 11: Neighbor Test");
-            qcTestAtts.set("missing_value", "");
-            qcTestAtts.set("_FillValue", "");
-            String qcTestsVarName = d.prettyString() + "_qc_tests";
-            tDataVariables.add(new Object[]{"qc_tests_" + d.id, qcTestsVarName, qcTestAtts, "String"});
-
-            dvaatts.set("ancillary_variables", qcAggVarName + " " + qcTestsVarName);
         }
 
 

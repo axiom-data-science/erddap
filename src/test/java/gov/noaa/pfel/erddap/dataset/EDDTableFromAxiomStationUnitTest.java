@@ -268,6 +268,7 @@ public class EDDTableFromAxiomStationUnitTest {
 
         // check station
         assertEquals(60387, station.id);
+        assertEquals(2, station.version);
         assertEquals("42013 - C10 - WFS Central Buoy, 25m Isobath", station.label);
         assertEquals("42013-c10-wfs-central-buoy-25", station.urn);
         assertEquals("buoy", station.platformType);
@@ -407,7 +408,11 @@ public class EDDTableFromAxiomStationUnitTest {
         Object[] zVar = findVariableWithName(tDataVariables, "z");
         Attributes zVarAtts = (Attributes) zVar[2];
         assertEquals("Location", zVarAtts.getString("ioos_category"));
+        assertEquals("Z", zVarAtts.getString("long_name"));
+        assertEquals("height", zVarAtts.getString("standard_name"));
         assertEquals("up", zVarAtts.getString("positive"));
+        assertEquals("Height", zVarAtts.getString("_CoordinateAxisType"));
+        assertEquals("up", zVarAtts.getString("_CoordinateZisPositive"));
         assertDoubleEquals(-10.0, zVarAtts.get("actual_range").getDouble(0));
         assertDoubleEquals(20.0, zVarAtts.get("actual_range").getDouble(1));
 
@@ -440,6 +445,45 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("Other", airPressureQcTestsAtts.getString("ioos_category"));
         assertEquals("qartod_tests", airPressureQcTestsAtts.getString("flag_method"));
         assertEquals("ftp://ocgweb.marine.usf.edu/pub/QC_Code/", airPressureQcTestsAtts.getString("references"));
+    }
+
+
+    @Test
+    public void testV2StationDatasetMapping_forV1Station() throws Throwable {
+        Attributes tGlobalAttributes = new Attributes();
+
+        int tStationId = 18401;
+
+        ArrayList<Object[]> tDataVariables = new ArrayList<>();
+
+        // http://oikos.axds.co/rest/context
+        OikosLookups oikosLookups = mapOikosLookups();
+
+        // https://sensors.axds.co/api/metadata/filter/custom?filter=%7B%22stations%22%3A%5B%2218401%22%5D%7D
+        JSONObject json = jsonObjectFromTestResource("/v2-sensor-service-metadata-18401.json");
+
+        OikosStation station = EDDTableFromAxiomStationV2Utils.mapMetadataForOikosStation(tGlobalAttributes, tStationId, tDataVariables, oikosLookups, json);
+
+        // check station
+        assertEquals(18401, station.id);
+        assertEquals(1, station.version);
+        assertEquals("46022 - EEL RIVER - 17NM WSW of Eureka, CA", station.label);
+        assertEquals("", station.qcInfoUrl);
+
+        // check DATA VARIABLES
+
+        // time + lat + lon + z + station + 1*(num_devices=17)
+        assertEquals(22, tDataVariables.size());
+
+        Object[] airTempVar = findVariableWithName(tDataVariables, "value_352568");
+        Attributes airPressureVarAtts = (Attributes) airTempVar[2];
+        assertEquals("air_temperature", airPressureVarAtts.getString("standard_name"));
+        assertEquals(-9999.99, airPressureVarAtts.get("missing_value").getDouble(0), 0);
+        assertEquals(-9999.99, airPressureVarAtts.get("_FillValue").getDouble(0), 0);
+        // shouldn't have any qc
+        assertEquals(null, airPressureVarAtts.getString("ancillary_variables"));
+        assertEquals(0, tDataVariables.stream().filter(objects -> objects[0].equals("qc_agg_352568")).count());
+        assertEquals(0, tDataVariables.stream().filter(objects -> objects[0].equals("qc_tests_352568")).count());
     }
 
     @Test

@@ -1,0 +1,706 @@
+{
+  "request": {
+    "requestTime": "2019-07-18T23:44:31Z",
+    "filter": {
+      "id": null,
+      "uuid": null,
+      "label": null,
+      "description": null,
+      "notes": null,
+      "regionId": null,
+      "polygon": null,
+      "stations": [
+        18401
+      ],
+      "devices": [],
+      "agents": [],
+      "sources": [],
+      "parameterGroups": [],
+      "agentsBlacklist": [],
+      "parameterGroupsBlacklist": [],
+      "portalSensorFilters": [],
+      "portalIds": [],
+      "customFilter": true,
+      "v1Stations": [
+        18401
+      ]
+    },
+    "start": null,
+    "end": null,
+    "binInterval": "null",
+    "mostRecentOnly": false,
+    "includeStationVersions": "merged"
+  },
+  "results": {
+    "status": "success",
+    "messages": [
+      {
+        "type": "info",
+        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=18401&appregion=all"
+      },
+      {
+        "type": "info",
+        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22description%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B18401%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22portalSensorFilters%22:%5B%5D,%22portalIds%22:%5B%5D,%22customFilter%22:true,%22v1Stations%22:%5B18401%5D%7D"
+      }
+    ],
+    "numStations": 1,
+    "numV1Stations": 1,
+    "numV2Stations": 0,
+    "numAgents": 3,
+    "numDeviceFeeds": 17
+  },
+  "data": {
+    "messages": [
+      {
+        "type": "info",
+        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=18401&appregion=all"
+      },
+      {
+        "type": "info",
+        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22description%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B18401%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22portalSensorFilters%22:%5B%5D,%22portalIds%22:%5B%5D,%22customFilter%22:true,%22v1Stations%22:%5B18401%5D%7D"
+      }
+    ],
+    "stations": [
+      {
+        "id": 18401,
+        "version": 1,
+        "uuid": "urn:ioos:station:wmo:46022",
+        "datasetId": "wmo_46022",
+        "label": "46022 - EEL RIVER - 17NM WSW of Eureka, CA",
+        "location": {
+          "type": "Point",
+          "coordinates": [
+            -124.575,
+            40.744,
+            0.0
+          ]
+        },
+        "platformType": "buoy",
+        "publicNotice": null,
+        "feedStats": {
+          "archivePath": null,
+          "startDate": "2015-05-05T12:50:00Z",
+          "endDate": "2019-07-18T22:30:00Z",
+          "bounds": {
+            "type": "Point",
+            "coordinates": [
+              -124.575,
+              40.744
+            ]
+          },
+          "numObservations": null,
+          "medianTimeIntervalSecs": null,
+          "hasQc": false,
+          "qcInfoUrl": null
+        },
+        "affiliations": [
+          {
+            "type": "owner",
+            "agentId": 18,
+            "foreignName": "46022 - EEL RIVER - 17NM WSW of Eureka, CA",
+            "foreignUrl": "https://www.ndbc.noaa.gov/station_page.php?station=46022"
+          },
+          {
+            "type": "publisher",
+            "agentId": 18,
+            "foreignName": null,
+            "foreignUrl": null
+          },
+          {
+            "type": "affiliate",
+            "agentId": 2009,
+            "foreignName": null,
+            "foreignUrl": null
+          },
+          {
+            "type": "supporter",
+            "agentId": 233,
+            "foreignName": null,
+            "foreignUrl": null
+          }
+        ],
+        "tags": [],
+        "deviceFeedGroups": {
+          "179": [
+            352575,
+            352585,
+            352581
+          ],
+          "180": [
+            352587,
+            352579,
+            352577
+          ],
+          "6": [
+            352568
+          ],
+          "7": [
+            352574
+          ],
+          "183": [
+            411685
+          ],
+          "8": [
+            352569,
+            352571
+          ],
+          "9": [
+            352572
+          ],
+          "186": [
+            352570
+          ],
+          "29": [
+            352573
+          ],
+          "13": [
+            352583,
+            352586,
+            352588
+          ]
+        },
+        "figures": [
+          {
+            "label": "Air Temperature",
+            "parameterGroupId": 6,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Air Temperature",
+                    "plotLabel": "[default]",
+                    "deviceId": 352568,
+                    "sensorParameterId": 3,
+                    "discriminant": null,
+                    "parameterGroupId": 6,
+                    "parameterId": 3,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-01-06T10:00:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352568
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Barometric Pressure",
+            "parameterGroupId": 9,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Barometric Pressure",
+                    "plotLabel": "[default]",
+                    "deviceId": 352572,
+                    "sensorParameterId": 14,
+                    "discriminant": null,
+                    "parameterGroupId": 9,
+                    "parameterId": 14,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-07-18T20:50:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 1200,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352572
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Dew Point",
+            "parameterGroupId": 29,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Dew Point",
+                    "plotLabel": "[default]",
+                    "deviceId": 352573,
+                    "sensorParameterId": 16,
+                    "discriminant": null,
+                    "parameterGroupId": 29,
+                    "parameterId": 16,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-01-06T10:00:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 1200,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352573
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Water Temperature",
+            "parameterGroupId": 7,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Water Temperature",
+                    "plotLabel": "[default]",
+                    "deviceId": 352574,
+                    "sensorParameterId": 41,
+                    "discriminant": null,
+                    "parameterGroupId": 7,
+                    "parameterId": 41,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-07-18T22:30:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 2400,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352574
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Waves: Dominant Period",
+            "parameterGroupId": 183,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Dominant Wave Period",
+                    "plotLabel": "[default]",
+                    "deviceId": 411685,
+                    "sensorParameterId": 56,
+                    "discriminant": null,
+                    "parameterGroupId": 183,
+                    "parameterId": 56,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-08-08T13:50:00Z",
+                    "endDate": "2019-07-18T21:50:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      411685
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Waves: Height and Direction",
+            "parameterGroupId": 13,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Average Wave Period",
+                    "plotLabel": "[default]",
+                    "deviceId": 352586,
+                    "sensorParameterId": 55,
+                    "discriminant": null,
+                    "parameterGroupId": 13,
+                    "parameterId": 55,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352586
+                    ]
+                  },
+                  {
+                    "label": "Significant Wave Height",
+                    "plotLabel": "[default]",
+                    "deviceId": 352583,
+                    "sensorParameterId": 59,
+                    "discriminant": null,
+                    "parameterGroupId": 13,
+                    "parameterId": 59,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2019-07-18T21:50:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3000,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352583
+                    ]
+                  },
+                  {
+                    "label": "Wave To Direction",
+                    "plotLabel": "[default]",
+                    "deviceId": 352588,
+                    "sensorParameterId": 111,
+                    "discriminant": null,
+                    "parameterGroupId": 13,
+                    "parameterId": 111,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352588
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Waves: Swell Height and Direction",
+            "parameterGroupId": 179,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Swell Height",
+                    "plotLabel": "[default]",
+                    "deviceId": 352585,
+                    "sensorParameterId": 60,
+                    "discriminant": null,
+                    "parameterGroupId": 179,
+                    "parameterId": 60,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352585
+                    ]
+                  },
+                  {
+                    "label": "Swell Period",
+                    "plotLabel": "[default]",
+                    "deviceId": 352575,
+                    "sensorParameterId": 61,
+                    "discriminant": null,
+                    "parameterGroupId": 179,
+                    "parameterId": 61,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352575
+                    ]
+                  },
+                  {
+                    "label": "Swell Wave To Direction",
+                    "plotLabel": "[default]",
+                    "deviceId": 352581,
+                    "sensorParameterId": 62,
+                    "discriminant": null,
+                    "parameterGroupId": 179,
+                    "parameterId": 62,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352581
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Waves: Wind Wave Height and Direction",
+            "parameterGroupId": 180,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Wind Wave To Direction",
+                    "plotLabel": "[default]",
+                    "deviceId": 352579,
+                    "sensorParameterId": 64,
+                    "discriminant": null,
+                    "parameterGroupId": 180,
+                    "parameterId": 64,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352579
+                    ]
+                  },
+                  {
+                    "label": "Wind Wave Height",
+                    "plotLabel": "[default]",
+                    "deviceId": 352587,
+                    "sensorParameterId": 65,
+                    "discriminant": null,
+                    "parameterGroupId": 180,
+                    "parameterId": 65,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352587
+                    ]
+                  },
+                  {
+                    "label": "Wind Wave Period",
+                    "plotLabel": "[default]",
+                    "deviceId": 352577,
+                    "sensorParameterId": 66,
+                    "discriminant": null,
+                    "parameterGroupId": 180,
+                    "parameterId": 66,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T13:00:00Z",
+                    "endDate": "2018-05-11T07:40:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 3600,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352577
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Winds: Gusts",
+            "parameterGroupId": 186,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Wind Gust",
+                    "plotLabel": "[default]",
+                    "deviceId": 352570,
+                    "sensorParameterId": 7,
+                    "discriminant": null,
+                    "parameterGroupId": 186,
+                    "parameterId": 7,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-07-18T22:30:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 1200,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352570
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "label": "Winds: Speed and Direction",
+            "parameterGroupId": 8,
+            "plots": [
+              {
+                "label": "[default]",
+                "subPlots": [
+                  {
+                    "label": "Wind Speed",
+                    "plotLabel": "[default]",
+                    "deviceId": 352569,
+                    "sensorParameterId": 5,
+                    "discriminant": null,
+                    "parameterGroupId": 8,
+                    "parameterId": 5,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-07-18T22:30:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 1200,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352569
+                    ]
+                  },
+                  {
+                    "label": "Wind From Direction",
+                    "plotLabel": "[default]",
+                    "deviceId": 352571,
+                    "sensorParameterId": 6,
+                    "discriminant": null,
+                    "parameterGroupId": 8,
+                    "parameterId": 6,
+                    "unitId": null,
+                    "units": null,
+                    "startDate": "2015-05-05T12:50:00Z",
+                    "endDate": "2019-07-18T20:50:00Z",
+                    "minZ": 0.0,
+                    "maxZ": 0.0,
+                    "minVal": null,
+                    "maxVal": null,
+                    "numObservations": null,
+                    "medianTimeIntervalSecs": 1200,
+                    "hasQc": false,
+                    "qcConfigId": null,
+                    "feeds": [
+                      352571
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "agents": [
+      {
+        "id": 2009,
+        "label": "World Meteorological Organization (WMO)",
+        "url": "https://www.wmo.int/pages/prog/amp/mmop/wmo-number-rules.html",
+        "type": "other"
+      },
+      {
+        "id": 233,
+        "label": "Northwest Association of Networked Ocean Observing Systems (NANOOS)",
+        "url": "http://www.nanoos.org/",
+        "type": "ioos_ra"
+      },
+      {
+        "id": 18,
+        "label": "NOAA National Data Buoy Center (NDBC)",
+        "url": "http://www.ndbc.noaa.gov/",
+        "type": "gov_federal"
+      }
+    ],
+    "qcConfigs": []
+  }
+}
