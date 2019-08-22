@@ -1,6 +1,6 @@
 {
   "request": {
-    "requestTime": "2019-07-18T23:44:31Z",
+    "requestTime": "2019-08-20T19:25:14Z",
     "filter": {
       "id": null,
       "uuid": null,
@@ -19,11 +19,7 @@
       "agentsBlacklist": [],
       "parameterGroupsBlacklist": [],
       "portalSensorFilters": [],
-      "portalIds": [],
-      "customFilter": true,
-      "v1Stations": [
-        18401
-      ]
+      "customFilter": true
     },
     "start": null,
     "end": null,
@@ -36,11 +32,11 @@
     "messages": [
       {
         "type": "info",
-        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=18401&appregion=all"
+        "message": "POST https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&jsoncallback=false"
       },
       {
         "type": "info",
-        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22description%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B18401%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22portalSensorFilters%22:%5B%5D,%22portalIds%22:%5B%5D,%22customFilter%22:true,%22v1Stations%22:%5B18401%5D%7D"
+        "message": "POST https://oikos.axds.co/rest/sensors/filter/custom"
       }
     ],
     "numStations": 1,
@@ -53,13 +49,14 @@
     "messages": [
       {
         "type": "info",
-        "message": "https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&verbose=true&version=3&jsoncallback=false&realtimeonly=false&stationids=18401&appregion=all"
+        "message": "POST https://sensors.axds.co/stationsensorservice/getDataValues?method=GetStationsResultSetRowsJSON&jsoncallback=false"
       },
       {
         "type": "info",
-        "message": "https://oikos.axds.co/rest/sensors/filter/custom?filter=%7B%22id%22:null,%22uuid%22:null,%22label%22:null,%22description%22:null,%22notes%22:null,%22regionId%22:null,%22polygon%22:null,%22stations%22:%5B18401%5D,%22devices%22:%5B%5D,%22agents%22:%5B%5D,%22sources%22:%5B%5D,%22parameterGroups%22:%5B%5D,%22agentsBlacklist%22:%5B%5D,%22parameterGroupsBlacklist%22:%5B%5D,%22portalSensorFilters%22:%5B%5D,%22portalIds%22:%5B%5D,%22customFilter%22:true,%22v1Stations%22:%5B18401%5D%7D"
+        "message": "POST https://oikos.axds.co/rest/sensors/filter/custom"
       }
     ],
+    "deviceFeeds": [],
     "stations": [
       {
         "id": 18401,
@@ -80,7 +77,7 @@
         "feedStats": {
           "archivePath": null,
           "startDate": "2015-05-05T12:50:00Z",
-          "endDate": "2019-07-18T22:30:00Z",
+          "endDate": "2019-08-20T17:50:00Z",
           "bounds": {
             "type": "Point",
             "coordinates": [
@@ -120,45 +117,6 @@
           }
         ],
         "tags": [],
-        "deviceFeedGroups": {
-          "179": [
-            352575,
-            352585,
-            352581
-          ],
-          "180": [
-            352587,
-            352579,
-            352577
-          ],
-          "6": [
-            352568
-          ],
-          "7": [
-            352574
-          ],
-          "183": [
-            411685
-          ],
-          "8": [
-            352569,
-            352571
-          ],
-          "9": [
-            352572
-          ],
-          "186": [
-            352570
-          ],
-          "29": [
-            352573
-          ],
-          "13": [
-            352583,
-            352586,
-            352588
-          ]
-        },
         "figures": [
           {
             "label": "Air Temperature",
@@ -177,6 +135,7 @@
                     "parameterId": 3,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "air_temperature",
                     "startDate": "2015-05-05T12:50:00Z",
                     "endDate": "2019-01-06T10:00:00Z",
                     "minZ": 0.0,
@@ -212,8 +171,9 @@
                     "parameterId": 14,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "air_pressure",
                     "startDate": "2015-05-05T12:50:00Z",
-                    "endDate": "2019-07-18T20:50:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
@@ -247,6 +207,7 @@
                     "parameterId": 16,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "dew_point_temperature",
                     "startDate": "2015-05-05T12:50:00Z",
                     "endDate": "2019-01-06T10:00:00Z",
                     "minZ": 0.0,
@@ -282,8 +243,9 @@
                     "parameterId": 41,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_water_temperature",
                     "startDate": "2015-05-05T12:50:00Z",
-                    "endDate": "2019-07-18T22:30:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
@@ -317,8 +279,9 @@
                     "parameterId": 56,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_dominant_wave_period",
                     "startDate": "2015-08-08T13:50:00Z",
-                    "endDate": "2019-07-18T21:50:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
@@ -352,6 +315,7 @@
                     "parameterId": 55,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_wave_mean_period",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -376,8 +340,9 @@
                     "parameterId": 59,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_wave_significant_height",
                     "startDate": "2015-05-05T13:00:00Z",
-                    "endDate": "2019-07-18T21:50:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
@@ -400,6 +365,7 @@
                     "parameterId": 111,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_wave_to_direction",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -435,6 +401,7 @@
                     "parameterId": 60,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_swell_wave_significant_height",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -459,6 +426,7 @@
                     "parameterId": 61,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_swell_wave_period",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -483,6 +451,7 @@
                     "parameterId": 62,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_swell_wave_to_direction",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -518,6 +487,7 @@
                     "parameterId": 64,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_wind_wave_to_direction",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -542,6 +512,7 @@
                     "parameterId": 65,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_wind_wave_significant_height",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -566,6 +537,7 @@
                     "parameterId": 66,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "sea_surface_wind_wave_period",
                     "startDate": "2015-05-05T13:00:00Z",
                     "endDate": "2018-05-11T07:40:00Z",
                     "minZ": 0.0,
@@ -601,8 +573,9 @@
                     "parameterId": 7,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "wind_speed_of_gust",
                     "startDate": "2015-05-05T12:50:00Z",
-                    "endDate": "2019-07-18T22:30:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
@@ -636,8 +609,9 @@
                     "parameterId": 5,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "wind_speed",
                     "startDate": "2015-05-05T12:50:00Z",
-                    "endDate": "2019-07-18T22:30:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
@@ -660,8 +634,9 @@
                     "parameterId": 6,
                     "unitId": null,
                     "units": null,
+                    "datasetVariableId": "wind_from_direction",
                     "startDate": "2015-05-05T12:50:00Z",
-                    "endDate": "2019-07-18T20:50:00Z",
+                    "endDate": "2019-08-20T17:50:00Z",
                     "minZ": 0.0,
                     "maxZ": 0.0,
                     "minVal": null,
