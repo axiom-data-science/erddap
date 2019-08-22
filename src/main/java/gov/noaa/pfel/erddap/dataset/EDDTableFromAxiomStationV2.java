@@ -160,6 +160,7 @@ class OikosSensorParameter {
 class OikosDevice {
 
     public int id;
+    public String datasetVariableId;
     public String discriminant;
     public OikosSensorParameter sp;
     public double minZ;
@@ -169,60 +170,26 @@ class OikosDevice {
 
         double minZ = j.getDouble("minZ");
         double maxZ = j.getDouble("maxZ");
+        String datasetVariableId = j.getString("datasetVariableId");
         String discriminant = j.get("discriminant") == JSONObject.NULL ? "" : j.getString("discriminant");
 
         return new OikosDevice(j.getInt("deviceId"),
                 sensorParameterMap.get(j.getInt("sensorParameterId")),
+                datasetVariableId,
                 discriminant,
                 minZ,
                 maxZ);
     }
 
-    public OikosDevice(int id, OikosSensorParameter sp, String discriminant, double minZ, double maxZ) {
+    public OikosDevice(int id, OikosSensorParameter sp, String datasetVariableId, String discriminant, double minZ, double maxZ) {
         this.id = id;
         this.sp = sp;
+        this.datasetVariableId = datasetVariableId;
         this.discriminant = discriminant;
         this.minZ = minZ;
         this.maxZ = maxZ;
     }
 
-    private static String cleanup(String str) {
-        if (str == null || str.isEmpty()) {
-            return str;
-        }
-        return str.toLowerCase()
-                .replaceAll(" ", "_")
-                .replaceAll("[^a-zA-Z0-9_]", "_");
-    }
-
-    public String prettyString() {
-        StringBuilder sb = new StringBuilder();
-
-        if (this.sp.parameter.name.equals("depth")) {
-            sb.append("depth_reading");
-        } else {
-            sb.append(cleanup(this.sp.parameter.name));
-        }
-
-        if (!this.sp.cellMethods.isEmpty()) {
-            sb.append("_cm_");
-            sb.append(cleanup(this.sp.cellMethods));
-        }
-        if (!this.sp.interval.isEmpty()) {
-            sb.append("_over_");
-            sb.append(cleanup(this.sp.interval));
-        }
-        if (!this.sp.verticalDatum.isEmpty()) {
-            sb.append("_geoid_");
-            sb.append(cleanup(this.sp.verticalDatum));
-        }
-        if (!this.discriminant.isEmpty()) {
-            sb.append("_");
-            sb.append(cleanup(this.discriminant));
-        }
-
-        return sb.toString();
-    }
 }
 
 class OikosAgent {
@@ -296,6 +263,7 @@ class OikosStation {
     public String urn;
     public String wmoId;
     public String platformType;
+    public boolean hasQc;
     public String qcInfoUrl;
     public double latitude;
     public double longitude;
@@ -328,6 +296,7 @@ class OikosStation {
         int startDate = secondsSinceEpochFromUTCString(stats.getString("startDate"));
         int endDate = secondsSinceEpochFromUTCString(stats.getString("endDate"));
 
+        boolean hasQc = stats.getBoolean("hasQc");
         String qcInfoUrl = stats.isNull("qcInfoUrl") ? "" : stats.getString("qcInfoUrl");
 
         String archivePath = stats.isNull("archivePath") ? "" : stats.getString("archivePath");
@@ -374,6 +343,7 @@ class OikosStation {
                 j.getString("uuid"),
                 wmoId,
                 j.getString("platformType"),
+                hasQc,
                 qcInfoUrl,
                 latitude,
                 longitude,
@@ -397,7 +367,8 @@ class OikosStation {
         return this.devices.stream().filter(d -> d.id == deviceId).findFirst().orElseGet(null);
     }
 
-    public OikosStation(int id, int version, String label, String urn, String wmoId, String platformType, String qcInfoUrl,
+    public OikosStation(int id, int version, String label, String urn, String wmoId, String platformType,
+                        boolean hasQc, String qcInfoUrl,
                         double latitude, double longitude,
                         int startDate, int endDate, double minZ, double maxZ,
                         String archivePath, boolean submitToNdbc, OikosStationAgentAffiliation creator,
@@ -410,6 +381,7 @@ class OikosStation {
         this.urn = urn;
         this.wmoId = wmoId;
         this.platformType = platformType;
+        this.hasQc = hasQc;
         this.qcInfoUrl = qcInfoUrl;
         this.latitude = latitude;
         this.longitude = longitude;
@@ -720,12 +692,12 @@ class EDDTableFromAxiomStationV2Utils {
                 dvaatts.set("gts_ingest", "true");
             }
 
-            tDataVariables.add(new Object[]{"value_" + d.id, d.prettyString(), dvaatts, "double"});
-            cdm_timeseries_variables.add(d.prettyString());
+            tDataVariables.add(new Object[]{"value_" + d.id, d.datasetVariableId, dvaatts, "double"});
+            cdm_timeseries_variables.add(d.datasetVariableId);
 
             // QARTOD (V2 only)
             // See Appendix B in https://cdn.ioos.noaa.gov/media/2017/12/QARTOD-Data-Flags-Manual_Final_version1.1.pdf
-            if (station.version == 2) {
+            if (station.hasQc) {
                 Attributes qcAggAtts = new Attributes();
                 qcAggAtts.set("standard_name", variableStandardName + " status_flag");
                 qcAggAtts.set("long_name", d.sp.parameter.label + " QARTOD Aggregate Flag");
@@ -738,7 +710,7 @@ class EDDTableFromAxiomStationV2Utils {
                 }
                 qcAggAtts.set("missing_value", 9);
                 qcAggAtts.set("_FillValue", 9);
-                String qcAggVarName = d.prettyString() + "_qc_agg";
+                String qcAggVarName = d.datasetVariableId + "_qc_agg";
                 tDataVariables.add(new Object[]{"qc_agg_" + d.id, qcAggVarName, qcAggAtts, "int"});
 
                 Attributes qcTestAtts = new Attributes();
@@ -757,7 +729,7 @@ class EDDTableFromAxiomStationV2Utils {
                         "10: Attenuated Signal Test, 11: Neighbor Test");
                 qcTestAtts.set("missing_value", "");
                 qcTestAtts.set("_FillValue", "");
-                String qcTestsVarName = d.prettyString() + "_qc_tests";
+                String qcTestsVarName = d.datasetVariableId + "_qc_tests";
                 tDataVariables.add(new Object[]{"qc_tests_" + d.id, qcTestsVarName, qcTestAtts, "String"});
 
                 dvaatts.set("ancillary_variables", qcAggVarName + " " + qcTestsVarName);

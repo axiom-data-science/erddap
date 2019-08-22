@@ -115,52 +115,6 @@ public class EDDTableFromAxiomStationUnitTest {
     }
 
     @Test
-    public void oikosDeviceV1PrettyString() throws IOException, URISyntaxException {
-        OikosLookups oikosLookups = mapOikosLookups();
-
-        OikosEnhancedParameter waterLevel_noDatum = epFrom(oikosLookups.sensorParameterMap.get(46));
-        OikosEnhancedParameter waterLevel_navd88 = epFrom(oikosLookups.sensorParameterMap.get(280));
-        OikosEnhancedParameter waterLevel_localDatum = epFrom(oikosLookups.sensorParameterMap.get(352));
-        OikosEnhancedParameter cdom_mean = epFrom(oikosLookups.sensorParameterMap.get(346));
-
-        assertEquals("sea_surface_height_above_sea_level", devicePrettyString(waterLevel_noDatum, ""));
-        assertEquals("sea_surface_height_above_sea_level_pier_1", devicePrettyString(waterLevel_noDatum, "pier 1"));
-        assertEquals("sea_surface_height_above_sea_level_geoid_navd88", devicePrettyString(waterLevel_navd88, ""));
-        assertEquals("sea_surface_height_above_sea_level_geoid_local_station_datum", devicePrettyString(waterLevel_localDatum, ""));
-        assertEquals("colored_dissolved_organic_matter_cm_time_mean_over_pt6m", devicePrettyString(cdom_mean, ""));
-    }
-
-    private static OikosEnhancedParameter epFrom(OikosSensorParameter sp) {
-        return new OikosEnhancedParameter(sp.id, sp.parameter, sp.cellMethods, sp.interval, sp.verticalDatum);
-    }
-
-    private static String devicePrettyString(OikosEnhancedParameter ep, String discriminant) {
-        OikosDeviceV1 device = new OikosDeviceV1(123, ep, discriminant, 0.0, 0.0);
-        return device.prettyString();
-    }
-
-    @Test
-    public void oikosDevicePrettyString() throws IOException, URISyntaxException {
-        OikosLookups oikosLookups = mapOikosLookups();
-
-        OikosSensorParameter waterLevel_noDatum = oikosLookups.sensorParameterMap.get(46);
-        OikosSensorParameter waterLevel_navd88 = oikosLookups.sensorParameterMap.get(280);
-        OikosSensorParameter waterLevel_localDatum = oikosLookups.sensorParameterMap.get(352);
-        OikosSensorParameter cdom_mean = oikosLookups.sensorParameterMap.get(346);
-
-        assertEquals("sea_surface_height_above_sea_level", devicePrettyString(waterLevel_noDatum, ""));
-        assertEquals("sea_surface_height_above_sea_level_pier_1", devicePrettyString(waterLevel_noDatum, "pier 1"));
-        assertEquals("sea_surface_height_above_sea_level_geoid_navd88", devicePrettyString(waterLevel_navd88, ""));
-        assertEquals("sea_surface_height_above_sea_level_geoid_local_station_datum", devicePrettyString(waterLevel_localDatum, ""));
-        assertEquals("colored_dissolved_organic_matter_cm_time__mean_over_pt6m", devicePrettyString(cdom_mean, ""));
-    }
-
-    private static String devicePrettyString(OikosSensorParameter sp, String discriminant) {
-        OikosDevice device = new OikosDevice(123, sp, discriminant, 0.0, 0.0);
-        return device.prettyString();
-    }
-
-    @Test
     public void testV1StationMetadataMapping() throws Throwable {
         Attributes tGlobalAttributes = new Attributes();
         String tLocalSourceUrl = "https://sensors.axds.co/stationsensorservice/";
@@ -270,13 +224,14 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals(60387, station.id);
         assertEquals(2, station.version);
         assertEquals("42013 - C10 - WFS Central Buoy, 25m Isobath", station.label);
-        assertEquals("42013-c10-wfs-central-buoy-25", station.urn);
+        assertEquals("edu_usf_marine_comps_c10", station.urn);
         assertEquals("buoy", station.platformType);
+        assertEquals(true, station.hasQc);
         assertEquals("ftp://ocgweb.marine.usf.edu/pub/QC_Code/", station.qcInfoUrl);
         assertDoubleEquals(27.173, station.latitude);
         assertDoubleEquals(-82.924, station.longitude);
         assertEquals(1513015500, station.startDate);
-        assertEquals(1539898499, station.endDate);
+        assertEquals(1566326100, station.endDate);
         assertDoubleEquals(-10.0, station.minZ);
         assertDoubleEquals(20.0, station.maxZ);
         assertEquals(13, station.devices.size());
@@ -304,7 +259,7 @@ public class EDDTableFromAxiomStationUnitTest {
         // check GLOBAL ATTRIBUTES
 
         assertEquals("42013 - C10 - WFS Central Buoy, 25m Isobath", tGlobalAttributes.getString("title"));
-        assertEquals("Timeseries data from '42013 - C10 - WFS Central Buoy, 25m Isobath' (42013-c10-wfs-central-buoy-25)", tGlobalAttributes.getString("summary"));
+        assertEquals("Timeseries data from '42013 - C10 - WFS Central Buoy, 25m Isobath' (edu_usf_marine_comps_c10)", tGlobalAttributes.getString("summary"));
 
         assertEquals("com.axiomdatascience", tGlobalAttributes.getString("naming_authority"));
         assertEquals("60387", tGlobalAttributes.getString("id"));
@@ -378,7 +333,7 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("Identifier", stationVarAtts.getString("ioos_category"));
         assertEquals("timeseries_id", stationVarAtts.getString("cf_role"));
         assertEquals("42013 - C10 - WFS Central Buoy, 25m Isobath", stationVarAtts.getString("long_name"));
-        assertEquals("42013-c10-wfs-central-buoy-25", stationVarAtts.getString("short_name"));
+        assertEquals("edu_usf_marine_comps_c10", stationVarAtts.getString("short_name"));
         assertEquals("buoy", stationVarAtts.getString("type"));
 
         // check DATA VARIABLES
@@ -391,7 +346,7 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("seconds since 1970-01-01T00:00:00", timeVarAtts.getString("units"));
         assertEquals("Time", timeVarAtts.getString("ioos_category"));
         assertEquals(1513015500, timeVarAtts.get("actual_range").getInt(0));
-        assertEquals(1539898499, timeVarAtts.get("actual_range").getInt(1));
+        assertEquals(1566326100, timeVarAtts.get("actual_range").getInt(1));
 
         Object[] latVar = findVariableWithName(tDataVariables, "lat");
         Attributes latVarAtts = (Attributes) latVar[2];
@@ -446,7 +401,6 @@ public class EDDTableFromAxiomStationUnitTest {
         assertEquals("qartod_tests", airPressureQcTestsAtts.getString("flag_method"));
         assertEquals("ftp://ocgweb.marine.usf.edu/pub/QC_Code/", airPressureQcTestsAtts.getString("references"));
     }
-
 
     @Test
     public void testV2StationDatasetMapping_forV1Station() throws Throwable {
