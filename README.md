@@ -12,21 +12,21 @@
 
 2. Import project into IntelliJ as a `Maven Project`
    * Note: you will get compile errors because there are some files in this project that should be excluded (see the pom.xml). In the Build Messages window, right-click files with errors and choose `Exclude from Compile`.
-3. Install BitStreamVera fonts (see http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html)
-5. Setup the default ERDDAP content using erddapContent.zip (see http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html).  Copy files into `/data/erddap/content`.
-6. Edit the setup.xml file, using `setup.example.xml` as a basis.
+3. Install DejaVu fonts (see http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html)
+4. Setup the default ERDDAP content using erddapContent.zip (see http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html).  Copy files into `/data/erddap/content`.
+5. Edit the setup.xml file, using `setup.example.xml` as a basis.
 
 #### Axiom changes
 
 Axiom specific code is in:
- 
+
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService.java`
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation.java`
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStationV2.java`
 
 #### Testing (JUnit)
 
-To test this package, you can run JUnit tests in `src/test/java`. 
+To test this package, you can run JUnit tests in `src/test/java`.
 
 ##### Unit Tests
 
@@ -34,10 +34,10 @@ Unit tests can just be run like normal (within your IDE).
 
 ##### Integration Tests
 
-Integration tests are more annoying, because everything in this project is static and has no dependency injection. 
+Integration tests are more annoying, because everything in this project is static and has no dependency injection.
 
 Before running integration tests, make sure you have the project set up as explained above.
- 
+
 Also, in `pom.xml`, remove the line `<scope>provided</scope>` under `<groupId>javax.servlet</groupId>`, and the line `<scope>test</scope>` under `<groupId>junit</groupId>`.
 
 Then run on the command line with:
@@ -88,7 +88,7 @@ docker run --name erddap-axiom \
 
 Wait for it to start up, then go to http://localhost:8080/erddap/index.html
 
-Also, check out the [erddap-docker ansible role](http://git.axiom/axiom/ansible-playbook-servers/blob/master/roles/erddap-docker/tasks/main.yml) 
+Also, check out the [erddap-docker ansible role](http://git.axiom/axiom/ansible-playbook-servers/blob/master/roles/erddap-docker/tasks/main.yml)
 to see how ERDDAP is run in our datacenter.
 
 ### Syncing upstream
@@ -122,6 +122,7 @@ Add back in to EDD.java:
 ```java
 if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(erddap, xmlReader);
 if (type.equals("EDDTableFromAxiomStation")) return EDDTableFromAxiomStation.fromXml(erddap, xmlReader);
-if (type.equals("EDDTableFromAxiomStationV2")) return EDDTableFromAxiomStation.fromXml(erddap, xmlReader);
+if (type.equals("EDDTableFromAxiomStationV1")) return EDDTableFromAxiomStationV1.fromXml(erddap, xmlReader);
+if (type.equals("EDDTableFromAxiomStationV2")) return EDDTableFromAxiomStationV2.fromXml(erddap, xmlReader);
 ```
 

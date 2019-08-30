@@ -9,6 +9,7 @@ import com.cohort.util.String2;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.erddap.Erddap;
+import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.variable.EDV;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -995,19 +996,49 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
     }
 
     public EDDTableFromAxiomStationV2(EDDTableFromAxiomStationV2Shim d) throws Throwable {
-        super("EDDTableFromAxiomStationV2", d.tDatasetID,
-                null, null,
-                null, null, null,
-                d.tSosOfferingPrefix,
-                d.tDefaultDataQuery, d.tDefaultGraphQuery,
-                d.tGlobalAttributes,
-                d.ttDataVariables,
-                d.tReloadEveryNMinutes,
-                d.tUpdateEveryNMillis, d.archiveDir, d.archiveName, d.tRecursive,
-                d.tPathRegex, d.tMetadataFrom, null,
-                d.tColumnNamesRow, d.tFirstDataRow, null,
-                null, null, null, null, null, null, false,
-                false, true, false);
+
+
+
+        super(
+            "EDDTableFromAxiomStationV2",
+            d.tDatasetID,           // String tDatasetID
+            null,                   // String tAccessibleTo
+            null,                   // String tGraphsAccessibleTo
+            null,                   // StringArray tOnChange
+            null,                   // String tFgdcFile
+            null,                   // String tIso19115File
+            d.tSosOfferingPrefix,   // String tSosOfferingPrefix
+            d.tDefaultDataQuery,    // String tDefaultDataQuery
+            d.tDefaultGraphQuery,   // String tDefaultGraphQuery
+            d.tGlobalAttributes,    // Attributes tAddGlobalAttributes
+            d.ttDataVariables,      // Object[][] tDataVariables
+            d.tReloadEveryNMinutes, // int tReloadEveryNMinutes
+            d.tUpdateEveryNMillis,  // int tUpdateEveryNMillis
+            d.archiveDir,           // String tFileDir
+            d.archiveName,          // String tFileNameRegex
+            d.tRecursive,           // boolean tRecursive
+            d.tPathRegex,           // String tPathRegex
+            d.tMetadataFrom,        // String tMetadataFrom
+            null,                   // String tCharset
+            d.tColumnNamesRow,      // int tColumnNamesRow
+            d.tFirstDataRow,        // int tFirstDataRow
+            null,                   // String tColumnSeparator
+            null,                   // String tPreExtractRegex
+            null,                   // String tPostExtractRegex
+            null,                   // String tExtractRegex
+            null,                   // String tColumnNameForExtract
+            null,                   // String tSortedColumnSourceName
+            null,                   // String tSortFilesBySourceNames
+            false,                  // boolean tSourceNeedsExpandedFP_EQ
+            false,                  // boolean tFileTableInMemory
+            true,                   // boolean tAccessibleViaFiles
+            false,                  // boolean tRemoveMVRows
+            0,                      // int tStandardizeWhat
+            EDStatic.nTableThreads, // int tNThreads
+            null,                   // String tCacheFromUrl
+            -1,                     // int tCacheSizeGB
+            null                    // String tCachePartialPathRegex
+        );
     }
 
     @Override
