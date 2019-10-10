@@ -1,16 +1,21 @@
 # ERDDAP - Development Codebase
 
-This is an alternative codebase of the [ERDDAP project](https://github.com/BobSimons/erddap) optimized for software development. If you have questions, issues or comments about the ERDDAP codebase in general, please use the official repository. If you have questions or commments about an ERDDAP installation please see the excellent [ERDDAP documentation](https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html) and/or the [ERDDAP forum](https://groups.google.com/forum/#!forum/erddap).
+This is an alternative codebase of the [ERDDAP project](https://github.com/BobSimons/erddap) optimized for software development. If you have questions, issues or comments about the ERDDAP codebase in general, please use the official repository. If you have questions or commments about an ERDDAP installation please see the excellent [ERDDAP documentation](https://coastwatch.pfeg.noaa.gov/erddap/download/setup.html) and/or the [ERDDAP forum](https://groups.google.com/forum/#!forum/erddap). If you are not creating your own custom ERDDAP access classes or debugging the ERDDAP codebase then this repository probably isn't for you!
 
+This aims to be a complete drop-in replacement for ERDDAP. Users should notice no differences when running this version and upstream aside from what is documented below. We ([Axiom Data Science](https://axiomdatascience.com)) have been maintaining this and running it in production since 2014.
 
 ## Changes to ERDDAP
 
-This aims to be a complete drop-in replacement for ERDDAP and we ([Axiom Data Science](https://axiomdatascience.com)) have been running this in production since 2017. The only difference is the ERDDAP version will appear different on your installation in the bottom left of the ERDDAP website. If you run the `2.02` version of ERDDAP, instead of the typical `ERDDAP, Version 2.02` you will see `ERDDAP, Version 2.02_axiom-r1` where `r1` is a release from this codebase of a specific version fo ERDDAP.
+### ERDDAP Version
 
-If you are not creating your own custom ERDDAP access classes or debugging the ERDDAP codebase then this repository probably isn't for you!
+The ERDDAP version will appear different on your installation in the bottom left of the ERDDAP website. If you run the `2.02` version of ERDDAP, instead of the typical `ERDDAP, Version 2.02` you will see `ERDDAP, Version 2.02_axiom-r1` where `r1` is a release of this codebase of a specific version fo ERDDAP.
+
+### Custom Classes
 
 This repository contains some extra dataset access classes. If you are developing a dataset access class and would like it included in this repository please submit a PR! We are happy to be a holding place until your class can be flushed out, tested, and integrated upstream into the ERDDAP codebase.
  
+Examples:
+
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService.java`
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation.java`
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStationV2.java`
