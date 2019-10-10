@@ -29,5 +29,8 @@ RUN cd /app && \
     cd ${CATALINA_HOME} && \
     rm -rf /app
 
+# Add big files
+ADD https://github.com/BobSimons/erddap/raw/master/WEB-INF/ref/etopo1_ice_g_i2.bin ${CATALINA_HOME}/webapps/erddap/WEB-INF/ref/
+
 EXPOSE 8080
 CMD ["catalina.sh", "run"]

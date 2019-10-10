@@ -8,3 +8,4 @@ WebContent/*
 README.html
 .idea/
 erddap.iml
+src/main/webapp/WEB-INF/ref/etopo1_ice_g_i2.bin

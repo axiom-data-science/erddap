@@ -45,6 +45,7 @@ Instructions are intended for for IntelliJ IDEA unless otherwise noted.
 
 6. Edit `/data/erddap/content/erddap/setup.xml` using `setup.example.xml` as a basis.
 
+7. Download the [etopo](https://github.com/BobSimons/erddap/raw/master/WEB-INF/ref/etopo1_ice_g_i2.bin) dataset and save the file to `src/main/webapp/WEB-INF/ref/`. This file is larger than GitHub will allow and introducing `git-lfs` into this repository wasn't desired. This download should be added as a step in the Maven build process instead of being a manual step... PR accepted!
 
 ## Testing
 
@@ -190,6 +191,6 @@ After an ERDDAP release we will make our best effort to sync this repository wit
     * `Dockerfile`
     * `README.md`
     * `src/main/java/gov/noaa/pfel/erddap/util/EDStatic.java`
+    * `run-integration-tests.sh`
 
 15. Send a Pull Request for the new version!
-
