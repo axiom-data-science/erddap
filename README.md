@@ -124,14 +124,14 @@ After an ERDDAP release we will make our best effort to sync this repository wit
 
 2. Get an adult beverage
 
-3. Look at changes to the `lib/*.jar` directory in ERDDAP and unzip and inspect the `MANIFEST` for each jar that changed. Inside that `MANIFEST` is a version number. Update the `pom.xml` with the new version number. Any new `.jar` files will need a new library record in `pom.xml`.
-
-4. Clone the upstream ERDDAP
+3. Clone the upstream ERDDAP
     ```
     git clone https://github.com/BobSimons/erddap.git
     cd erddap
     export ERDDAP_UPSTREAM_ROOT=$(pwd)
     ```
+
+4. Look at changes to the `lib/*.jar` directory in ERDDAP since the last release (`git log [previous_version] [new_version]`) and unzip and inspect the `MANIFEST` for each jar that changed. Inside that `MANIFEST` is a version number. Update the `pom.xml` with the new version number. Any new `.jar` files will need a new library record in `pom.xml`.
 
 5. Clone this repo in a different directory
     ```
@@ -146,14 +146,25 @@ After an ERDDAP release we will make our best effort to sync this repository wit
     git checkout -b [new_version]
     ```
 
-7. Run the python sync script (required python >= 3.5).
+7. Edit the `move_changed.py` script
+
+    Change the `previous_version` and `new_version` to either `git` tags or commit hashes you want to migrate from. Usually `new_version` would be `HEAD` and you would change `previous_version` to the release tag you are migrating this repository from.
+
+    For example, when 2.03 is released, one might do this:
+
+    ```python
+    previous_version = '2.02'
+    new_version = 'HEAD'
+    ```
+
+8. Run the python sync script (required python >= 3.5).
     ```
     python move_changed.py
     ```
 
-8. Read the output of `move_changed.py` and **do what it says**!
+9. Read the output of `move_changed.py` and **do what it says**!
 
-9. Add back in to `EDD.java` any custom dataset classes this repository contains:
+10. Add back in to `EDD.java` any custom dataset classes this repository contains:
     ```java
     ...
     if (type.equals("EDDTableFromAxiomSensorCSVService")) return EDDTableFromAxiomSensorCSVService.fromXml(erddap, xmlReader);
@@ -163,17 +174,17 @@ After an ERDDAP release we will make our best effort to sync this repository wit
     ...
     ```
 
-10. Copy over the new `erddapContent.zip` from [here](http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html).
+11. Copy over the new `erddapContent.zip` from [here](http://coastwatch.pfeg.noaa.gov/erddap/download/setup.html).
 
-11. Make any changes required to get ERDDAP to compile. This used to take me an entire day, but now it's down to an hour or two.
+12. Make any changes required to get ERDDAP to compile. This used to take me an entire day, but now it's down to an hour or two.
 
-12. Run tests as needed
+13. Run tests as needed
 
-13. Change the version of ERDDAP in:
+14. Change the version of ERDDAP in:
     * `pom.xml`
     * `Dockerfile`
     * `README.md`
     * `src/main/java/gov/noaa/pfel/erddap/util/EDStatic.java`
 
-14. Send a Pull Request for the new version!
+15. Send a Pull Request for the new version!
 
