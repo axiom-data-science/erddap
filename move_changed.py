@@ -10,12 +10,12 @@ import subprocess
 dev = os.environ['ERDDAP_DEV_ROOT']
 upstream = os.environ['ERDDAP_UPSTREAM_ROOT']
 
-files = subprocess.run(['git', 'diff', '--name-status', 'HEAD~1', 'HEAD'], stdout=subprocess.PIPE, cwd=upstream)
-for code, contents in [ x.split('\t', maxsplit=2) for x in files.stdout.decode('utf-8').split('\n') if x ]:
+files = subprocess.run(['git', 'diff', '--name-status', '8a1e8e7', 'HEAD'], stdout=subprocess.PIPE, cwd=upstream)
+for code, contents in [ x.split('\t', maxsplit=1) for x in files.stdout.decode('utf-8').split('\n') if x ]:
 
     if code == 'D':
         print('{} was deleted, please remove manually'.format(contents))
-    elif code == 'R':
+    elif code.startswith('R'):
         print('{} was renamed, please rename manually.'.format(contents))
     elif code == 'C':
         print('{} was copied onto another, please perform manually'.format(contents))
@@ -23,7 +23,7 @@ for code, contents in [ x.split('\t', maxsplit=2) for x in files.stdout.decode('
         filename = os.path.basename(contents)
         new_path = None
         if contents.startswith('download/'):
-            continue
+            new_path = contents.replace('download/', os.path.join(dev, 'src/main/webapp/download/'), 1)
         elif contents.startswith('WEB-INF/classes/'):
             new_path = contents.replace('WEB-INF/classes/', os.path.join(dev, 'src/main/java/'), 1)
         elif contents.startswith('WEB-INF/images/'):
@@ -39,7 +39,7 @@ for code, contents in [ x.split('\t', maxsplit=2) for x in files.stdout.decode('
             except OSError:
                 pass  # exists
             old_path = os.path.join(upstream, contents)
-            print('{} -> {}'.format(contents, new_path))
+            #print('{} -> {}'.format(contents, new_path))
             shutil.copy2(old_path, new_path)
 
     else:

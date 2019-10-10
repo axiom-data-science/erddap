@@ -1,4 +1,4 @@
-FROM axiom/docker-erddap:1.82
+FROM axiom/docker-erddap:2.02
 MAINTAINER Kyle Wilcox <kyle@axiomdatascience.com>
 
 ENV MAVEN_VERSION 3.3.9
@@ -20,7 +20,7 @@ RUN cd / && \
     JAVA_HOME=${JDK_HOME} /mvn/apache-maven-$MAVEN_VERSION/bin/mvn package dependency:go-offline --fail-never --also-make
 
 # Install ERDDAP WAR
-ENV AXIOM_ERDDAP_VERSION 1.82_axiom-r1
+ENV AXIOM_ERDDAP_VERSION 2.02_axiom-r1
 COPY . /app
 RUN cd /app && \
     JAVA_HOME=${JDK_HOME} /mvn/apache-maven-$MAVEN_VERSION/bin/mvn clean compile war:war && \
