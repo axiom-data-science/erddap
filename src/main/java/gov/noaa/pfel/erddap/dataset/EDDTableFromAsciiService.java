@@ -5,6 +5,7 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAOne;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -78,6 +79,8 @@ public abstract class EDDTableFromAsciiService extends EDDTable{
         String tNoData = null;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
+
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -144,6 +147,8 @@ public abstract class EDDTableFromAsciiService extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -157,8 +162,8 @@ public abstract class EDDTableFromAsciiService extends EDDTable{
             return new EDDTableFromAsciiServiceNOS(tDatasetID, 
                 tAccessibleTo, tGraphsAccessibleTo,
                 tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-                tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
-                ttDataVariables,
+                tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
+                tGlobalAttributes, ttDataVariables,
                 tReloadEveryNMinutes, tLocalSourceUrl,
                 tBeforeData, tAfterData, tNoData);
         } else {
@@ -240,7 +245,7 @@ public abstract class EDDTableFromAsciiService extends EDDTable{
         String tDatasetID, String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
@@ -343,35 +348,35 @@ public abstract class EDDTableFromAsciiService extends EDDTable{
 
             //make the variable
             if (EDV.LON_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVLon(tSourceName,
+                dataVariables[dv] = new EDVLon(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
                 lonIndex = dv;
             } else if (EDV.LAT_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVLat(tSourceName,
+                dataVariables[dv] = new EDVLat(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
                 latIndex = dv;
             } else if (EDV.ALT_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVAlt(tSourceName,
+                dataVariables[dv] = new EDVAlt(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN);
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));
                 altIndex = dv;
             } else if (EDV.DEPTH_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVDepth(tSourceName,
+                dataVariables[dv] = new EDVDepth(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN);
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));
                 depthIndex = dv;
             } else if (EDV.TIME_NAME.equals(tDestName)) {  //look for TIME_NAME before check hasTimeUnits (next)
-                dataVariables[dv] = new EDVTime(tSourceName,
+                dataVariables[dv] = new EDVTime(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, tSourceType); //this constructor gets source / sets destination actual_range
                 timeIndex = dv;
             } else if (EDVTimeStamp.hasTimeUnits(tSourceAtt, tAddAtt)) {
-                dataVariables[dv] = new EDVTimeStamp(tSourceName, tDestName, 
+                dataVariables[dv] = new EDVTimeStamp(datasetID, tSourceName, tDestName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); //this constructor gets source / sets destination actual_range
             } else {
-                dataVariables[dv] = new EDV(tSourceName, tDestName, 
+                dataVariables[dv] = new EDV(datasetID, tSourceName, tDestName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); //the constructor that reads actual_range
                 dataVariables[dv].setActualRangeFromDestinationMinMax();
@@ -383,15 +388,19 @@ public abstract class EDDTableFromAsciiService extends EDDTable{
             "responseSubstringEnd  =" + String2.toCSSVString(responseSubstringEnd));
 
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid
         //It will read the /subset/ table or fail trying to get the data if the file isn't present.
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** " + tDatasetType + " " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 

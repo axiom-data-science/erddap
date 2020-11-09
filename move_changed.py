@@ -10,8 +10,8 @@ import subprocess
 dev = os.environ['ERDDAP_DEV_ROOT']
 upstream = os.environ['ERDDAP_UPSTREAM_ROOT']
 
-previous_version = '8a1e8e7'
-new_version = 'HEAD'
+previous_version = 'v2.02'
+new_version = 'v2.10'
 
 files = subprocess.run(['git', 'diff', '--name-status', previous_version, new_version], stdout=subprocess.PIPE, cwd=upstream)
 for code, contents in [ x.split('\t', maxsplit=1) for x in files.stdout.decode('utf-8').split('\n') if x ]:

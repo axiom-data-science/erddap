@@ -53,6 +53,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -270,14 +273,14 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
     }
 
     /**
-     * This returns an empty table with columns suitable for the instance table or oneStep.
+     * This returns an empty table with Dir,Name,LastMod,Size columns suitable for the instance table or oneStep.
      */
     public static Table makeEmptyTable() {
         Table table = new Table();
         table.addColumn(DIRECTORY,    new StringArray());
         table.addColumn(NAME,         new StringArray());
-        table.addColumn(LASTMODIFIED, new LongArray());
-        table.addColumn(SIZE,         new LongArray());
+        table.addColumn(LASTMODIFIED, new LongArray().setMaxIsMV(true));
+        table.addColumn(SIZE,         new LongArray().setMaxIsMV(true));
         return table;
     }
 
@@ -416,7 +419,9 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                             } catch (Exception ev2) {
                                 //try again
                                 String2.log((debugMode? "" : msg + "\n") +
-                                    "caught error (will try again):\n" + MustBe.throwableToString(ev2));
+                                    "Caught error for AWS S3 bucket=" + bucketName + " prefix=" + prefix + 
+                                    " region=" + region + " (will try again):\n" + 
+                                    MustBe.throwableToString(ev2));
                                 Math2.sleep(5000);
                             }
                         }
@@ -491,9 +496,9 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                         table = new Table();
                         table.readJsonlCSV(dnlsFileName, null, null, false); //simplify
                         int col = table.findColumnNumber(LASTMODIFIED);
-                        table.setColumn(col, new LongArray(table.getColumn(col)));
+                        table.setColumn(col, new LongArray(table.getColumn(col)).setMaxIsMV(true));
                         col = table.findColumnNumber(SIZE);
-                        table.setColumn(col, new LongArray(table.getColumn(col)));
+                        table.setColumn(col, new LongArray(table.getColumn(col)).setMaxIsMV(true));
                         //if no error:
                         File2.delete(dnlsFileName);
                     } //else use table as is
@@ -608,7 +613,8 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                 LongArray   lastModLA   = (  LongArray)table.getColumn(LASTMODIFIED); //epochMillis
                 LongArray   sizeLA      = (  LongArray)table.getColumn(SIZE);
 
-                addToWAFUrlList(tDir, tFileNameRegex, tRecursive, tPathRegex,
+                addToWAFUrlList( //does its best.  returns list of errors (or "")
+                    tDir, tFileNameRegex, tRecursive, tPathRegex, 
                     tDirectoriesToo, directorySA, nameSA, lastModLA, sizeLA);
                 table.leftToRightSortIgnoreCase(2);
                 return table;
@@ -686,7 +692,10 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 
         //synchronize on canonical localFullName -- so only 1 thread works on this file
         localFullName = String2.canonical(localFullName);
-        synchronized (localFullName) {
+        ReentrantLock lock = String2.canonicalLock(localFullName);
+        if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+            throw new TimeoutException("Timeout waiting for lock in FileVisitorDNLS.ensureInCache.");
+        try {
             //localFullName may have been downloaded by another thread while this thread
             //waited for synch lock.
             if (RegexFilenameFilter.touchFileAndRelated(localFullName)) { //returns true if localFullName exists
@@ -701,6 +710,8 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
             long fl = File2.length(localFullName);
             incrementPruneCacheDirSize(localDir, fl); 
             return fl;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -729,7 +740,7 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
         String sourceBaseDir, String cacheDir,
         int pruneCacheWhenGB, boolean reuseExisting) throws Exception {
         //        !isDecompressible?  then nothing needs to be done
-        if (!File2.isDecompressible(sourceFullName))
+        if (!File2.isDecompressible(File2.getExtension(sourceFullName)))
             return sourceFullName;
 
         //make destination cacheFullName
@@ -758,7 +769,10 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 
         //decompress the file
         cacheFullName = String2.canonical(cacheFullName); //so different threads will synch on same object
-        synchronized (cacheFullName) { 
+        ReentrantLock lock = String2.canonicalLock(cacheFullName);
+        if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+            throw new TimeoutException("Timeout waiting for lock to decompress cacheFullName in FileVisitorDNLS.");
+        try {
             //check again (since waiting for synch lock): decompressed file already exists? 
             if (File2.isFile(cacheFullName)) {
                 File2.touch(cacheFullName); //ignore whether successful or not
@@ -785,6 +799,8 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                 (System.currentTimeMillis() - time) + "ms cacheSize=" + (cs/Math2.BytesPerMB) + "MB" + 
                 "\n    from " + sourceFullName + 
                 "\n      to " + cacheFullName); 
+        } finally {
+            lock.unlock();
         }
         return cacheFullName;
     }
@@ -855,7 +871,10 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 
         //synchronize on canonical cacheDir -- so only 1 thread works on this dir
         cacheDir = String2.canonical(cacheDir);
-        synchronized (cacheDir) {
+        try {
+            ReentrantLock lock = String2.canonicalLock(cacheDir);
+            if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+                throw new TimeoutException("Timeout waiting for lock on cacheDir in FileVisitorDNLS.pruneCache().");
             try {
                 //never delete if <PRUNE_CACHE_SAFE_SECONDS old
                 long goal = Math2.roundToLong(fraction * thresholdCacheSizeB);
@@ -902,7 +921,10 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 
                     //be as thread-safe as reasonably possible
                     String localFullName = String2.canonical(dirSA.get(row) + nameSA.get(row));
-                    synchronized (localFullName) {
+                    ReentrantLock lock2 = String2.canonicalLock(localFullName);
+                    if (!lock2.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+                        throw new TimeoutException("Timeout waiting for lock on localFullName in FileVisitorDNLS.pruneCache().");
+                    try {
                         long lastMod = File2.getLastModified(localFullName);  //in case changed very recently
                         long currentTimeSafe = System.currentTimeMillis() - PRUNE_CACHE_SAFE_MILLIS; //up-to-date
                         if (lastMod < currentTimeSafe) {  //file is old
@@ -910,6 +932,8 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                             if (File2.simpleDelete(localFullName)) //simple because may be in use!
                                 currentCacheSizeB -= sizeAr[row];
                         }
+                    } finally {
+                        lock2.unlock();
                     }
                     row--;
                 }
@@ -919,14 +943,17 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                     (reachedGoal? " FINISHED SUCCESSFULLY" : " WARNING: DIDN'T REACH GOAL") +
                     " goalMB=" + goal/Math2.BytesPerMB +
                     " currentMB=" + currentCacheSizeB/Math2.BytesPerMB);
-            } catch (Exception e) {
-                String2.log("Caught " + String2.ERROR + " in FileVisitorDNLS.pruneCache(" +
-                    cacheDir + "):\n" + 
-                    MustBe.throwableToString(e));
+            } finally {
+                lock.unlock();
             }
-            setPruneCacheDirSize(cacheDir, currentCacheSizeB);
-            return currentCacheSizeB;
+
+        } catch (Exception e) {
+            String2.log("Caught " + String2.ERROR + " in FileVisitorDNLS.pruneCache(" +
+                cacheDir + "):\n" + 
+                MustBe.throwableToString(e));
         }
+        setPruneCacheDirSize(cacheDir, currentCacheSizeB);
+        return currentCacheSizeB;
     }
 
 
@@ -982,7 +1009,7 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
                 LongArray la = (LongArray)tTable.getColumn(col);
                 DoubleArray da = new DoubleArray(nRows, false);
                 for (int row = 0; row < nRows; row++) 
-                    da.add(la.get(row) / 1000.0); //to epochSeconds
+                    da.add(la.getDouble(row) / 1000.0); //to epochSeconds    //getDouble handles mv
                 tTable.setColumn(col, da);
 
             } else if (colName.equals(SIZE)) {
@@ -1128,8 +1155,14 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 //<tr><td valign="top">&nbsp;</td><td><a href="doc/">doc/</a></td>
 //  <td align="right">14-Mar-2017 08:34  </td><td align="right">  - </td><td>&nbsp;</td></tr>
     public final static Pattern wafDirPattern2 = Pattern.compile(
-        ".*href=\"(.*?/)\">" +
+        ".*href=\"(.*?/)\">" +  // '/' indicates directory
         ".*>\\d{2}-[a-zA-Z]{3}-\\d{4} \\d{2}:\\d{2}(|:\\d{2})" + //date, note internal ()
+        ".*");
+//https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/
+//<tr><td><a href="access/">access/</a></td><td align="right">2020-04-11 11:57  </td><td align="right">  - </td><td>&nbsp;</td></tr>
+    public final static Pattern wafDirPattern3 = Pattern.compile(
+        ".*href=\"(.*?/)\">" +  // '/' indicates directory
+        ".*>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}(|:\\d{2})" + //closer to iso date, note internal ()
         ".*");
 
 //inport:
@@ -1149,8 +1182,15 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
 //  </td><td align="right">18-Sep-2012 12:55  </td><td align="right">7.7M</td><td>&nbsp;</td></tr>
     public final static Pattern wafFilePattern2 = Pattern.compile(
         ".* href=\"(.*?)\">" + //name
-        ".*>(\\d{2}-[a-zA-Z]{3}-\\d{4} \\d{2}:\\d{2}(|:\\d{2}))" + //date, note internal ()
-        ".*>(\\d{1,15}\\.?\\d{0,10}[KMGTP]?)</td>.*"); //size
+        ".*>\\s*(\\d{2}-[a-zA-Z]{3}-\\d{4} \\d{2}:\\d{2}(|:\\d{2}))" + //date, note internal ()
+        ".*>\\s*(\\d{1,15}\\.?\\d{0,10}[KMGTP]?)</td>.*"); //size
+//https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/
+//<tr><td><a href="gpcp_v01r03_daily_d20000103_c20170530.nc">gpcp_v01r03_daily_d20000103_c20170530.nc</a>
+//  </td><td align="right">2017-05-30 16:57  </td><td align="right">283K</td><td>&nbsp;</td></tr>
+    public final static Pattern wafFilePattern3 = Pattern.compile(
+        ".* href=\"(.*?)\">" + //name
+        ".*>\\s*(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}(|:\\d{2}))" + //date is closer to ISO 8601, note internal ()
+        ".*>\\s*(\\d{1,15}\\.?\\d{0,10}[KMGTP]?)\\s*</td>.*"); //size
 //
 //https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/
     public final static Pattern waf2FilenamePattern = Pattern.compile(
@@ -1164,6 +1204,12 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
         ".*><tt>(" + Calendar2.RFC822_GMT_REGEX + ")</tt></td>.*");
 
 
+    /** 
+     * This returns the URLS from a WAF.
+     * This does its best and is tolerant of errors.
+     *
+     * @returns a string with error messages (or "" if none).
+     */
     public static String[] getUrlsFromWAF(String startUrl, String fileNameRegex, 
         boolean recursive, String pathRegex) throws Throwable {
         if (verbose) String2.log("getUrlsFromHyraxCatalog fileNameRegex=" + fileNameRegex);
@@ -1172,9 +1218,10 @@ public class FileVisitorDNLS extends SimpleFileVisitor<Path> {
         boolean tDirectoriesToo = false;
         StringArray dirs = new StringArray();
         StringArray names = new StringArray();
-        LongArray lastModified = new LongArray(); //epochMillis
-        LongArray size = new LongArray();
-        addToWAFUrlList(startUrl, fileNameRegex, recursive, pathRegex, 
+        LongArray lastModified = (LongArray)new LongArray().setMaxIsMV(true); //epochMillis
+        LongArray size         = (LongArray)new LongArray().setMaxIsMV(true);
+        addToWAFUrlList( //does its best.  returns list of errors (or "")
+            startUrl, fileNameRegex, recursive, pathRegex,
             tDirectoriesToo, dirs, names, lastModified, size);
 
         int n = dirs.size();
@@ -1208,19 +1255,19 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
      *   Source times are assumed to be Zulu time zone (which is probably incorrect).
      * @param size the file's size (bytes, Long.MAX_VALUE if not available).
      *   Usually, this is approximate (e.g., 10K vs 11K).
-     * @return true if completely successful (no exceptions of any type)
+     * @return a string with error messages (or "" if no errors)
      */
-    public static boolean addToWAFUrlList(String url, String fileNameRegex, 
+    public static String addToWAFUrlList(String url, String fileNameRegex, 
         boolean recursive, String pathRegex, boolean dirsToo,
         StringArray dirs, StringArray names, LongArray lastModified, LongArray size) {
 
-        boolean completelySuccessful = true;  //but any child can set it to false
+        StringBuilder completelySuccessful = new StringBuilder();  
         if (pathRegex == null || pathRegex.length() == 0)
             pathRegex = ".*";
         BufferedReader in = null;
+        lastModified.setMaxIsMV(true);
+        size.setMaxIsMV(true);
         try {
-            if (reallyVerbose) String2.log("\naddToWAFUrlList nNames=" + names.size() + 
-                " url=" + url); 
             url = File2.addSlash(url);
 
             //for html, any charset should be fine. 
@@ -1241,8 +1288,8 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                     break; 
                 }
             }
-            if (debugMode)
-                String2.log(">> mode=" + mode);
+            if (reallyVerbose) String2.log("\naddToWAFUrlList nNames=" + names.size() + 
+                " url=" + url + " mode=" + mode);
 
             //read the lines with dir or file info
             if (mode == 1) {
@@ -1257,6 +1304,10 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                         matcher = wafDirPattern2.matcher(s);
                         matched = matcher.matches();
                     }
+                    if (!matched) {
+                        matcher = wafDirPattern3.matcher(s);
+                        matched = matcher.matches();
+                    }
                     if (matched) {
                         String name = XML.decodeEntities(matcher.group(1));
                         String tUrl = File2.addSlash(url + name);
@@ -1268,10 +1319,9 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                                 size.add(Long.MAX_VALUE);
                             }
                             if (recursive) {
-                                if (!addToWAFUrlList(
+                                completelySuccessful.append(addToWAFUrlList(
                                     tUrl, fileNameRegex, recursive, pathRegex, 
-                                    dirsToo, dirs, names, lastModified, size))
-                                    completelySuccessful = false;
+                                    dirsToo, dirs, names, lastModified, size));
                             }
                         }
                         continue;
@@ -1280,21 +1330,39 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                     //look for files 
                     matcher = wafFilePattern.matcher(s); 
                     matched = matcher.matches();
+                    long millis = Long.MAX_VALUE;
+                    if (matched) {
+                        try {
+                            millis = Calendar2.parseDDMonYYYYZulu(matcher.group(2)).getTimeInMillis();
+                        } catch (Throwable t2) {
+                            String2.log(t2.getMessage());
+                        }
+                    }
                     if (!matched) {
                         matcher = wafFilePattern2.matcher(s);
                         matched = matcher.matches();
-                    }
-                    if (matched) {
-                        String name = XML.decodeEntities(matcher.group(1));
-                        if (name.matches(fileNameRegex)) {
-
-                            //interpret last modified
-                            long millis = Long.MAX_VALUE;
+                        if (matched) {
                             try {
                                 millis = Calendar2.parseDDMonYYYYZulu(matcher.group(2)).getTimeInMillis();
                             } catch (Throwable t2) {
                                 String2.log(t2.getMessage());
                             }
+                        }
+                    }
+                    if (!matched) {
+                        matcher = wafFilePattern3.matcher(s);
+                        matched = matcher.matches();
+                        if (matched) {
+                            try {
+                                millis = Calendar2.parseISODateTimeZulu(matcher.group(2)).getTimeInMillis();
+                            } catch (Throwable t2) {
+                                String2.log(t2.getMessage());
+                            }
+                        }
+                    }
+                    if (matched) {
+                        String name = XML.decodeEntities(matcher.group(1));
+                        if (name.matches(fileNameRegex)) {
 
                             //convert size to bytes
                             String tSize = matcher.group(4);
@@ -1348,10 +1416,9 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                                     size.add(Long.MAX_VALUE);
                                 }
                                 if (recursive) {
-                                    if (!addToWAFUrlList(
+                                    completelySuccessful.append(addToWAFUrlList(
                                         name, fileNameRegex, recursive, pathRegex, 
-                                        dirsToo, dirs, names, lastModified, size))
-                                        completelySuccessful = false;
+                                        dirsToo, dirs, names, lastModified, size));
                                 }
                             }
                             continue;
@@ -1408,9 +1475,10 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
             }
 
         } catch (Exception e) {
-            String2.log(String2.ERROR + " from url=" + url + " :\n" + 
-                MustBe.throwableToString(e));
-            completelySuccessful = false;
+            String msg = String2.ERROR + " from url=" + url + " :\n" + 
+                MustBe.throwableToString(e) + "\n";
+            String2.log(msg);
+            completelySuccessful.append(msg);
 
         } finally {
             try {
@@ -1419,10 +1487,63 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
             } catch (Throwable t) {
             }
         }
-        return completelySuccessful;
+        return completelySuccessful.toString();
 
     }
 
+
+    /**
+     * This tests a WAF-related (Web Accessible Folder) methods on an ERDDAP "files" directory.
+     */
+    public static void testInteractiveErddapFilesWAF() throws Throwable {
+        String2.log("\n*** FileVisitorDNLS.testInteractiveErddapFilesWAF()\n");
+        //test with trailing /
+        //This also tests redirect to https!
+        String url = "https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/"; 
+        String tFileNameRegex = "194\\d\\.nc";
+        boolean tRecursive = true;
+        String tPathRegex = ".*/(3|4)/.*";   
+        boolean tDirsToo = true;
+        Table table = makeEmptyTable();
+        StringArray dirs        = (StringArray)table.getColumn(0);
+        StringArray names       = (StringArray)table.getColumn(1);
+        LongArray lastModifieds = (LongArray)table.getColumn(2);
+        LongArray sizes         = (LongArray)table.getColumn(3);
+        String results, expected;
+
+        //** Test InPort WAF        
+        table.removeAllRows();
+        try {
+            results = addToWAFUrlList(  //returns a list of errors or ""
+                "https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/",
+                "22...\\.xml",   
+                //pre 2016-03-04 I tested NWFSC/inport/xml, but it has been empty for a month!
+                true, ".*/NMFS/(|NEFSC/(|inport-xml/(|xml/)))", //tricky! 
+                true, //tDirsToo, 
+                dirs, names, lastModifieds, sizes);
+            Test.ensureEqual(results, "", "results=\n" + results);
+            results = table.dataToString();
+            expected = 
+"directory,name,lastModified,size\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/,,,\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/,,,\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,,,\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22560.xml,1580850460000,142029\n" + //added 2020-03-03
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22561.xml,1554803918000,214016\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22562.xml,1554803940000,211046\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22563.xml,1554803962000,213504\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22564.xml,1554803984000,213094\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22565.xml,1554804006000,214323\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22560.xml,1557568922000,213709\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+      } catch (Throwable t) {
+          String2.pressEnterToContinue(MustBe.throwableToString(t) + "\n" +
+              "2020-10-22 This now fails because inport has web pages, not a directory system as before.\n" +
+              "Was: This changes periodically. If reasonable, just continue.\n" +
+              "(there no more subtests in this test).");
+      }
+      }
 
 
     /**
@@ -1430,10 +1551,7 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
      */
     public static void testErddapFilesWAF() throws Throwable {
         String2.log("\n*** FileVisitorDNLS.testErddapFilesWAF()\n");
-        boolean oDebugMode = debugMode;
-        //debugMode=true;        
 
-        try {
         //test with trailing /
         //This also tests redirect to https!
         String url = "https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/"; 
@@ -1450,10 +1568,10 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         Table tTable;
 
         //* test all features
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url, tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
+        results = addToWAFUrlList(  //returns a list of errors or ""
+            url, tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
         expected = 
 "directory,name,lastModified,size\n" +
@@ -1492,10 +1610,10 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 
         //* test !dirsToo
         table.removeAllRows();
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url, tFileNameRegex, tRecursive, tPathRegex, false, 
-                dirs, names, lastModifieds, sizes),
-            "");
+        results = addToWAFUrlList( //returns a list of errors or ""
+            url, tFileNameRegex, tRecursive, tPathRegex, false, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
         expected = 
 "directory,name,lastModified,size\n" +
@@ -1529,11 +1647,11 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 
         //* test subdir
         table.removeAllRows();
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url + "3", //test no trailing /
-                tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
+        results = addToWAFUrlList( //returns a list of errors or ""
+            url + "3", //test no trailing /
+            tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
         expected = 
 "directory,name,lastModified,size\n" +
@@ -1557,11 +1675,11 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 
         //* test file regex that won't match
         table.removeAllRows();
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url, //test no trailing /
-                "zztop", tRecursive, tPathRegex, tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
+        results = addToWAFUrlList( //returns a list of errors or ""
+            url, //test no trailing /
+            "zztop", tRecursive, tPathRegex, tDirsToo, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
         expected = //just dirs
 "directory,name,lastModified,size\n" +
@@ -1577,11 +1695,11 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 
         //* that should be the same as !recursive
         table.removeAllRows();
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url, //test no trailing /
-                tFileNameRegex, false, tPathRegex, tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
+        results = addToWAFUrlList( //returns a list of errors or ""
+            url, //test no trailing /
+            tFileNameRegex, false, tPathRegex, tDirsToo, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
         Test.ensureEqual(results, expected, "results=\n" + results);
 
@@ -1590,23 +1708,36 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         results = tTable.dataToString();
         Test.ensureEqual(results, expected, "results=\n" + results);
 
+    }
+
+    
+    /**
+     * This tests a WAF-related (Web Accessible Folder) methods on an ERDDAP "files" directory.
+     */
+    public static void testErddapFilesWAF2() throws Throwable {
+        String2.log("\n*** FileVisitorDNLS.testErddapFilesWAF2()\n");
+
 
         //*** test localhost
         String2.log("\nThis test requires erdMWchla1day in localhost erddap.");
-        url = "http://localhost:8080/cwexperimental/files/erdMWchla1day/"; 
-        tFileNameRegex = "MW200219.*\\.nc(|\\.gz)";
-        tRecursive = true;
-        tPathRegex = ".*";   
-        tDirsToo = true;
-        table.removeAllRows();
+        String url = "http://localhost:8080/cwexperimental/files/erdMWchla1day/"; 
+        String tFileNameRegex = "MW200219.*\\.nc(|\\.gz)";
+        boolean tRecursive = true;
+        String tPathRegex = ".*";   
+        boolean tDirsToo = true;
+        Table table = makeEmptyTable();
+        StringArray dirs        = (StringArray)table.getColumn(0);
+        StringArray names       = (StringArray)table.getColumn(1);
+        LongArray lastModifieds = (LongArray)table.getColumn(2);
+        LongArray sizes         = (LongArray)table.getColumn(3);
 
         //* test all features
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url, tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
+        String results = addToWAFUrlList( //returns a list of errors or ""
+            url, tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
-        expected = 
+        String expected = 
 "directory,name,lastModified,size\n" +
 "http://localhost:8080/cwexperimental/files/erdMWchla1day/,MW2002190_2002190_chla.nc.gz,1535062380000,3541709\n" +
 "http://localhost:8080/cwexperimental/files/erdMWchla1day/,MW2002191_2002191_chla.nc.gz,1535062380000,2661568\n" +
@@ -1619,40 +1750,24 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 "http://localhost:8080/cwexperimental/files/erdMWchla1day/,MW2002198_2002198_chla.nc.gz,1535062380000,2252800\n" +
 "http://localhost:8080/cwexperimental/files/erdMWchla1day/,MW2002199_2002199_chla.nc.gz,1535062380000,2547736\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
+    }
 
 
-        //** Test InPort WAF        
-        table.removeAllRows();
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList("https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/",
-                "22...\\.xml",   
-                //pre 2016-03-04 I tested NWFSC/inport/xml, but it has been empty for a month!
-                true, ".*/NMFS/(|NEFSC/(|inport-xml/(|xml/)))", //tricky! 
-                true, //tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
-        results = table.dataToString();
-        expected = 
-"directory,name,lastModified,size\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/,,,\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/,,,\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,,,\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22561.xml,1554803918000,214016\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22562.xml,1554803940000,211046\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22563.xml,1554803962000,213504\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22564.xml,1554803984000,213094\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22565.xml,1554804006000,214323\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/,22560.xml,1557568922000,213709\n";
-        Test.ensureEqual(results, expected, "results=\n" + results);
+
+    /**
+     * This tests GPCP.
+     */
+    public static void testGpcp() throws Throwable {
+        String2.log("\n*** FileVisitorDNLS.testGpcp()\n");
 
         //* Test ncei WAF        
-        table.removeAllRows();
-        tTable = oneStep(
+        Table tTable = oneStep(
             "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/",
-            "gpcp_1dd_v1\\.2_p1d\\.1997[0-9]{2}",   
+            "gpcp_v01r03_daily_d2000010.*\\.nc",   
             true, ".*", true); //tDirsToo, 
-        results = tTable.dataToString();
-        expected = 
+        //debugMode = false;
+        String results = tTable.dataToString();
+        String expected = 
 "directory,name,lastModified,size\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/1996/,,,\n" +
@@ -1660,6 +1775,15 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/1998/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/1999/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,,,\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000101_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000102_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000103_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000104_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000105_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000106_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000107_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000108_c20170530.nc,1496163420000,289792\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2000/,gpcp_v01r03_daily_d20000109_c20170530.nc,1496163420000,289792\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2001/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2002/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2003/,,,\n" +
@@ -1679,22 +1803,36 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2017/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2018/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2019/,,,\n" +
+"https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/access/2020/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/doc/,,,\n" +
 "https://www.ncei.noaa.gov/data/global-precipitation-climatology-project-gpcp-daily/src/,,,\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
+    }
 
 
-        //ersst
-        table.removeAllRows();
-        url = "https://www1.ncdc.noaa.gov/pub/data/cmb/ersst/v4/netcdf/";
-        tFileNameRegex = "ersst.v4.19660.*\\.nc";
-        tRecursive = false;
-        Test.ensureTrue( //completelySuccessful
-            addToWAFUrlList(url, tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
-                dirs, names, lastModifieds, sizes),
-            "");
+
+    /**
+     * This tests the ERSST directory.
+     */
+    public static void testErsst() throws Throwable {
+        String2.log("\n*** FileVisitorDNLS.testErsst()\n");
+        Table table = makeEmptyTable();
+        StringArray dirs        = (StringArray)table.getColumn(0);
+        StringArray names       = (StringArray)table.getColumn(1);
+        LongArray lastModifieds = (LongArray)table.getColumn(2);
+        LongArray sizes         = (LongArray)table.getColumn(3);
+
+        String url = "https://www1.ncdc.noaa.gov/pub/data/cmb/ersst/v4/netcdf/";
+        String tFileNameRegex = "ersst.v4.19660.*\\.nc";
+        boolean tRecursive = false;
+        String tPathRegex = ".*";   
+        boolean tDirsToo = true;
+        String results = addToWAFUrlList( //returns a list of errors or ""
+            url, tFileNameRegex, tRecursive, tPathRegex, tDirsToo, 
+            dirs, names, lastModifieds, sizes);
+        Test.ensureEqual(results, "", "results=\n" + results);
         results = table.dataToString();
-        expected = 
+        String expected = 
 "directory,name,lastModified,size\n" +
 "https://www1.ncdc.noaa.gov/pub/data/cmb/ersst/v4/netcdf/,ersst.v4.196601.nc,1479909540000,135168\n" +
 "https://www1.ncdc.noaa.gov/pub/data/cmb/ersst/v4/netcdf/,ersst.v4.196602.nc,1479909540000,135168\n" +
@@ -1706,14 +1844,6 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 "https://www1.ncdc.noaa.gov/pub/data/cmb/ersst/v4/netcdf/,ersst.v4.196608.nc,1479909540000,135168\n" +
 "https://www1.ncdc.noaa.gov/pub/data/cmb/ersst/v4/netcdf/,ersst.v4.196609.nc,1479909540000,135168\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
-
-
-      } catch (Throwable t) {
-          String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-              "\nThis changes periodically. If reasonable, just continue." +
-              "\n(there no more subtests in this test).");
-      }
-      debugMode = oDebugMode;
     }
 
 
@@ -1746,7 +1876,7 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         boolean tDirectoriesToo = false;
         StringArray childUrls = new StringArray();
         DoubleArray lastModified = new DoubleArray();
-        LongArray size = new LongArray();
+        LongArray size = (LongArray)new LongArray().setMaxIsMV(true);
         addToHyraxUrlList(startUrl, fileNameRegex, recursive, pathRegex, 
             tDirectoriesToo, childUrls, lastModified, size);
 
@@ -1773,10 +1903,10 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
      * @param lastModified the lastModified time (secondsSinceEpoch, NaN if not available).
      *   Source times are assumed to be Zulu time zone (which is probably incorrect).
      * @param size the file's size (bytes, Long.MAX_VALUE if not available)
-     * @return true if completely successful (no access errors, all URLs found)
+     * @return a list of errors (or "" if no errors)
      * @throws Throwable if unexpected trouble. But url not responding won't throw Throwable.
      */
-    public static boolean addToHyraxUrlList(String url, String fileNameRegex, 
+    public static String addToHyraxUrlList(String url, String fileNameRegex, 
         boolean recursive, String pathRegex, boolean dirsToo,
         StringArray childUrls, DoubleArray lastModified, LongArray size) throws Throwable {
 
@@ -1784,16 +1914,21 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
             "\n  url=" + url); 
         if (pathRegex == null || pathRegex.length() == 0)
             pathRegex = ".*";
-        boolean completelySuccessful = true;  //but any child can set it to false
+        StringBuilder completelySuccessful = new StringBuilder();  
         String response;
+        size.setMaxIsMV(true);
         try {
             if (url.endsWith("/contents.html"))
                 url = File2.getDirectory(url);
             else url = File2.addSlash(url); //otherwise, assume url is missing final slash
             response = SSR.getUrlResponseStringUnchanged(url + "contents.html");
+            //String2.log(String2.annotatedString(response.substring(0, 1000)));
+            response = String2.replaceAll(response, '\n', ' '); //to simplify getting data from "row" that is on multiple lines
         } catch (Throwable t) {
-            String2.log(MustBe.throwableToString(t));
-            return false;
+            String tMsg = MustBe.throwableToString(t) + "\n"; 
+            String2.log(tMsg);
+            completelySuccessful.append(tMsg);
+            return completelySuccessful.toString();
         }
         String responseLC = response.toLowerCase();
         if (dirsToo) {
@@ -1810,9 +1945,11 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
             if (verbose) String2.log("WARNING: \"parent directory\" not found in Hyrax response.");
             po = responseLC.indexOf("<table");  //Lower Case
             if (po < 0) {
-                if (verbose) String2.log("ERROR: \"<table\" not found in Hyrax response.\n" +
-                    "No dir info found for " + url);
-                return false;
+                String tMsg = "ERROR: \"<table\" not found in Hyrax response.\n" +
+                    "No dir info found for " + url + "\n\n";
+                String2.log(tMsg);
+                completelySuccessful.append(tMsg);
+                return completelySuccessful.toString();
             } else {
                 po += 6;
                 if (verbose) String2.log("Using \"<table\" as starting point instead.");
@@ -1853,7 +1990,7 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
             //find beginRow and nextRow
             int beginRow = responseLC.indexOf("<tr", po);      //Lower Case
             if (beginRow < 0 || beginRow > endPre)
-                return completelySuccessful;
+                return completelySuccessful.toString();
             int endRow = responseLC.indexOf("<tr", beginRow + 3);      //Lower Case
             if (endRow < 0 || endRow > endPre)
                 endRow = endPre;
@@ -1894,11 +2031,11 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                         " match " + fileNameRegex);
                 if (fileName.matches(fileNameRegex)) {
 
-                    //get lastModified time   >2011-06-30T04:43:09<
-                    String stime = String2.extractRegex(thisRow,
-                        ">\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}<", 0);
+                    //get lastModified time   >2011-06-30T04:43:09< or >2011-06-30T04:43:09GMT<
+                    String stime = String2.extractCaptureGroup(thisRow,
+                        ">(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(|GMT)<", 1);
                     double dtime = Calendar2.safeIsoStringToEpochSeconds(
-                        stime == null? "" : stime.substring(1, stime.length() - 1));
+                        stime == null? "" : stime);
 
                     //get size   e.g., 119K
                     String sSize = String2.extractRegex(thisRow,
@@ -1942,11 +2079,9 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
                     }
                     String tUrl = url + thisRow.substring(quotePo + 1, conPo + 1);
                     if (tUrl.matches(pathRegex)) {
-                        boolean tSuccessful = addToHyraxUrlList(
+                        completelySuccessful.append(addToHyraxUrlList(
                             tUrl, fileNameRegex, recursive, pathRegex, 
-                            dirsToo, childUrls, lastModified, size);
-                        if (!tSuccessful)
-                            completelySuccessful = false;
+                            dirsToo, childUrls, lastModified, size));
                     }
                     po = endRow;
                     continue;
@@ -1966,7 +2101,6 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         //reallyVerbose = true;
         //debugMode=true;
 
-        try {
         //before 2018-08-17 podaac-opendap caused  
         //  "javax.net.ssl.SSLProtocolException: handshake alert: unrecognized_name" error
         //String url = "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/"; //contents.html
@@ -1980,27 +2114,29 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         StringArray childUrls = new StringArray();
         DoubleArray lastModified = new DoubleArray();
         LongArray size = new LongArray();
+        String results, expected;
 
         //test error via addToHyraxUrlList  
         //(yes, logged message includes directory name)
         String2.log("\nIntentional error:");
-        Test.ensureEqual(
-            addToHyraxUrlList(url + "testInvalidUrl", fileNameRegex, 
-                recursive, pathRegex, dirsToo, childUrls, lastModified, size),
-            false, "");
+        results = addToHyraxUrlList(url + "testInvalidUrl", fileNameRegex, 
+                recursive, pathRegex, dirsToo, childUrls, lastModified, size);
+        expected = "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/testInvalidUrl/contents.html\n"; 
+        Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
 
         //test addToHyraxUrlList
         childUrls = new StringArray();
         lastModified = new DoubleArray();
         size = new LongArray();
-        boolean allOk = addToHyraxUrlList(url, fileNameRegex, recursive, 
+        results = addToHyraxUrlList(url, fileNameRegex, recursive, 
             pathRegex, dirsToo, childUrls, lastModified, size);
+        Test.ensureEqual(results, "", "results=\n" + results);
         Table table = new Table();
         table.addColumn("URL", childUrls);
         table.addColumn("lastModified", lastModified);
         table.addColumn("size", size);
-        String results = table.dataToString();
-        String expected = 
+        results = table.dataToString();
+        expected = 
 "URL,lastModified,size\n" +
 "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/,,\n" +
 "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/1987/,,\n" +
@@ -2053,7 +2189,6 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/2010/,,\n" +
 "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/2011/,,\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
-        Test.ensureTrue(allOk, "");
 
         //test getUrlsFromHyraxCatalog
         String resultsAr[] = getUrlsFromHyraxCatalog(url, fileNameRegex, recursive,
@@ -2088,12 +2223,13 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
         //different test of addToHyraxUrlList
         childUrls = new StringArray();
         lastModified = new DoubleArray();
-        LongArray fSize = new LongArray();
+        LongArray fSize = new LongArray(); //test that it will call setMaxIsMV(true)
         url = "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/1987/"; //startUrl, 
         fileNameRegex = "month_[0-9]{8}_v11l35flk\\.nc\\.gz"; //fileNameRegex, 
         recursive = true;
-        addToHyraxUrlList(url, fileNameRegex, recursive, pathRegex, dirsToo,
+        results = addToHyraxUrlList(url, fileNameRegex, recursive, pathRegex, dirsToo,
             childUrls, lastModified, fSize);
+        Test.ensureEqual(results, "", "results=\n" + results);
 
         results = childUrls.toNewlineString();
         expected = 
@@ -2137,10 +2273,6 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/1987/,month_19871201_v11l35flk.nc.gz,1336705731000,4432696\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-      } catch (Throwable t) {
-          String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-              "\nUnexpected error."); 
-      }
     }
 
     /**
@@ -2151,15 +2283,12 @@ https://coastwatch.pfeg.noaa.gov/erddap/files/fedCalLandings/
 reallyVerbose = true;
 debugMode=true;
 
-        try {
         String url = "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/GDS2/L4/GLOB/JPL/MUR/v4.1/"; //contents.html
         String fileNameRegex = "[0-9]{14}-JPL-L4_GHRSST-SSTfnd-MUR-GLOB-v02\\.0-fv04\\.1\\.nc";
         boolean recursive = true;
         String pathRegex = ".*/v4\\.1/2018/(|01./)";  //for test, just get 01x dirs/files. Read regex: "(|2018/(|/[0-9]{3}/))";
         boolean dirsToo = false;
         StringArray childUrls = new StringArray();
-        DoubleArray lastModified = new DoubleArray();
-        LongArray size = new LongArray();
 
         //test via oneStep -- no dirs
         Table table = oneStep(url, fileNameRegex, recursive, pathRegex, false);
@@ -2178,10 +2307,6 @@ debugMode=true;
 "https://podaac-opendap.jpl.nasa.gov/opendap/allData/ghrsst/data/GDS2/L4/GLOB/JPL/MUR/v4.1/2018/019/,20180119090000-JPL-L4_GHRSST-SSTfnd-MUR-GLOB-v02.0-fv04.1.nc,1526428852000,390892954\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-      } catch (Throwable t) {
-          String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-              "\nUnexpected error."); 
-      }
 debugMode=false;
     }
 
@@ -2208,10 +2333,10 @@ debugMode=false;
      * @param lastModified the lastModified time (secondsSinceEpoch, NaN if not available).
      *   Source times are assumed to be Zulu time zone (which is probably incorrect).
      * @param size the file's size (bytes, Long.MAX_VALUE if not available)
-     * @return true if completely successful (no access errors, all URLs found)
+     * @return a list of errors (or "" if completely successful)
      * @throws Throwable if unexpected trouble. But url not responding won't throw Throwable.
      */
-    public static boolean addToThreddsUrlList(String url, String fileNameRegex, 
+    public static String addToThreddsUrlList(String url, String fileNameRegex, 
         boolean recursive, String pathRegex, boolean dirsToo,
         StringArray childUrls, DoubleArray lastModified, LongArray size) throws Throwable {
 
@@ -2219,16 +2344,19 @@ debugMode=false;
             "\n  url=" + url); 
         if (pathRegex == null || pathRegex.length() == 0)
             pathRegex = ".*";
-        boolean completelySuccessful = true;  //but any child can set it to false
+        StringBuilder completelySuccessful = new StringBuilder();
         String response;
+        size.setMaxIsMV(true);
         try {
             if (url.endsWith("/catalog.html") || url.endsWith("/catalog.xml"))
                 url = File2.getDirectory(url);
             else url = File2.addSlash(url); //otherwise, assume url is missing final slash
             response = SSR.getUrlResponseStringUnchanged(url + "catalog.html");
         } catch (Throwable t) {
-            String2.log(MustBe.throwableToString(t));
-            return false;
+            String tMsg = MustBe.throwableToString(t) + "\n";
+            String2.log(tMsg);
+            completelySuccessful.append(tMsg);
+            return completelySuccessful.toString();
         }
         String fileServerDir = String2.replaceAll(url,
             "/thredds/catalog/", "/thredds/fileServer/");
@@ -2240,17 +2368,20 @@ debugMode=false;
 
         //skip header line and parent directory
         int po = response.indexOf("<table");  //Lower Case
-        if (po < 0 ) {
-            String2.log("ERROR: \"<table\" not found in Thredds response.");
-            return false;
+        if (po < 0) {
+            String tMsg = "ERROR: Initial \"<table\" not found in Thredds response for url=" + url + "\n\n";
+            String2.log(tMsg);
+            completelySuccessful.append(tMsg);
+            return completelySuccessful.toString();
         }
         po += 6;
 
         //endTable
         int endTable = response.indexOf("</table>", po); //Lower Case
         if (endTable < 0) {
-            if (reallyVerbose) String2.log("WARNING: </table> not found!");
-            completelySuccessful = false;
+            String tMsg = "WARNING: </table> not found in Thredds response for url=" + url + "\n\n";
+            if (reallyVerbose) String2.log(tMsg);
+            completelySuccessful.append(tMsg);
             endTable = response.length();
         }
 
@@ -2283,7 +2414,7 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
             //find beginRow and nextRow
             int beginRow = response.indexOf("<tr", po);  
             if (beginRow < 0 || beginRow > endTable)
-                return completelySuccessful;
+                return completelySuccessful.toString();
             int nextRow = response.indexOf("<tr", beginRow + 3); 
             if (nextRow < 0 || nextRow > endTable)
                 nextRow = endTable;
@@ -2315,9 +2446,9 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
                 String content1 = String2.extractRegex(td1, "href='[^']*/catalog.html'>", 0);
                 if (recursive && content1 != null && content1.length() > 21) { //21 is non-.* stuff
                     content1 = content1.substring(6, content1.length() - 2);
-                    completelySuccessful = addToThreddsUrlList(
+                    completelySuccessful.append(addToThreddsUrlList(
                         url + content1, fileNameRegex, recursive, pathRegex,
-                        dirsToo, childUrls, lastModified, size);
+                        dirsToo, childUrls, lastModified, size));
                 }
                 po = nextRow;
                 continue;
@@ -2345,10 +2476,10 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
             content2 = content2 == null? "" : content2.substring(4, content2.length() - 5);
             content3 = content3 == null? "" : content3.substring(4, content3.length() - 5);
             if (content1.length() == 0) { 
-                if (reallyVerbose) 
-                    String2.log("WARNING: No <tt>content</tt> in first <td>...</td>" + 
-                        (row < 3? ":" + String2.annotatedString(td1) : ""));
-                completelySuccessful = false;
+                String tMsg = "WARNING: No <tt>content</tt> in first <td>...</td>" + 
+                        (row < 3? ":" + String2.annotatedString(td1) : "") + "\n\n";
+                String2.log(tMsg);
+                completelySuccessful.append(tMsg);
                 po = nextRow;
                 continue;
             }
@@ -2400,9 +2531,10 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
         boolean oReallyVerbose = reallyVerbose;
         reallyVerbose = true;
 
-      try {
-        String url =  "https://data.nodc.noaa.gov/thredds/catalog/aquarius/nodc_binned_V3.0/monthly/"; //catalog.html
-        String fileNameRegex = "sss_binned_L3_MON_SCI_V3.0_\\d{4}\\.nc";
+        if (true) Test.knownProblem("2020-10-22 FileVisitorDNLS.testThredds is not run now because the sourceUrl often stalls: https://data.nodc.noaa.gov/thredds");
+
+        String url = "https://data.nodc.noaa.gov/thredds/catalog/aquarius/nodc_binned_V4.0/monthly/"; //catalog.html
+        String fileNameRegex = "sss_binned_L3_MON_SCI_V4.0_\\d{4}\\.nc";
         boolean recursive = true;
         String pathRegex = null;
         boolean dirsToo = true;
@@ -2418,10 +2550,11 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
         //test error via addToThreddsUrlList  
         //(yes, logged message includes directory name)
         String2.log("\nIntentional error:");
-        Test.ensureEqual(
-            addToThreddsUrlList(url + "testInvalidUrl", fileNameRegex,  
-                recursive, pathRegex, dirsToo, childUrls, lastModified, fSize),
-            false, "");
+        String results = addToThreddsUrlList(url + "testInvalidUrl", fileNameRegex,  
+            recursive, pathRegex, dirsToo, childUrls, lastModified, fSize);
+        String expected = //fails very slowly!
+            "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: https://data.nodc.noaa.gov/thredds/catalog/aquarius/nodc_binned_V4.0/monthly/testInvalidUrl/catalog.html\n";
+        Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
 
         //test addToThreddsUrlList
         childUrls = new StringArray();
@@ -2430,24 +2563,24 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
         addToThreddsUrlList(url, fileNameRegex,  recursive, pathRegex, 
             dirsToo, childUrls, lastModified, fSize);
 
-        String results = childUrls.toNewlineString();
-        String expected = 
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/sss_binned_L3_MON_SCI_V3.0_2011.nc\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/sss_binned_L3_MON_SCI_V3.0_2012.nc\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/sss_binned_L3_MON_SCI_V3.0_2013.nc\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/sss_binned_L3_MON_SCI_V3.0_2014.nc\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/sss_binned_L3_MON_SCI_V3.0_2015.nc\n";
+        results = childUrls.toNewlineString();
+        expected = 
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/sss_binned_L3_MON_SCI_V4.0_2011.nc\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/sss_binned_L3_MON_SCI_V4.0_2012.nc\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/sss_binned_L3_MON_SCI_V4.0_2013.nc\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/sss_binned_L3_MON_SCI_V4.0_2014.nc\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/sss_binned_L3_MON_SCI_V4.0_2015.nc\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         results = lastModified.toString();
         expected = 
-"NaN, 1.405495932E9, 1.405492834E9, 1.405483892E9, 1.429802008E9, 1.429867829E9";
+"NaN, 1.449908961E9, 1.449902223E9, 1.449887547E9, 1.449874773E9, 1.449861892E9";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         results = fSize.toString();
         expected = 
-"9223372036854775807, 2723152, 6528434, 6528434, 6528434, 1635779";
+"9223372036854775807, 2723152, 6528434, 6528434, 6528434, 3267363";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
 
@@ -2456,12 +2589,12 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
         results = table.dataToString();
         expected =    //lastMod is longs, epochMilliseconds
 "directory,name,lastModified,size\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,,,\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2011.nc,1405495932000,2723152\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2012.nc,1405492834000,6528434\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2013.nc,1405483892000,6528434\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2014.nc,1429802008000,6528434\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2015.nc,1429867829000,1635779\n";
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,,,\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2011.nc,1449908961000,2723152\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2012.nc,1449902223000,6528434\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2013.nc,1449887547000,6528434\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2014.nc,1449874773000,6528434\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2015.nc,1449861892000,3267363\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //test via oneStep -- no dirs
@@ -2469,17 +2602,13 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
         results = table.dataToString();
         expected = 
 "directory,name,lastModified,size\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2011.nc,1405495932000,2723152\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2012.nc,1405492834000,6528434\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2013.nc,1405483892000,6528434\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2014.nc,1429802008000,6528434\n" +
-"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V3.0/monthly/,sss_binned_L3_MON_SCI_V3.0_2015.nc,1429867829000,1635779\n";
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2011.nc,1449908961000,2723152\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2012.nc,1449902223000,6528434\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2013.nc,1449887547000,6528434\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2014.nc,1449874773000,6528434\n" +
+"https://data.nodc.noaa.gov/thredds/fileServer/aquarius/nodc_binned_V4.0/monthly/,sss_binned_L3_MON_SCI_V4.0_2015.nc,1449861892000,3267363\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-      } catch (Throwable t) {
-          String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-              "\nUnexpected error."); 
-      }
         reallyVerbose = oReallyVerbose;
         String2.log("\n*** FileVisitorDNLS.testThredds finished successfully");
     }
@@ -2491,7 +2620,7 @@ https://data.nodc.noaa.gov/thredds/catalog/pathfinder/Version5.1_CloudScreened/5
     public static void testLocal(boolean doBigTest) throws Throwable {
         String2.log("\n*** FileVisitorDNLS.testLocal");
         verbose = true;
-        String contextDir = SSR.getContextDirectory(); //with / separator and / at the end
+        String contextDir = String2.webInfParentDirectory(); //with / separator and / at the end
         String tPathRegex = null;
         Table table;
         long time;
@@ -2678,15 +2807,14 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
      * See https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
      * See https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingBucket.html
      * See https://docs.aws.amazon.com/AmazonS3/latest/dev/ListingKeysHierarchy.html
-     * See http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html .
+     * See https://docs.aws.amazon.com/sdk-for-java/?id=docs_gateway#aws-sdk-for-java,-version-1 .
      * https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html#credentials-file-format
      */
     public static void testAWSS3() throws Throwable {
         String2.log("\n*** FileVisitorDNLS.testAWSS3");
-        try {
 
         verbose = true;
-        String contextDir = SSR.getContextDirectory(); //with / separator and / at the end
+        String contextDir = String2.webInfParentDirectory(); //with / separator and / at the end
         Table table;
         long time;
         int n;
@@ -2700,7 +2828,6 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
         String child = "CONUS/";
         String pathRegex = null;
 
-/* for releases, this line should have open/close comment */
         {
 
             //!recursive and dirToo
@@ -2818,22 +2945,23 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
         expected = 
 "directory,name,lastModified,size\n" +
 "https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/,,,\n" +
-"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,,,\n" +
-"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381637189_e20183381639562_c20183381639596.nc,1543941659000,9269699\n" +
-"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381642189_e20183381644502_c20183381644536.nc,1543942123000,9585452\n" +
-"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381647189_e20183381649562_c20183381649596.nc,1543942279000,9894495\n" +
-"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381652189_e20183381654562_c20183381654595.nc,1543942520000,10195765\n";
+"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/00/,,,\n" +
+"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/00/,OR_ABI-L1b-RadC-M3C01_G17_s20183380002190_e20183380004563_c20183380004595.nc,1582123265000,12524368\n" +
+"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/00/,OR_ABI-L1b-RadC-M3C01_G17_s20183380007190_e20183380009563_c20183380009597.nc,1582123265000,12357541\n" +
+"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/00/,OR_ABI-L1b-RadC-M3C01_G17_s20183380012190_e20183380014503_c20183380014536.nc,1582123255000,12187253\n";
+//before 2020-03-03 these were the first returned rows:
+//"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,,,\n" +
+//"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381637189_e20183381639562_c20183381639596.nc,1543941659000,9269699\n" +
+//"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381642189_e20183381644502_c20183381644536.nc,1543942123000,9585452\n" +
+//"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381647189_e20183381649562_c20183381649596.nc,1543942279000,9894495\n" +
+//"https://noaa-goes17.s3.us-east-1.amazonaws.com/ABI-L1b-RadC/2018/338/16/,OR_ABI-L1b-RadC-M3C01_G17_s20183381652189_e20183381654562_c20183381654595.nc,1543942520000,10195765\n";
         if (expected.length() > results.length()) 
             String2.log("results=\n" + results);
-        Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+        Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results.substring(0, 1000));
 
 
         String2.log("\n*** FileVisitorDNLS.testAWSS3 finished.");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error.  (Did you create your AWS S3 credentials file?)"); 
-        }
     }
 
     /** 
@@ -2899,7 +3027,7 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
         //make a table for the results
         StringArray remoteSA  = new StringArray();
         StringArray localSA   = new StringArray();
-        LongArray   lastModLA = new LongArray();
+        LongArray   lastModLA = (LongArray)new LongArray().setMaxIsMV(true);
         Table outTable = new Table();
         outTable.addColumn("remote",     remoteSA);
         outTable.addColumn("local",      localSA);
@@ -3036,19 +3164,23 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
 
             //test the sync 
             Table table = sync(rDir, lDir, fileRegex, recursive, pathRegex, doIt);
-            String2.pressEnterToContinue("\nCheck above to ensure these numbers:\n" +
-                "\"found nAlready=3 nToDownload=2 nTooRecent=1 nExtraLocal=1\"\n");
+            String2.pressEnterToContinue(
+                "2020-10-22 This now fails because inport has web pages, not a directory system as before.\n" +
+                "Was: Check above to ensure these numbers:\n" +
+                "\"found nAlready=3 nAvailDownload=2 nTooRecent=1 nExtraLocal=1\"\n");
             String results = table.dataToString();
             String expected = //the lastModified values change periodically
 //these are the files which were downloaded
 "remote,local,lastModified\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/22560.xml,/erddapTest/sync/NMFS/NEFSC/inport-xml/xml/22560.xml,1557568922000\n" +
-"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/22563.xml,/erddapTest/sync/NMFS/NEFSC/inport-xml/xml/22563.xml,1554803962000\n";
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/22560.xml,/erddapTest/sync/NMFS/NEFSC/inport-xml/xml/22560.xml,1580850460000\n" +
+"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/NEFSC/inport-xml/xml/22563.xml,/erddapTest/sync/NMFS/NEFSC/inport-xml/xml/22563.xml,1580850480000\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
             //no changes, do the sync again
             table = sync(rDir, lDir, fileRegex, recursive, pathRegex, doIt);
-            String2.pressEnterToContinue("\nCheck above to ensure these numbers:\n" +
+            String2.pressEnterToContinue(
+                "2020-10-22 This now fails because inport has web pages, not a directory system as before.\n" +
+                "Check above to ensure these numbers:\n" +
                 "\"found nAlready=5 nToDownload=0 nTooRecent=1 nExtraLocal=1\"\n");
             results = table.dataToString();
             expected = 
@@ -3057,7 +3189,8 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
 
         } catch (Exception e) {
             String2.pressEnterToContinue(MustBe.throwableToString(e) +
-                "Often, there are minor differences."); 
+                "2020-10-22 This now fails because inport has web pages, not a directory system as before.\n" +
+                "Was: Often, there are minor differences."); 
 
         } finally {
             File2.setLastModified(name22560, time22560);
@@ -3486,7 +3619,7 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
         Table table = new Table();
         table.readASCII("testReduceDnlsTableToOneDir", 
             new BufferedReader(new StringReader(tableString)),
-            0, 1, ",", null, null, null, null, true);
+            "", "", 0, 1, ",", null, null, null, null, true);
         String subDirs[] = reduceDnlsTableToOneDir(table, "/u00/a/");
 
         String results = table.dataToString();
@@ -3522,31 +3655,63 @@ String2.unitTestDataDir + "fileNames/sub/,jplMURSST20150105090000.png,1.42066570
         System.exit(0);
     }
 
+
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test(boolean doBigTest) throws Throwable {
-        String2.log("\n****************** FileVisitorDNLS.test() *****************\n");
-/* for releases, this line should have open/close comment */
-        //always done        
-        testLocal(doBigTest);
-        testAWSS3(); 
-        testHyrax();
-        testHyraxMUR();
-        testThredds();
-        testErddapFilesWAF();  
-        testSync();
-        testMakeTgz();
-        testOneStepToString();
-        testPathRegex();
-        testReduceDnlsTableToOneDir();
-        /* */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 2 : 11;
+        String msg = "\n^^^ FileVisitorDNLS.test(" + interactive + ") test=";
 
-        //testSymbolicLinks(); //THIS TEST DOESN'T WORK on Windows, but links are followed on Linux
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testInteractiveErddapFilesWAF();  
+                    if (test ==  1) testSync();
+                    if (test ==  2) testMakeTgz();
 
-        //future: FTP? ftp://ftp.unidata.ucar.edu/pub/
+                } else {
+                    if (test ==  0) testLocal(doSlowTestsToo); 
+                    if (test ==  1) testAWSS3(); 
+                    if (test ==  2) testHyrax();
+                    if (test ==  3) testHyraxMUR();
+                    if (test ==  4) testThredds();
+                    if (test ==  5) testErddapFilesWAF();  
+                    if (test ==  6) testErddapFilesWAF2();  
+                    if (test ==  7) testGpcp();  
+                    if (test ==  8) testErsst();  
+                    if (test ==  9) testOneStepToString();
+                    if (test == 10) testPathRegex();
+                    if (test == 11) testReduceDnlsTableToOneDir();
+                   
+                    //testSymbolicLinks(); //THIS TEST DOESN'T WORK on Windows, but links are followed on Linux
+
+                    //FUTURE: FTP? ftp://ftp.unidata.ucar.edu/pub/
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

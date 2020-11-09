@@ -7,6 +7,9 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
+import com.cohort.array.LongArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -32,10 +35,13 @@ import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.util.Subscriptions;
 import gov.noaa.pfel.erddap.variable.*;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.FileWriter;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Enumeration;
 
 /**
@@ -87,6 +93,7 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
         int tReloadEveryNMinutes = Integer.MAX_VALUE;
         String tAccessibleTo = null;
         String tGraphsAccessibleTo = null;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         StringArray tOnChange = new StringArray();
         boolean tSubscribeToRemoteErddapDataset = EDStatic.subscribeToRemoteErddapDataset;
         boolean tRedirect = true;
@@ -96,6 +103,7 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
         String tLocalSourceUrl = null;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -122,6 +130,8 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
             else if (localTags.equals("</accessibleTo>")) tAccessibleTo = content;
             else if (localTags.equals( "<graphsAccessibleTo>")) {}
             else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals( "<sourceUrl>")) {}
             else if (localTags.equals("</sourceUrl>")) tLocalSourceUrl = content; 
             else if (localTags.equals( "<onChange>")) {}
@@ -136,6 +146,8 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
             else if (localTags.equals( "<subscribeToRemoteErddapDataset>")) {}
             else if (localTags.equals("</subscribeToRemoteErddapDataset>")) 
                 tSubscribeToRemoteErddapDataset = String2.parseBoolean(content);
@@ -147,9 +159,10 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
         }
 
         return new EDDTableFromErddap(tDatasetID, 
-            tAccessibleTo, tGraphsAccessibleTo, 
+            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaFiles, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere, 
+            tReloadEveryNMinutes, 
             tLocalSourceUrl, tSubscribeToRemoteErddapDataset, tRedirect);
     }
 
@@ -176,10 +189,10 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
      * @throws Throwable if trouble
      */
     public EDDTableFromErddap(String tDatasetID, 
-        String tAccessibleTo, String tGraphsAccessibleTo, 
+        String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaFiles,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         int tReloadEveryNMinutes, 
         String tLocalSourceUrl, boolean tSubscribeToRemoteErddapDataset,
         boolean tRedirect) throws Throwable {
@@ -211,6 +224,22 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
         publicSourceErddapUrl = convertToPublicSourceUrl(localSourceUrl);
         subscribeToRemoteErddapDataset = tSubscribeToRemoteErddapDataset;
         redirect = tRedirect;
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles;
+        if (accessibleViaFiles) {
+            try {
+                //this will only work if remote ERDDAP is v2.10+
+                int po = localSourceUrl.indexOf("/tabledap/");
+                Test.ensureTrue(po > 0, "localSourceUrl doesn't have /tabledap/.");
+                InputStream is = SSR.getUrlBufferedInputStream(
+                    String2.replaceAll(localSourceUrl, "/tabledap/", "/files/") + 
+                    "/.csv");
+                try {is.close();} catch (Exception e2) {}
+            } catch (Exception e) {
+                String2.log("accessibleViaFiles=false because remote ERDDAP dataset isn't accessible via /files/ (or is <v2.10 so no support for /files/.csv):\n" +
+                    MustBe.throwableToString(e));
+                accessibleViaFiles = false;
+            }
+        }
 
         //erddap support all constraints:
         sourceNeedsExpandedFP_EQ = false;
@@ -294,8 +323,8 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
                     BaseType obt = (BaseType)outerSequence.getVar(outerCol);
                     String tSourceName = obt.getName();
 
-                    //get the data sourceClass
-                    Class tSourceClass = OpendapHelper.getElementClass(obt.newPrimitiveVector());
+                    //get the data sourcePAType
+                    PAType tSourcePAType = OpendapHelper.getElementPAType(obt.newPrimitiveVector());
 
                     //get the attributes
                     Attributes tSourceAtt = new Attributes();
@@ -315,7 +344,7 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
                     }
 
                     sourceTable.addColumn(outerCol, tSourceName, 
-                        PrimitiveArray.factory(tSourceClass, 8, false), tSourceAtt);
+                        PrimitiveArray.factory(tSourcePAType, 8, false), tSourceAtt);
                 }
             }
         }
@@ -329,7 +358,7 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
 
             String     tSourceName = sourceTable.getColumnName(col);
             Attributes tSourceAtt  = sourceTable.columnAttributes(col);
-            String     tSourceType = sourceTable.getColumn(col).elementClassString();
+            String     tSourceType = sourceTable.getColumn(col).elementTypeString();
 
             //deal with remote not having ioos_category, but this ERDDAP requiring it
             Attributes tAddAtt = new Attributes();
@@ -349,35 +378,35 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
             EDV edv = null;
             if (EDV.LON_NAME.equals(tSourceName)) {
                 lonIndex = tDataVariables.size();
-                edv = new EDVLon(tSourceName,
+                edv = new EDVLon(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
             } else if (EDV.LAT_NAME.equals(tSourceName)) {
                 latIndex = tDataVariables.size();
-                edv = new EDVLat(tSourceName,
+                edv = new EDVLat(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
             } else if (EDV.ALT_NAME.equals(tSourceName)) {
                 altIndex = tDataVariables.size();
-                edv = new EDVAlt(tSourceName,
+                edv = new EDVAlt(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN);
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));
             } else if (EDV.DEPTH_NAME.equals(tSourceName)) {
                 depthIndex = tDataVariables.size();
-                edv = new EDVDepth(tSourceName,
+                edv = new EDVDepth(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
             } else if (EDV.TIME_NAME.equals(tSourceName)) {  //look for TIME_NAME before check hasTimeUnits (next)
                 timeIndex = tDataVariables.size();
-                edv = new EDVTime(tSourceName,
+                edv = new EDVTime(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
                     tSourceType);//this constructor gets source / sets destination actual_range
             } else if (EDVTimeStamp.hasTimeUnits(tSourceAtt, tAddAtt)) {
-                edv = new EDVTimeStamp(tSourceName, tSourceName, 
+                edv = new EDVTimeStamp(datasetID, tSourceName, tSourceName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); //this constructor gets source / sets destination actual_range
             } else {
-                edv = new EDV(tSourceName, tSourceName, 
+                edv = new EDV(datasetID, tSourceName, tSourceName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); //the constructor that reads actual_range
                 edv.setActualRangeFromDestinationMinMax();
@@ -388,6 +417,9 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
         dataVariables = new EDV[tDataVariables.size()];
         for (int dv = 0; dv < tDataVariables.size(); dv++)
             dataVariables[dv] = tDataVariables.get(dv);
+
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
 
         //ensure the setup is valid
         ensureValid(); //this ensures many things are set, e.g., sourceUrl
@@ -408,10 +440,11 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
         tryToSubscribeToRemoteErddapDataset(subscribeToRemoteErddapDataset, localSourceUrl);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableFromErddap " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -484,6 +517,74 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
     }
 
     /** 
+     * This returns a fileTable
+     * with valid files (or null if unavailable or any trouble).
+     * This is a copy of any internal data, so client can modify the contents.
+     *
+     * @param nextPath is the partial path (with trailing slash) to be appended 
+     *   onto the local fileDir (or wherever files are, even url).
+     * @return null if trouble,
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
+     */
+    public Object[] accessibleViaFilesFileTable(String nextPath) {
+        //almost identical code in EDDGridFromFiles and EDDTableFromFiles ("grid" vs "table")
+        if (!accessibleViaFiles)
+            return null;
+        try {
+
+            //get the .csv table from remote fromErddap dataset
+            String url = String2.replaceAll(localSourceUrl, "/tabledap/", "/files/") + "/" + nextPath + ".csv";
+            BufferedReader reader = SSR.getBufferedUrlReader(url);
+            Table table = new Table();
+            table.readASCII(url, reader, "", "", 0, 1, ",", 
+                null, null, null, null, false); //testColumns[], testMin[], testMax[], loadColumns[], simplify)
+            String colNames = table.getColumnNamesCSVString();
+            Test.ensureEqual(colNames, "Name,Last modified,Size,Description", "");
+            table.setColumn(1, new LongArray(table.getColumn(1)));
+            table.setColumn(2, new LongArray(table.getColumn(2)));
+
+            //separate out the subdirs
+            StringArray subdirs = new StringArray();
+            BitSet keep = new BitSet();  //all false
+            int nRows = table.nRows();
+            StringArray names = (StringArray)table.getColumn(0);
+            for (int row = 0; row < nRows; row++) {
+                String name = names.get(row);
+                if (name.endsWith("/")) {
+                    subdirs.add(name.substring(0, name.length() - 1));
+                } else {
+                    keep.set(row);
+                }
+            }
+            table.justKeep(keep);
+            return new Object[]{table, subdirs.toStringArray(), null}; //not a local dir
+
+        } catch (Exception e) {
+            String2.log(MustBe.throwableToString(e));
+            return null;
+        }
+    }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+    public String accessibleViaFilesGetLocal(String relativeFileName) {
+        //almost identical code in EDDGridFromFiles and EDDTableFromFiles ("grid" vs "table")
+        if (!accessibleViaFiles)
+             return null;
+        return String2.replaceAll(publicSourceErddapUrl, "/tabledap/", "/files/") + "/" + relativeFileName;
+    }
+
+
+    /** 
      * This generates datasets.xml entries for all EDDTable from a remote ERDDAP.
      * The XML can then be edited by hand and added to the datasets.xml file.
      *
@@ -505,7 +606,7 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
 
         //make the StringBuilder to hold the results and add documentation
         StringBuilder sb = new StringBuilder();
-        sb.append(  //there is very similar text in EDDGridFromErddap
+/*        sb.append(  //there is very similar text in EDDGridFromErddap
 "<!-- Directions:\n" +
 " * The ready-to-use XML below includes information for all of the EDDTable datasets\n" +
 "   at the remote ERDDAP " + XML.encodeAsXML(tLocalSourceUrl) + "\n" +
@@ -525,7 +626,7 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
 "   use EDDTableFromDapSequence to access the dataset instead of EDDTableFromErddap.\n" +
 " * If the remote ERDDAP is version 1.12 or below, this will generate incorrect, useless results.\n" +
 "-->\n");
-
+*/
         //get the tabledap datasets in a json table
         String jsonUrl = tLocalSourceUrl + "/tabledap/index.json";
         String sourceInfo = SSR.getUrlResponseStringUnchanged(jsonUrl);
@@ -598,76 +699,57 @@ public class EDDTableFromErddap extends EDDTable implements FromErddap {
      */
     public static void testGenerateDatasetsXml() throws Throwable {
         testVerboseOn();
+        int po;
 
         //test local generateDatasetsXml.  In tests, always use non-https url.
-        try { 
-            String results = generateDatasetsXml(EDStatic.erddapUrl, true) + "\n"; 
-            String2.log("results=\n" + results);
+        String results = generateDatasetsXml(EDStatic.erddapUrl, true) + "\n"; 
+        String2.log("results=\n" + results);
 
-            //GenerateDatasetsXml
-            String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
-                "EDDTableFromErddap",
-                EDStatic.erddapUrl,
-                "true", "-1"},  //keep original names?, defaultStandardizeWhat
-              false); //doIt loop?
-            Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
+        //GenerateDatasetsXml
+        String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
+            "EDDTableFromErddap",
+            EDStatic.erddapUrl,
+            "true", "-1"},  //keep original names?, defaultStandardizeWhat
+          false); //doIt loop?
+        Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
 
 String expected = 
-"<!-- Directions:\n" +
-" * The ready-to-use XML below includes information for all of the EDDTable datasets\n";
-
-            Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
-                expected, "");
-
-expected = 
 "<dataset type=\"EDDTableFromErddap\" datasetID=\"erdGlobecBottle\" active=\"true\">\n" +
 "    <!-- GLOBEC NEP Rosette Bottle Data (2002) -->\n" +
 "    <sourceUrl>http://localhost:8080/cwexperimental/tabledap/erdGlobecBottle</sourceUrl>\n" +
 "</dataset>\n";
 String fragment = expected;
-            int po = results.indexOf(expected.substring(0, 80));
             String2.log("\nresults=\n" + results);
-try {
+            po = results.indexOf(expected.substring(0, 70));
+        try {
             Test.ensureEqual(results.substring(po, po + expected.length()), expected, "");
-} catch (Throwable t) {
-    String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-        "This test requires erdGlobecBottle in localhost ERDDAP.\n" +
-        "Unexpected error.");  
-}
+        } catch (Throwable t) {
+            throw new RuntimeException("Unexpected error. This test requires erdGlobecBottle in localhost ERDDAP.", t);  
+        }
 
 expected = 
 "<!-- Of the datasets above, the following datasets are EDDTableFromErddap's at the remote ERDDAP.\n";
             po = results.indexOf(expected.substring(0, 20));
             Test.ensureEqual(results.substring(po, po + expected.length()), expected, "results=\n" + results);
-try {
-            Test.ensureTrue(results.indexOf("rGlobecBottle", po) > 0, "results=\n" + results);
-} catch (Throwable t) {
-    String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-        "This test requires rGlobecBottle in localhost ERDDAP.\n" +
-        "Unexpected error.");  
-}
-
-
-            /*
-            //ensure it is ready-to-use by making a dataset from it       
-            //NO - don't mess with existing erdGlobecBottle
-            String tDatasetID = "erdGlobecBottle";
-            EDD.deleteCachedDatasetInfo(tDatasetID);
-            EDD edd = oneFromXmlFragment(null, fragment);
-            Test.ensureEqual(edd.title(), "GLOBEC NEP Rosette Bottle Data (2002)", "");
-            Test.ensureEqual(edd.datasetID(), tDatasetID, "");
-            Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
-                "cruise_id, ship, cast, longitude, latitude, time, bottle_posn, chl_a_total, chl_a_10um, phaeo_total, phaeo_10um, sal00, sal11, temperature0, temperature1, fluor_v, xmiss_v, PO4, N_N, NO3, Si, NO2, NH4, oxygen, par", 
-                "");
-            */
-
-
+        try {
+            Test.ensureTrue(results.indexOf("rGlobecBottle", po) > 0, "results=\n" + results);  
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml on " + 
-                EDStatic.erddapUrl); //in tests, always use non-https url                
+            throw new RuntimeException("Unexpected error. This test requires rGlobecBottle in localhost ERDDAP.", t);  
         }
 
+
+        /*
+        //ensure it is ready-to-use by making a dataset from it       
+        //NO - don't mess with existing erdGlobecBottle
+        String tDatasetID = "erdGlobecBottle";
+        EDD.deleteCachedDatasetInfo(tDatasetID);
+        EDD edd = oneFromXmlFragment(null, fragment);
+        Test.ensureEqual(edd.title(), "GLOBEC NEP Rosette Bottle Data (2002)", "");
+        Test.ensureEqual(edd.datasetID(), tDatasetID, "");
+        Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
+            "cruise_id, ship, cast, longitude, latitude, time, bottle_posn, chl_a_total, chl_a_10um, phaeo_total, phaeo_10um, sal00, sal11, temperature0, temperature1, fluor_v, xmiss_v, PO4, N_N, NO3, Si, NO2, NH4, oxygen, par", 
+            "");
+        */
     }
 
 
@@ -687,13 +769,12 @@ try {
         String tID = tRedirect? "rTestNccsvScalar" : "rTestNccsvScalarNoRedirect";
         String url = "http://localhost:8080/cwexperimental/tabledap/" + tID;
 
-        try {
 
 
-            //*** test getting das for entire dataset
-            results = SSR.getUrlResponseStringUnchanged(url + ".nccsvMetadata"); 
-            expected = 
-"*GLOBAL*,Conventions,\"COARDS, CF-1.6, ACDD-1.3, NCCSV-1.0\"\n" +
+        //*** test getting das for entire dataset
+        results = SSR.getUrlResponseStringUnchanged(url + ".nccsvMetadata"); 
+        expected = 
+"*GLOBAL*,Conventions,\"COARDS, CF-1.6, ACDD-1.3, NCCSV-1.1\"\n" +
 "*GLOBAL*,cdm_data_type,Trajectory\n" +
 "*GLOBAL*,cdm_trajectory_variables,ship\n" +
 "*GLOBAL*,creator_email,bob.simons@noaa.gov\n" +
@@ -761,12 +842,28 @@ try {
 "status,comment,\"From http://some.url.gov/someProjectDocument , Table C\"\n" +
 "status,ioos_category,Unknown\n" +
 "status,long_name,Status\n" +
+"testByte,*DATA_TYPE*,byte\n" +
+"testByte,_FillValue,127b\n" +
+"testByte,actual_range,-128b,126b\n" +
+"testByte,ioos_category,Unknown\n" +
+"testByte,units,\"1\"\n" +
+"testUByte,*DATA_TYPE*,ubyte\n" +
+"testUByte,_FillValue,255ub\n" +
+"testUByte,actual_range,0ub,254ub\n" +
+"testUByte,ioos_category,Unknown\n" +
+"testUByte,units,\"1\"\n" +
 "testLong,*DATA_TYPE*,long\n" +
 "testLong,_FillValue,9223372036854775807L\n" +
-"testLong,actual_range,-9223372036854775808L,9223372036854774784L\n" + //max is largest double that can round trip to a long
+"testLong,actual_range,-9223372036854775808L,9223372036854775806L\n" + 
 "testLong,ioos_category,Unknown\n" +
 "testLong,long_name,Test of Longs\n" +
 "testLong,units,\"1\"\n" +
+"testULong,*DATA_TYPE*,ulong\n" +
+"testULong,_FillValue,18446744073709551615uL\n" +
+"testULong,actual_range,0uL,18446744073709551614uL\n" +
+"testULong,ioos_category,Unknown\n" +
+"testULong,long_name,Test ULong\n" +
+"testULong,units,\"1\"\n" +
 "sst,*DATA_TYPE*,float\n" +
 "sst,actual_range,10.0f,10.9f\n" +
 "sst,colorBarMaximum,32.0d\n" +
@@ -783,18 +880,21 @@ try {
 "sst,testLongs,-9223372036854775808L,-9007199254740992L,9007199254740992L,9223372036854775806L,9223372036854775807L\n" +
 "sst,testShorts,-32768s,0s,32767s\n" +
 "sst,testStrings,\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\"\n" +
+"sst,testUBytes,0ub,127ub,255ub\n" +
+"sst,testUInts,0ui,2147483647ui,4294967295ui\n" +
+"sst,testULongs,0uL,9223372036854775807uL,18446744073709551615uL\n" +
+"sst,testUShorts,0us,32767us,65535us\n" +
 "sst,units,degree_C\n" +
 "\n" +
 "*END_METADATA*\n";
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
-
 
         //.nccsv all
         userDapQuery = "";
         results = SSR.getUrlResponseStringUnchanged(url + ".nccsv"); 
         //String2.log(results);
         expected = 
-"*GLOBAL*,Conventions,\"COARDS, CF-1.6, ACDD-1.3, NCCSV-1.0\"\n" +
+"*GLOBAL*,Conventions,\"COARDS, CF-1.6, ACDD-1.3, NCCSV-1.1\"\n" +
 "*GLOBAL*,cdm_data_type,Trajectory\n" +
 "*GLOBAL*,cdm_trajectory_variables,ship\n" +
 "*GLOBAL*,creator_email,bob.simons@noaa.gov\n" +
@@ -867,11 +967,24 @@ expected =
 "status,comment,\"From http://some.url.gov/someProjectDocument , Table C\"\n" +
 "status,ioos_category,Unknown\n" +
 "status,long_name,Status\n" +
+"testByte,*DATA_TYPE*,byte\n" +
+"testByte,_FillValue,127b\n" +
+"testByte,ioos_category,Unknown\n" +
+"testByte,units,\"1\"\n" +
+"testUByte,*DATA_TYPE*,ubyte\n" +
+"testUByte,_FillValue,255ub\n" +
+"testUByte,ioos_category,Unknown\n" +
+"testUByte,units,\"1\"\n" +
 "testLong,*DATA_TYPE*,long\n" +
 "testLong,_FillValue,9223372036854775807L\n" +
 "testLong,ioos_category,Unknown\n" +
 "testLong,long_name,Test of Longs\n" +
 "testLong,units,\"1\"\n" +
+"testULong,*DATA_TYPE*,ulong\n" +
+"testULong,_FillValue,18446744073709551615uL\n" +
+"testULong,ioos_category,Unknown\n" +
+"testULong,long_name,Test ULong\n" +
+"testULong,units,\"1\"\n" +
 "sst,*DATA_TYPE*,float\n" +
 "sst,colorBarMaximum,32.0d\n" +
 "sst,colorBarMinimum,0.0d\n" +
@@ -887,16 +1000,20 @@ expected =
 "sst,testLongs,-9223372036854775808L,-9007199254740992L,9007199254740992L,9223372036854775806L,9223372036854775807L\n" +
 "sst,testShorts,-32768s,0s,32767s\n" +
 "sst,testStrings,\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\"\n" +
+"sst,testUBytes,0ub,127ub,255ub\n" +
+"sst,testUInts,0ui,2147483647ui,4294967295ui\n" +
+"sst,testULongs,0uL,9223372036854775807uL,18446744073709551615uL\n" +
+"sst,testUShorts,0us,32767us,65535us\n" +
 "sst,units,degree_C\n" +
 "\n" +
 "*END_METADATA*\n" +
-"ship,time,latitude,longitude,status,testLong,sst\n" +
-"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T00:45:00Z,28.0002,-130.2576,A,-9223372036854775808L,10.9\n" +
-"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T01:45:00Z,28.0003,-130.3472,\\u20ac,-9007199254740992L,\n" +
-"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T02:45:00Z,28.0001,-130.4305,\\t,9007199254740992L,10.7\n" +
-"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T12:45:00Z,27.9998,-131.5578,\"\"\"\",9223372036854775806L,99.0\n" +
-"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T21:45:00Z,28.0003,-132.0014,\\u00fc,,10.0\n" +
-"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T23:45:00Z,28.0002,-132.1591,?,,\n" +
+"ship,time,latitude,longitude,status,testByte,testUByte,testLong,testULong,sst\n" +
+"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T00:45:00Z,28.0002,-130.2576,A,-128,0,-9223372036854775808L,0uL,10.9\n" +
+"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T01:45:00Z,28.0003,-130.3472,\\u20ac,0,127,-9007199254740992L,9223372036854775807uL,10.0\n" +
+"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T02:45:00Z,28.0001,-130.4305,\\t,126,254,9223372036854775806L,18446744073709551614uL,99.0\n" +
+"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T12:45:00Z,27.9998,-131.5578,\"\"\"\",,,,,\n" +
+"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T21:45:00Z,28.0003,-132.0014,\\u00fc,,,,,\n" +
+"\" a\\t~\\u00fc,\\n'z\"\"\\u20ac\",2017-03-23T23:45:00Z,28.0002,-132.1591,?,,,,,\n" +
 "*END_DATA*\n";
         tPo = results.indexOf(expected.substring(0, 40));
         Test.ensureTrue(tPo >= 0, "tPo=-1 results=\n" + results);
@@ -908,12 +1025,6 @@ expected =
             tName = "EDDTableFromErddap_GraphM_" + tRedirect + ".png"; 
             SSR.downloadFile(url + ".png?" + mapDapQuery, dir + tName, true);
             SSR.displayInBrowser("file://" + dir + tName);
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\n*** This EDDTableFromErddap test requires rTestNccsvScalar and rTestNccsvScalarNoRedirect on localhost's erddap.");
-        }
-
 
     } //end of testBasic
 
@@ -954,10 +1065,9 @@ expected =
         String query = "?&time%3E=2008-12-10T19%3A41%3A00Z"; //"?&time>2008-12-10T19:41:00Z";
 
 
-        try {
-            //*** test getting csv
-            results = SSR.getUrlResponseStringUnchanged(url + ".csv" + query); 
-            expected = 
+        //*** test getting csv
+        results = SSR.getUrlResponseStringUnchanged(url + ".csv" + query); 
+        expected = 
 "trajectory,time,depth,latitude,longitude,temperature,conductivity,salinity,density,pressure\n" +
 ",UTC,m,degrees_north,degrees_east,Celsius,S m-1,1e-3,kg m-3,dbar\n" +
 "sg114_3,2008-12-10T19:41:02Z,-7.02,21.238798,-157.86617,25.356133,5.337507,34.952133,1023.1982,7.065868\n" +
@@ -973,12 +1083,12 @@ expected =
 "sg114_3,2008-12-10T19:41:59Z,-0.75,21.238853,-157.86624,25.2926,2.8720038,17.5902,1010.1601,0.7549004\n" +
 "sg114_3,2008-12-10T19:42:04Z,-0.72,21.23885,-157.86623,25.25033,3.0869908,19.06109,1011.27466,0.7247044\n" +
 "sg114_3,2008-12-10T19:42:10Z,-0.7,21.238853,-157.86624,25.225939,-3.494945,21.86908,1013.3882,0.70457375\n";
-            String2.log(results);
-            Test.ensureEqual(results, expected, "");
+        String2.log(results);
+        Test.ensureEqual(results, expected, "");
 
-            //*** test getting jsonlCSV when (until they update) they don't offer it
-            results = SSR.getUrlResponseStringUnchanged(url + ".jsonlCSV" + query); 
-            expected = 
+        //*** test getting jsonlCSV when (until they update) they don't offer it
+        results = SSR.getUrlResponseStringUnchanged(url + ".jsonlCSV" + query); 
+        expected = 
 "[\"sg114_3\", \"2008-12-10T19:41:02Z\", -7.02, 21.238798, -157.86617, 25.356133, 5.337507, 34.952133, 1023.1982, 7.065868]\n" +
 "[\"sg114_3\", \"2008-12-10T19:41:08Z\", -6.39, 21.238808, -157.86618, 25.353163, 5.337024, 34.951065, 1023.1983, 6.4317517]\n" +
 "[\"sg114_3\", \"2008-12-10T19:41:14Z\", -5.7, 21.238813, -157.86618, 25.352034, 5.337048, 34.95233, 1023.1996, 5.737243]\n" +
@@ -992,12 +1102,9 @@ expected =
 "[\"sg114_3\", \"2008-12-10T19:41:59Z\", -0.75, 21.238853, -157.86624, 25.2926, 2.8720038, 17.5902, 1010.1601, 0.7549004]\n" +
 "[\"sg114_3\", \"2008-12-10T19:42:04Z\", -0.72, 21.23885, -157.86623, 25.25033, 3.0869908, 19.06109, 1011.27466, 0.7247044]\n" +
 "[\"sg114_3\", \"2008-12-10T19:42:10Z\", -0.7, 21.238853, -157.86624, 25.225939, -3.494945, 21.86908, 1013.3882, 0.70457375]\n";
-            String2.log(results);
-            Test.ensureEqual(results, expected, "");
+        String2.log(results);
+        Test.ensureEqual(results, expected, "");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t));
-        }
     }
 
     /** This tests quotes in an attribute. */
@@ -1152,29 +1259,200 @@ expected =
 
     }
     
-    
     /**
-     * This tests the methods in this class.
-     *
-     * @throws Throwable if trouble
+     * This tests the /files/ "files" system.
+     * This requires testTableAscii and testTableFromErddap in the localhost ERDDAP.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromErddap.test()\n");
-        testVerboseOn();
-        
-/* for releases, this line should have open/close comment */
-        //always done
-        testBasic(true);   //rTestNccsvScalar
-        testBasic(false);  //rTestNccsvScalarNoRedirect
-        testGenerateDatasetsXml();
-        testTableNoIoosCat();
-        testQuotes();
-        testChukchiSea();
+    public static void testFiles() throws Throwable {
 
-        /* */
+        String2.log("\n*** EDDTableFromErddap.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
 
-        //not usually done
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableFromErddap/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"subdir/,NaN,NaN,\n" +
+"31201_2009.csv,1576697736354,201320,\n" +
+"46026_2005.csv,1576697015884,621644,\n" +
+"46028_2005.csv,1576697015900,623250,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
 
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableFromErddap/");
+            Test.ensureTrue(results.indexOf("subdir&#x2f;")             > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("subdir/")                  > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("31201&#x5f;2009&#x2e;csv") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf(">201320<")                 > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableFromErddap/subdir/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"46012_2005.csv,1576697015869,622197,\n" +
+"46012_2006.csv,1576697015884,621812,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //download a file in root
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableFromErddap/31201_2009.csv");
+            expected = 
+"This is a header line.\n" +
+"*** END OF HEADER\n" +
+"# a comment line\n" +
+"longitude, latitude, altitude, time, station, wd, wspd, atmp, wtmp\n" +
+"# a comment line\n" +
+"degrees_east, degrees_north, m, UTC, , degrees_true, m s-1, degree_C, degree_C\n" +
+"# a comment line\n" +
+"-48.13, -27.7, 0.0, 2005-04-19T00:00:00Z, 31201, NaN, NaN, NaN, 24.4\n" +
+"# a comment line\n" +
+"#-48.13, -27.7, 0.0, 2005-04-19T01:00:00Z, 31201, NaN, NaN, NaN, 24.4\n" +
+"-48.13, -27.7, 0.0, 2005-04-19T01:00:00Z, 31201, NaN, NaN, NaN, 24.4\n" +
+"-48.13, -27.7, 0.0, 2005-04-19T02:00:00Z, 31201, NaN, NaN, NaN, 24.3\n"; 
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //download a file in subdir
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableFromErddap/subdir/46012_2005.csv");
+            expected = 
+"This is a header line.\n" +
+"*** END OF HEADER\n" +
+"# a comment line\n" +
+"longitude, latitude, altitude, time, station, wd, wspd, atmp, wtmp\n" +
+"# a comment line\n" +
+"degrees_east, degrees_north, m, UTC, , degrees_true, m s-1, degree_C, degree_C\n" +
+"# a comment line\n" +
+"-122.88, 37.36, 0.0, 2005-01-01T00:00:00Z, 46012, 190, 8.2, 11.8, 12.5\n" +
+"# a comment line\n" +
+"# a comment line\n" +
+"-122.88, 37.36, 0.0, 2005-01-01T01:00:00Z, 46012, 214, 8.4, 10.4, 12.5\n" +
+"-122.88, 37.36, 0.0, 2005-01-01T02:00:00Z, 46012, 210, 7.3, 9.6, 12.5\n"; 
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testTableFromErddap/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testTableFromErddap/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testTableFromErddap/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: ERROR from url=http://localhost:8080/cwexperimental/files/testTableFromErddap/gibberish.csv : " +
+    "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: " +
+    "http://localhost:8080/cwexperimental/files/testTableAscii/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existant subdir
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testTableFromErddap/subdir/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: ERROR from url=http://localhost:8080/cwexperimental/files/testTableFromErddap/subdir/gibberish.csv : " +
+    "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: " +
+    "http://localhost:8080/cwexperimental/files/testTableAscii/subdir/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+ 
+
+        } catch (Throwable t) {
+            throw new RuntimeException("This test requires testTableAscii and testTableFromErddap in the localhost ERDDAP.\n" +
+                "Unexpected error.", t); 
+        } 
+    }
+
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 6;
+        String msg = "\n^^^ EDDTableFromErddap.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testBasic(true);   //rTestNccsvScalar
+                    if (test ==  1) testBasic(false);  //rTestNccsvScalarNoRedirect
+                    if (test ==  2) testGenerateDatasetsXml();
+                    if (test ==  3) testTableNoIoosCat();
+                    if (test ==  4) testQuotes();
+                    if (test ==  5) testChukchiSea();
+                    if (test ==  6) testFiles();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

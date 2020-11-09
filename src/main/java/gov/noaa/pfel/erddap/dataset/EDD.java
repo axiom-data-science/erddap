@@ -1,4 +1,4 @@
-/* 
+/*
  * EDD Copyright 2007, NOAA.
  * See the LICENSE.txt file in this file's directory.
  */
@@ -11,9 +11,11 @@ import com.cohort.array.DoubleArray;
 import com.cohort.array.FloatArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.LongArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.ShortArray;
 import com.cohort.array.StringArray;
+import com.cohort.array.UByteArray;
 import com.cohort.util.Calendar2;
 import com.cohort.util.File2;
 import com.cohort.util.Math2;
@@ -38,11 +40,14 @@ import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
 import gov.noaa.pfel.coastwatch.util.SSR;
 import gov.noaa.pfel.coastwatch.util.Tally;
 import gov.noaa.pfel.erddap.Erddap;
+import gov.noaa.pfel.erddap.GenerateDatasetsXml;
 import gov.noaa.pfel.erddap.util.*;
 import gov.noaa.pfel.erddap.variable.*;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -59,11 +64,15 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -79,15 +88,15 @@ import org.json.JSONTokener;
 
 import ucar.nc2.NetcdfFile;
 
-/** 
-This class represents an ERDDAP Dataset (EDD) -- 
-a gridded or tabular dataset 
+/**
+This class represents an ERDDAP Dataset (EDD) --
+a gridded or tabular dataset
 (usually Longitude, Latitude, Altitude/Depth, and Time-referenced)
 usable by ERDDAP (ERD's Distributed Access Program).
 
 <p>Currently, ERDDAP serves these datasets via the OPeNDAP protocol
 (https://www.opendap.org/), which is the recommended
-IOOS DMAC (was: https://dmac.ocean.us/index.jsp) data transport mechanism. 
+IOOS DMAC (was: https://dmac.ocean.us/index.jsp) data transport mechanism.
 (OPeNDAP is great!)
 Other ways of serving the data (e.g., WCS, WFS, and SOS) may be added in the future.
 ERDDAP is structured for this and there don't seem to be any impediments.
@@ -97,125 +106,125 @@ to access geo- and time-referenced data from diverse remote datasources via comm
 (e.g., OPeNDAP) and get the results in common file formats.
 To achieve that, ERDDAP tries to reduce data to a few common
 data structures (grids and tables) so that the data can be dealt with in a simple way.
-Although OPeNDAP is great, it is a low level protocol. 
+Although OPeNDAP is great, it is a low level protocol.
 ERDDAP works as an OPeNDAP server, but it is also a higher level web service built
 upon and compatible with OPeNDAP.
 Some features are:
 <ul>
 <li> A few, simple data structures:
-  Since it can be difficult for clients to deal with the infinite number of 
-  dataset structures offered by OPeNDAP, 
-  ERDDAP currently deals with two dataset structures: 
-  gridded data (e.g., satellite data and model data) and 
+  Since it can be difficult for clients to deal with the infinite number of
+  dataset structures offered by OPeNDAP,
+  ERDDAP currently deals with two dataset structures:
+  gridded data (e.g., satellite data and model data) and
   tabular data (e.g., in-situ station and trajectory data).
-  Certainly, not all data can be expressed in these structures, but much of it can. 
+  Certainly, not all data can be expressed in these structures, but much of it can.
   Tables, in particular, are very flexible data structures
   (look at the success of relational database programs).
   This makes it easier to serve the data in standard file types
-  (which often just support simple data structures).   
-  And this makes it easier to compare data from different sources.   
+  (which often just support simple data structures).
+  And this makes it easier to compare data from different sources.
   Other data structures (e.g., projected grids) could be
   supported in the future if called for.
-<li> Requests can be made in user units: 
+<li> Requests can be made in user units:
   Although requests in ERDDAP can be made with array indices (as with OPeNDAP),
   requests can also be in user units (e.g., degrees east).
 <li> Results are formatted to suit the user:
-  The results can be returned in any of several common data file formats: 
+  The results can be returned in any of several common data file formats:
   (e.g., ESRI .asc, Google Earth's .kml, .nc, .mat, comma-separated ASCII,
   and tab-separated ASCII) instead of just the original format
   or just the OPeNDAP transfer format (which has no standard file manifestation).
-  These files are created on-the-fly. Since there are few internal 
-  data structures, it is easy to add additional file-type drivers. 
+  These files are created on-the-fly. Since there are few internal
+  data structures, it is easy to add additional file-type drivers.
 <li> Local or remote data:
   Datasets in ERDDAP can be local (on the same computer) or remote
   (accessible via the web).
 <li> Additional metadata:
   Many data sources have little or no metadata describing the data.
-  ERDDAP lets (and encourages) the administrator to describe metadata which 
+  ERDDAP lets (and encourages) the administrator to describe metadata which
   will be added to datasets and their variables on-the-fly.
 <li> Standardized variable names and units for longitude, latitude, altitude/depth, and time:
   To facilitate comparisons of data from different datasets,
   the requests and results in ERDDAP use standardized space/time axis units:
   longitude is always in degrees_east; latitude is always in degrees_north;
-  altitude is always in meters with positive=up; 
-  depth is always in meters with positive=down; 
+  altitude is always in meters with positive=up;
+  depth is always in meters with positive=down;
   time is always in seconds since 1970-01-01T00:00:00Z
   and, when formatted as a string, is formatted according to the ISO 8601 standard.
   This makes it easy to specify constraints in requests
-  without having to worry about the altitude data format 
+  without having to worry about the altitude data format
   (are positive values up or down? in meters or fathoms?)
   or time data format (a nightmarish realm of possible formats, time zones, and daylight saving time).
   This makes the results from different data sources easy to compare.
 <li>Modular structure:
   ERDDAP is structured so that it is easy to add different components
   (e.g., a class to request data from an OPeNDAP 2-level sequence dataset and store
-  it as a table).  The new component then gains all the features 
-  and capabilities of the parent (e.g., support for OPeNDAP requests 
+  it as a table).  The new component then gains all the features
+  and capabilities of the parent (e.g., support for OPeNDAP requests
   and the ability to save the data in several common file formats).
 <li>Data Flow:
   To save memory (it is a big issue) and make responses start sooner,
   ERDDAP processes data requests in chunks -- repeatedly getting a chunk of data
   and sending that to the client.
-  For many datasources (e.g., SOS sources), this means that the first chunk of 
+  For many datasources (e.g., SOS sources), this means that the first chunk of
   data (e.g., from the first sensor) gets to the client in seconds
   instead of minutes (e.g., after data from the last sensor has been retrieved).
-  From a memory standpoint, this allows numerous large requests 
+  From a memory standpoint, this allows numerous large requests
   (each larger than available memory) to be handled simultaneously
   and efficiently.
 <li>Is ERDDAP a solution to all our data distribution problems? Not even close.
   But hopefully ERDDAP fills some common needs that
   aren't being filled by other data servers.
-</ul>  
+</ul>
 
- * 
+ *
  * @author Bob Simons (bob.simons@noaa.gov) 2007-06-04
  */
-public abstract class EDD { 
+public abstract class EDD {
 
     /**
-     * Set this to true (by calling verbose=true in your program, 
+     * Set this to true (by calling verbose=true in your program,
      * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
-    public static boolean verbose = false; 
+    public static boolean verbose = false;
 
     /**
-     * Set this to true (by calling reallyVerbose=true in your program, 
+     * Set this to true (by calling reallyVerbose=true in your program,
      * not by changing the code here)
      * if you want lots of diagnostic messages sent to String2.log.
      */
-    public static boolean reallyVerbose = false; 
+    public static boolean reallyVerbose = false;
 
     /**
-     * Set this to true (by calling debugMode=true in your program, 
+     * Set this to true (by calling debugMode=true in your program,
      * not by changing the code here)
      * if you want every possible diagnostic message sent to String2.log.
      */
-    public static boolean debugMode = false; 
+    public static boolean debugMode = false;
 
 
     /** The allowed cdm_data_type's. */
-    public final static String CDM_GRID = "Grid", 
+    public final static String CDM_GRID = "Grid",
         CDM_MOVINGGRID = "MovingGrid",
-        CDM_OTHER = "Other", //Bob added 
-        CDM_POINT = "Point", 
+        CDM_OTHER = "Other", //Bob added
+        CDM_POINT = "Point",
         CDM_PROFILE = "Profile",
         CDM_RADIALSWEEP = "RadialSweep",
         //CDM_SECTION = "Section",  //removed 2010-12, now called TrajectoryProfile
         CDM_TIMESERIES = "TimeSeries", //2011-05-17 was Station
-        CDM_TIMESERIESPROFILE = "TimeSeriesProfile", 
+        CDM_TIMESERIESPROFILE = "TimeSeriesProfile",
         CDM_SWATH = "Swath",
         CDM_TRAJECTORY = "Trajectory",
         CDM_TRAJECTORYPROFILE = "TrajectoryProfile"; //added 2010-12
 
-    /** 
-     * CDM_TYPES is an array in alphabetic order. 
-     * Don't rely on the positions, since new types will be added in 
-     * alphabetic order.) 
+    /**
+     * CDM_TYPES is an array in alphabetic order.
+     * Don't rely on the positions, since new types will be added in
+     * alphabetic order.)
      * Note that CF 1.6 section 9.4 says "The value assigned to the featureType attribute is case-insensitive". */
     public final static String[] CDM_TYPES = {
-        CDM_GRID, CDM_MOVINGGRID, CDM_OTHER, CDM_POINT, CDM_PROFILE, 
-        CDM_RADIALSWEEP, CDM_TIMESERIES, CDM_TIMESERIESPROFILE, CDM_SWATH, 
+        CDM_GRID, CDM_MOVINGGRID, CDM_OTHER, CDM_POINT, CDM_PROFILE,
+        CDM_RADIALSWEEP, CDM_TIMESERIES, CDM_TIMESERIESPROFILE, CDM_SWATH,
         CDM_TRAJECTORY, CDM_TRAJECTORYPROFILE};
 
     /**
@@ -223,10 +232,10 @@ public abstract class EDD {
      * See featureType definition and table 9.1 in the CF standard.
      */
     public final static String[] CF_FEATURE_TYPES = {
-        CDM_POINT, CDM_PROFILE, CDM_TIMESERIES, CDM_TIMESERIESPROFILE, 
+        CDM_POINT, CDM_PROFILE, CDM_TIMESERIES, CDM_TIMESERIESPROFILE,
         CDM_TRAJECTORY, CDM_TRAJECTORYPROFILE};
 
-    /** 
+    /**
      * LEGEND constants define the options for legend placements on graphs
      * "Bottom" is the default.
      */
@@ -259,7 +268,7 @@ public abstract class EDD {
     public final static int WMS_MAX_HEIGHT = 4096; //arbitrary
     public final static char WMS_SEPARATOR = ':'; //separates datasetID and variable name (not a valid interior char)
 
-    public final static String STANDARDIZEWHAT = "standardizeWhat"; 
+    public final static String STANDARDIZEWHAT = "standardizeWhat";
 
     public final static String ONE_WORD_CF_STANDARD_NAMES[] = {
         "altitude","cakes123","depth","geopotential","height",
@@ -283,17 +292,17 @@ public abstract class EDD {
 
 
 
-    /** 
+    /**
      * suggestReloadEveryNMinutes multiplies the original suggestion by this factor.
      * So, e.g., using 0.5 will cause suggestReloadEveryNMinutes to return
      * smaller numbers (hence more aggressive reloading).
-     * Don't change this value here.  Change it in calling code as needed. 
+     * Don't change this value here.  Change it in calling code as needed.
      */
     public static double suggestReloadEveryNMinutesFactor = 1.0;
-    /** 
-     * This sets the minimum and maximum values that will be returned by 
+    /**
+     * This sets the minimum and maximum values that will be returned by
      * suggestReloadEveryNMinutes.
-     * Don't change this value here.  Change it in calling code as needed. 
+     * Don't change this value here.  Change it in calling code as needed.
      */
     public static int suggestReloadEveryNMinutesMin = 1;
     public static int suggestReloadEveryNMinutesMax = 2000000000;
@@ -302,9 +311,9 @@ public abstract class EDD {
 
     protected long creationTimeMillis = System.currentTimeMillis();
 
-    /** The constructor must set all of these protected variables 
-     * (see definitions below in their accessor methods). 
-     */    
+    /** The constructor must set all of these protected variables
+     * (see definitions below in their accessor methods).
+     */
     protected String datasetID, className;
 
     /** 0 or more actions (starting with "http://" or "mailto:")
@@ -312,24 +321,24 @@ public abstract class EDD {
      */
     protected StringArray onChange;
 
-    /** 
+    /**
       sourceAtt are straight from the source.
-      addAtt are specified by the admin and supercede sourceAttributes. 
-      combinedAtt are made from sourceAtt and addAtt, then revised (e.g., remove "null" values) 
+      addAtt are specified by the admin and supercede sourceAttributes.
+      combinedAtt are made from sourceAtt and addAtt, then revised (e.g., remove "null" values)
     */
     protected Attributes sourceGlobalAttributes, addGlobalAttributes, combinedGlobalAttributes;
     //dataVariables isn't a hashMap because it is nice to allow a specified order for the variables
     protected EDV[] dataVariables;
     private int reloadEveryNMinutes = DEFAULT_RELOAD_EVERY_N_MINUTES;
-    /** accessibleTo is stored in sorted order.  null means accessible to anyone, even if not logged in. 
+    /** accessibleTo is stored in sorted order.  null means accessible to anyone, even if not logged in.
      *   length=0 means accessible to no one.
      */
-    protected String[] accessibleTo = null; 
+    protected String[] accessibleTo = null;
 
     protected static HashSet graphsAccessibleTo_fileTypeNames;
     private boolean graphsAccessibleToPublic = false; //safe default, but it will be set explicitly in constructor.
 
-    /** The localSourceUrl actually used to get data (e.g., the url which works in the DMZ, 
+    /** The localSourceUrl actually used to get data (e.g., the url which works in the DMZ,
      * as opposed to the publicUrl. */
     protected String localSourceUrl;
     /** The publicSourceUrl which is what appears in combinedGlobalAttributes (e.g., the url
@@ -342,36 +351,34 @@ public abstract class EDD {
 
 
     /** These are created as needed (in the constructor) from combinedGlobalAttributes. */
-    protected String id, title, summary, extendedSummaryPartB, institution, 
+    protected String id, title, summary, extendedSummaryPartB, institution,
         infoUrl, cdmDataType;
-    /** These are created as needed (in the constructor) by accessibleVia...(). 
+    /** These are created as needed (in the constructor) by accessibleVia...().
       See also EDStatic.accessibleViaNC4. */
-    protected String 
-        accessibleViaMAG, accessibleViaSubset, accessibleViaGeoServicesRest, 
-        accessibleViaSOS, accessibleViaWCS, accessibleViaWMS, accessibleViaNcCF, 
-        accessibleViaFGDC, accessibleViaISO19115; 
-    protected String  accessibleViaFilesDir = ""; //default=inactive   EDStatic.filesActive must be true
-    protected String  accessibleViaFilesRegex = ""; 
-    protected boolean accessibleViaFilesRecursive = false;
+    protected String
+        accessibleViaMAG, accessibleViaSubset, accessibleViaGeoServicesRest,
+        accessibleViaSOS, accessibleViaWCS, accessibleViaWMS, accessibleViaNcCF,
+        accessibleViaFGDC, accessibleViaISO19115;
+    protected boolean accessibleViaFiles = false; //it's up to the constructor to set this to true
     protected String fgdcFile, iso19115File;  //the names of pre-made, external files; or null
     protected byte[] searchBytes;
     /** These are created as needed (in the constructor) from dataVariables[]. */
-    protected String[] dataVariableSourceNames, dataVariableDestinationNames;   
+    protected String[] dataVariableSourceNames, dataVariableDestinationNames;
 
     /** Things related to incremental update */
     protected long lastUpdate = 0; //System.currentTimeMillis at completion of last update
     protected int updateEveryNMillis = 0; // <=0 means incremental update not active
     protected ReentrantLock updateLock = null;  //setUpdateEveryNMillis creates this if needed
-    protected long cumulativeUpdateTime = 0, updateCount = 0; 
+    protected long cumulativeUpdateTime = 0, updateCount = 0;
 
     /**
      * This constructs an EDDXxx based on the information in an .xml file.
      * This ignores the &lt;dataset active=.... &gt; setting.
      * All of the subclasses fromXml() methods ignore the &lt;dataset active=.... &gt; setting.
-     * 
+     *
      * @param erddap if known in this context, else null
-     * @param xmlReader with the &lt;erddapDatasets&gt;&lt;dataset type="EDDXxx&gt; 
-     *    having just been read.  
+     * @param xmlReader with the &lt;erddapDatasets&gt;&lt;dataset type="EDDXxx&gt;
+     *    having just been read.
      * @return a 'type' subclass of EDD.
      *    When this returns, xmlReader will have just read &lt;erddapDatasets&gt;&lt;/dataset&gt; .
      * @throws Throwable if trouble
@@ -379,12 +386,12 @@ public abstract class EDD {
     public static EDD fromXml(Erddap erddap, String type, SimpleXMLReader xmlReader) throws Throwable {
         String startStartError = "datasets.xml error on"; //does the error message already start with this?
         String startError      = "datasets.xml error on or before line #";
-        if (type == null) 
-            throw new SimpleException(startError + xmlReader.lineNumber() + 
+        if (type == null)
+            throw new SimpleException(startError + xmlReader.lineNumber() +
                 ": Unexpected <dataset> type=" + type + ".");
         try {
-            //future: classes could be added at runtime if I used reflection
-            if (type.equals("EDDGridAggregateExistingDimension")) 
+            //FUTURE: classes could be added at runtime if I used reflection
+            if (type.equals("EDDGridAggregateExistingDimension"))
                 return EDDGridAggregateExistingDimension.fromXml(erddap, xmlReader);
             if (type.equals("EDDGridCopy"))             return EDDGridCopy.fromXml(erddap, xmlReader);
             if (type.equals("EDDGridFromAudioFiles"))   return EDDGridFromAudioFiles.fromXml(erddap, xmlReader);
@@ -437,10 +444,10 @@ public abstract class EDD {
         } catch (Throwable t) {
             String msg = MustBe.getShortErrorMessage(t);
             throw new RuntimeException(
-                (msg.startsWith(startStartError)? "" : startError + xmlReader.lineNumber() + ": ") + 
+                (msg.startsWith(startStartError)? "" : startError + xmlReader.lineNumber() + ": ") +
                 msg, t);
         }
-        throw new RuntimeException(startError + xmlReader.lineNumber() + 
+        throw new RuntimeException(startError + xmlReader.lineNumber() +
             ": Unexpected <dataset> type=" + type + ".");
     }
 
@@ -477,14 +484,14 @@ public abstract class EDD {
         }
     }
 
-    /** This is like oneFromXml, but the xml here is just the xml for the 
+    /** This is like oneFromXml, but the xml here is just the xml for the
      * one dataset tag (and subtags).
      * This adds the necessary header and pre and post xml.
      *
      * @param erddap if known in this context, else null
      */
     public static EDD oneFromXmlFragment(Erddap erddap, String xmlFragment) throws Throwable {
-        String xml = 
+        String xml =
             "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>\n" +
             "<erddapDatasets>\n" +
             xmlFragment +
@@ -507,8 +514,8 @@ public abstract class EDD {
 
         SimpleXMLReader xmlReader = new SimpleXMLReader(
             //below not File2.getDecompressedBufferedInputStream(). Read file as is.
-            new BufferedInputStream(new FileInputStream(EDStatic.contentDirectory +  
-                "datasets" + (EDStatic.developmentMode? "2" : "") + ".xml")), 
+            new BufferedInputStream(new FileInputStream(EDStatic.contentDirectory +
+                "datasets" + (EDStatic.developmentMode? "2" : "") + ".xml")),
             "erddapDatasets");
         try {
             while (true) {
@@ -532,8 +539,8 @@ public abstract class EDD {
                     String tFrom = xmlReader.attributeValue("from");
                     String tTo   = xmlReader.attributeValue("to");
                     int spo = EDStatic.convertToPublicSourceUrlFromSlashPo(tFrom);
-                    if (tFrom != null && tFrom.length() > 3 && spo == tFrom.length() - 1 && tTo != null) 
-                        EDStatic.convertToPublicSourceUrl.put(tFrom, tTo);                        
+                    if (tFrom != null && tFrom.length() > 3 && spo == tFrom.length() - 1 && tTo != null)
+                        EDStatic.convertToPublicSourceUrl.put(tFrom, tTo);
                 } else if (tags.equals("<erddapDatasets></convertToPublicSourceUrl>")) {
 
                 } else if (tags.equals("<erddapDatasets><angularDegreeUnits>")) {
@@ -557,7 +564,7 @@ public abstract class EDD {
                 } else if (tags.equals("<erddapDatasets><loadDatasetsMaxMinutes>")) {
                 } else if (tags.equals("<erddapDatasets></loadDatasetsMaxMinutes>")) {
                 } else if (tags.equals("<erddapDatasets><logLevel>")) {
-                } else if (tags.equals("<erddapDatasets></logLevel>")) {                    
+                } else if (tags.equals("<erddapDatasets></logLevel>")) {
                 } else if (tags.equals("<erddapDatasets><nGridThreads>")) {
                 } else if (tags.equals("<erddapDatasets></nGridThreads>")) {
                 } else if (tags.equals("<erddapDatasets><nTableThreads>")) {
@@ -594,6 +601,10 @@ public abstract class EDD {
                 } else if (tags.equals("<erddapDatasets></theShortDescriptionHtml>")) {
                 } else if (tags.equals("<erddapDatasets><endBodyHtml5>")) {
                 } else if (tags.equals("<erddapDatasets></endBodyHtml5>")) {
+                } else if (tags.equals("<erddapDatasets><convertInterpolateRequestCSVExample>")) {
+                } else if (tags.equals("<erddapDatasets></convertInterpolateRequestCSVExample>")) {
+                } else if (tags.equals("<erddapDatasets><convertInterpolateDatasetIDVariableList>")) {
+                } else if (tags.equals("<erddapDatasets></convertInterpolateDatasetIDVariableList>")) {
                 } else if (tags.equals("<erddapDatasets><unusualActivity>")) {
                 } else if (tags.equals("<erddapDatasets></unusualActivity>")) {
                 } else if (tags.equals("<erddapDatasets><user>")) {
@@ -614,11 +625,11 @@ public abstract class EDD {
      *
      * <p>sourceGlobalAttributes and/or addGlobalAttributes must include:
      *   <ul>
-     *   <li> "title" - the short (&lt; 80 characters) description of the dataset 
-     *   <li> "summary" - the longer description of the dataset 
-     *   <li> "institution" - the source of the data 
+     *   <li> "title" - the short (&lt; 80 characters) description of the dataset
+     *   <li> "summary" - the longer description of the dataset
+     *   <li> "institution" - the source of the data
      *      (best if &lt; 50 characters so it fits in a graph's legend).
-     *   <li> "infoUrl" - the url with information about this data set 
+     *   <li> "infoUrl" - the url with information about this data set
      *   <li> "sourceUrl" - the url (for descriptive purposes only) of the public source of the data,
      *      e.g., the basic opendap url.
      *   <li> "cdm_data_type" - one of the EDD.CDM_xxx options
@@ -628,8 +639,8 @@ public abstract class EDD {
      *   will be converted to the EDStatic.standardLicense.
      *
      */
-    public void setup(String tDatasetID, 
-        Attributes tSourceGlobalAttributes, Attributes tAddGlobalAttributes, 
+    public void setup(String tDatasetID,
+        Attributes tSourceGlobalAttributes, Attributes tAddGlobalAttributes,
         EDV[] tDataVariables,
         int tReloadEveryNMinutes) {
 
@@ -640,7 +651,7 @@ public abstract class EDD {
         combinedGlobalAttributes = new Attributes(addGlobalAttributes, sourceGlobalAttributes); //order is important
         String tLicense = combinedGlobalAttributes.getString("license");
         if (tLicense != null)
-            combinedGlobalAttributes.set("license", 
+            combinedGlobalAttributes.set("license",
                 String2.replaceAll(tLicense, "[standard]", EDStatic.standardLicense));
         combinedGlobalAttributes.removeValue("\"null\"");
 
@@ -651,7 +662,7 @@ public abstract class EDD {
     }
 
     /**
-     * This should be used by all subclass constructors to ensure that 
+     * This should be used by all subclass constructors to ensure that
      * all of the items common to all EDDs are properly set.
      * This also does a few standard things.
      *
@@ -666,15 +677,15 @@ public abstract class EDD {
         if (datasetID.indexOf('.') >= 0)
             throw new SimpleException(errorInMethod + "periods are not allowed in datasetID's.");
         datasetID = String2.canonical(datasetID); //for Lucene, useful if canonical
-        //make cacheDirectory (cache cleaner in RunLoadDatasets won't remove it, 
+        //make cacheDirectory (cache cleaner in RunLoadDatasets won't remove it,
         //  but my testing environment (2+ things running) may remove it)
-        File2.makeDirectory(cacheDirectory()); 
-        File2.makeDirectory(decompressedDirectory()); 
+        File2.makeDirectory(cacheDirectory());
+        File2.makeDirectory(decompressedDirectory());
         //Don't test Test.ensureSomethingUnicode(sourceGlobalAttributes, errorInMethod + "sourceGlobalAttributes");
         //Admin can't control source and addAttributes may overwrite offending characters.
         Test.ensureSomethingUnicode(addGlobalAttributes,     errorInMethod + "addGlobalAttributes");
         EDStatic.updateUrls(null, combinedGlobalAttributes);
-        Test.ensureSomethingUnicode(combinedGlobalAttributes,errorInMethod + 
+        Test.ensureSomethingUnicode(combinedGlobalAttributes,errorInMethod +
             "combinedGlobalAttributes (but probably caused by the source attributes)");
         Test.ensureSomethingUnicode(title(),                 errorInMethod + "title");
         Test.ensureSomethingUnicode(summary(),               errorInMethod + "summary");
@@ -696,7 +707,7 @@ public abstract class EDD {
         if (defaultDataQuery == null || defaultDataQuery.length() == 0) {
             //if not from <defaultDataQuery>tag, try to get from attributes
             defaultDataQuery = combinedGlobalAttributes.getString("defaultDataQuery");
-        } else { 
+        } else {
             //make atts same as separate <defaultDataQuery> tag
             addGlobalAttributes.set("defaultDataQuery", defaultDataQuery);
             combinedGlobalAttributes.set("defaultDataQuery", defaultDataQuery);
@@ -716,18 +727,18 @@ public abstract class EDD {
                 combinedGlobalAttributes.set("cdm_data_type", cdmDataType);
             }
         }
-        Test.ensureTrue(cdmPo >= 0,      
-            errorInMethod + "cdm_data_type=" + cdmDataType + 
+        Test.ensureTrue(cdmPo >= 0,
+            errorInMethod + "cdm_data_type=" + cdmDataType +
             " isn't one of the standard CDM types (" + String2.toCSSVString(CDM_TYPES) + ").");
         if (String2.indexOf(CF_FEATURE_TYPES, cdmDataType) >= 0)
             combinedGlobalAttributes.set("featureType", cdmDataType); //case-insensitive (see CF 1.6, section 9.4), so match ERDDAP's name
-        else 
+        else
             combinedGlobalAttributes.remove("featureType"); //featureType is for point types only (table 9.1)
-        Test.ensureTrue(dataVariables != null && dataVariables.length > 0, 
+        Test.ensureTrue(dataVariables != null && dataVariables.length > 0,
             errorInMethod + "'dataVariables' wasn't set.");
         for (int i = 0; i < dataVariables.length; i++) {
             Test.ensureNotNull(dataVariables[i], errorInMethod + "'dataVariables[" + i + "]' wasn't set.");
-            String tErrorInMethod = errorInMethod + 
+            String tErrorInMethod = errorInMethod +
                 "for dataVariable #" + i + "=" + dataVariables[i].destinationName() + ":\n";
             dataVariables[i].ensureValid(tErrorInMethod);
         }
@@ -750,7 +761,7 @@ public abstract class EDD {
                 combinedGlobalAttributes.set("keywords", kar.toString());
             }
         }
-        String dateAtts[] = {"date_created", "date_issued", "date_modified", 
+        String dateAtts[] = {"date_created", "date_issued", "date_modified",
             "date_metadata_modified"};
         for (int i = 0; i < dateAtts.length; i++) {
             String name = dateAtts[i];
@@ -770,16 +781,16 @@ public abstract class EDD {
         accessibleViaGeoServicesRest();
         accessibleViaSOS();
         accessibleViaWCS();
-        accessibleViaWMS(); 
-        accessibleViaNcCF(); 
-        //handle at end of EDDGrid/Table.ensureValid: 
-        //  accessibleViaFGDC();  
-        //  accessibleViaISO19115(); 
+        accessibleViaWMS();
+        accessibleViaNcCF();
+        //handle at end of EDDGrid/Table.ensureValid:
+        //  accessibleViaFGDC();
+        //  accessibleViaISO19115();
         if (this instanceof EDDTable)
             String2.log("  accessibleViaNcCF=" +
                 (accessibleViaNcCF.length() == 0? "[true]" : accessibleViaNcCF));
 
-        //String2.log("\n***** beginSearchString\n" + searchString() + 
+        //String2.log("\n***** beginSearchString\n" + searchString() +
         //    "\n***** endSearchString\n");
         //reloadEveryNMinutes
     }
@@ -790,11 +801,11 @@ public abstract class EDD {
      *
      * @return the string representation of this EDD.
      */
-    public String toString() {  
+    public String toString() {
         //make this JSON format?
         //if (true) throw new RuntimeException("toString"); //test to determine who's calling this
         StringBuilder sb = new StringBuilder();
-        sb.append(datasetID + ": " + 
+        sb.append(datasetID + ": " +
             "\ntitle=" + title() +
             "\nsummary=" + summary() +
             "\ninstitution=" + institution() +
@@ -805,7 +816,7 @@ public abstract class EDD {
             "\nreloadEveryNMinutes=" + reloadEveryNMinutes +
             " updateEveryNMillis=" + updateEveryNMillis +
             "\nonChange=" + onChange +
-            "\nsourceGlobalAttributes=\n" + sourceGlobalAttributes + 
+            "\nsourceGlobalAttributes=\n" + sourceGlobalAttributes +
               "addGlobalAttributes=\n" + addGlobalAttributes);
         for (int i = 0; i < dataVariables.length; i++)
             sb.append("dataVariables[" + i + "]=" + dataVariables[i]);
@@ -813,8 +824,8 @@ public abstract class EDD {
     }
 
     /**
-     * This tests if the dataVariables of the other dataset are similar 
-     *     (same destination data var names, same sourceDataType, same units, 
+     * This tests if the dataVariables of the other dataset are similar
+     *     (same destination data var names, same sourceDataType, same units,
      *     same missing values).
      *
      * @param other
@@ -824,12 +835,12 @@ public abstract class EDD {
     public String similar(EDD other) {
 
         try {
-            if (other == null) 
+            if (other == null)
                 return "EDSimilar: " + EDStatic.EDDChangedWasnt;
 
             int nDv = dataVariables.length;
             if (nDv != other.dataVariables.length)
-                return EDStatic.EDDSimilarDifferentNVar + 
+                return EDStatic.EDDSimilarDifferentNVar +
                     " (" + nDv + " != " + other.dataVariables.length + ")";
 
             for (int dv = 0; dv < nDv; dv++) {
@@ -861,7 +872,7 @@ public abstract class EDD {
                 //units
                 s1 = dv1.units();
                 s2 = dv2.units();
-                if (!Test.equal(s1, s2)) //may be null 
+                if (!Test.equal(s1, s2)) //may be null
                     return MessageFormat.format(EDStatic.EDDSimilarDifferent,
                         "units", msg2, "(" + s1 + " != " + s2 + ")");
 
@@ -894,7 +905,7 @@ public abstract class EDD {
 //    protected static String test2Changed(String msg, String oldS, String newS) {
 //        if (oldS.equals(newS))
 //            return "";
-//        return msg + 
+//        return msg +
 //            "\n  old=" + oldS + ",\n" +
 //              "  new=" + newS + ".\n";
 //    }
@@ -912,7 +923,7 @@ public abstract class EDD {
      * @return "" if same or message if not.
      */
     public String changed(EDD old) {
-        //future: perhaps it would be nice if EDDTable changed showed new data.
+        //FUTURE: perhaps it would be nice if EDDTable changed showed new data.
         //  so it would appear in email subscription and rss.
         //  but for many datasets (e.g., ndbc met) there are huge number of buoys. so not practical.
         if (old == null)
@@ -929,9 +940,9 @@ public abstract class EDD {
             return diff.toString(); //because tests below assume nDv are same
         }
 
-        for (int dv = 0; dv < nDv; dv++) { 
+        for (int dv = 0; dv < nDv; dv++) {
             EDV oldDV = old.dataVariables()[dv];
-            EDV newDV =     dataVariables()[dv];             
+            EDV newDV =     dataVariables()[dv];
             String newName = newDV.destinationName();
             String msg2 = "#" + dv + "=" + newName;
 
@@ -941,14 +952,14 @@ public abstract class EDD {
                 diff.append(MessageFormat.format(EDStatic.EDDChanged2Different,
                     "destinationName", msg2, oldS, newS) + "\n");
 
-            oldS = oldDV.destinationDataType(); 
+            oldS = oldDV.destinationDataType();
             newS = newDV.destinationDataType();
             if (!oldS.equals(newS))
                 diff.append(MessageFormat.format(EDStatic.EDDChanged2Different,
                     "destinationDataType", msg2, oldS, newS) + "\n");
 
             String s = String2.differentLine(
-                oldDV.combinedAttributes().toString(), 
+                oldDV.combinedAttributes().toString(),
                 newDV.combinedAttributes().toString());
             if (s.length() > 0)
                 diff.append(MessageFormat.format(EDStatic.EDDChanged1Different,
@@ -957,20 +968,20 @@ public abstract class EDD {
 
         //check least important things last
         String s = String2.differentLine(
-            old.combinedGlobalAttributes().toString(), 
+            old.combinedGlobalAttributes().toString(),
                 combinedGlobalAttributes().toString());
         if (s.length() > 0)
             diff.append(MessageFormat.format(EDStatic.EDDChangedCGADifferent,
                 s) + "\n");
 
-        return diff.toString();    
+        return diff.toString();
     }
 
     /**
      * Update rss.
      * If there is an error, this just writes error to log file and returns "". This won't throw an exception.
      *
-     * @param change a description of what changed 
+     * @param change a description of what changed
      *    (if null or "", nothing will be done and this returns "")
      * @return the rss document
      */
@@ -985,26 +996,26 @@ public abstract class EDD {
             //I chose rss 2.0 for no special reason (most modern version of that fork; I like "simple").
             //The feed programs didn't really care if just pubDate changed.
             //  They care about item titles changing.
-            //  So this treats every change as a new item with a different title, 
+            //  So this treats every change as a new item with a different title,
             //    replacing the previous item.
             StringBuilder rss = new StringBuilder();
             GregorianCalendar gc = Calendar2.newGCalendarZulu();
-            String pubDate = 
+            String pubDate =
                 "    <pubDate>" + Calendar2.formatAsRFC822GMT(gc) + "</pubDate>\n";
-            String link = 
+            String link =
                 "    <link>&erddapUrl;" + "/" + dapProtocol() + "/" + datasetID();
             rss.append(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
                 "<rss version=\"2.0\" xmlns=\"http://backend.userland.com/rss2\">\n" +
                 "  <channel>\n" +
                 "    <title>ERDDAP: " + XML.encodeAsXML(title()) + "</title>\n" +
-                "    <description>This RSS feed changes when the dataset changes.</description>\n" +      
+                "    <description>This RSS feed changes when the dataset changes.</description>\n" +
                 link + ".html</link>\n" +
                 pubDate +
                 "    <item>\n" +
                 "      <title>This dataset changed " + Calendar2.formatAsISODateTimeT(gc) + "Z</title>\n" +
                 "  " + link + ".html</link>\n" +
-                "      <description>" + XML.encodeAsXML(change) + "</description>\n" +      
+                "      <description>" + XML.encodeAsXML(change) + "</description>\n" +
                 "    </item>\n" +
                 "  </channel>\n" +
                 "</rss>\n");
@@ -1016,7 +1027,7 @@ public abstract class EDD {
             return rssString;
 
         } catch (Throwable rssT) {
-            String2.log(String2.ERROR + " in updateRSS for " + datasetID() + ":\n" + 
+            String2.log(String2.ERROR + " in updateRSS for " + datasetID() + ":\n" +
                 MustBe.throwableToString(rssT));
             return "";
         }
@@ -1029,38 +1040,38 @@ public abstract class EDD {
      * Most dataset types don't have any children. A few, like
      * EDDGridSideBySide do, so they overwrite this method to return the IDs.
      *
-     * @return a new list of childDatasetIDs. 
+     * @return a new list of childDatasetIDs.
      */
     public StringArray childDatasetIDs() {
         return new StringArray();
     }
 
     /**
-     * EDD...FromErddap dataset constructors use this to try to subscribe 
+     * EDD...FromErddap dataset constructors use this to try to subscribe
      * to the remote ERDDAP dataset.
-     * It's ok that this is done every time the dataset is constructed. 
-     * emailIfAlreadyValid=false so there won't be excess email confirmation requests 
+     * It's ok that this is done every time the dataset is constructed.
+     * emailIfAlreadyValid=false so there won't be excess email confirmation requests
      * and if flagKeyKey changes, the new tFlagUrl will be sent.
      *
-     * @param tryToSubscribe 
+     * @param tryToSubscribe
      * @param remoteUrl  ending with  /griddap/someDatasetID or /tabledap/someDatasetID
      */
     public void tryToSubscribeToRemoteErddapDataset(boolean tryToSubscribe, String remoteUrl) {
 
         try {
             String thisErddapUrl = EDStatic.preferredErddapUrl; //this ERDDAP. prefer https
-            String keepUpToDate = 
+            String keepUpToDate =
                 "If you want to keep this dataset up-to-date, use a small reloadEveryNMinutes.";
             if (!tryToSubscribe) {
-                String2.log(EDStatic.warning + 
-                    " <tryToSubscribeToRemoteErddapDataset> is false.\n" +
+                String2.log(EDStatic.warning +
+                    " <tryToSubscribeToRemoteErddapDataset> is false. If that is permanent, then:\n" +
                     keepUpToDate);
             } else if (EDStatic.urlIsLocalhost(thisErddapUrl)) {
-                String2.log(EDStatic.warning + 
+                String2.log(EDStatic.warning +
                     " This ERDDAP won't try to subscribe to the dataset on the remote\n" +
                     "ERDDAP because this ERDDAP isn't publicly accessible.\n" +
                     keepUpToDate);
-            } else if (!String2.isSomething(EDStatic.emailSubscriptionsFrom)) { 
+            } else if (!String2.isSomething(EDStatic.emailSubscriptionsFrom)) {
                 //this erddap's subscription system isn't active
                 String2.log(EDStatic.warning +
                     " Subscribing to the remote ERDDAP dataset failed because\n" +
@@ -1074,36 +1085,36 @@ public abstract class EDD {
                 //try to subscribe to the dataset on the remote erddap
                 int tpo = remoteUrl.indexOf("/griddap/"); //the "remote" erddap may be local
                 if (tpo < 0)
-                    tpo = remoteUrl.indexOf("/tabledap/"); 
+                    tpo = remoteUrl.indexOf("/tabledap/");
                 if (tpo < 0)
                     throw new SimpleException(
-                        "Neither /griddap/ nor /tabledap/ are in remoteUrl=" + 
+                        "Neither /griddap/ nor /tabledap/ are in remoteUrl=" +
                         remoteUrl + " !");
                 String subscriptionUrl = remoteUrl.substring(0, tpo + 1) + Subscriptions.ADD_HTML + "?" +
                     "datasetID=" + File2.getNameNoExtension(remoteUrl) + //that extracts the remote datasetID
                     "&email=" + SSR.minimalPercentEncode(EDStatic.emailSubscriptionsFrom) +
-                    "&emailIfAlreadyValid=false" + 
+                    "&emailIfAlreadyValid=false" +
                     "&action=" + SSR.minimalPercentEncode(flagUrl(datasetID)); // %encode deals with & within flagUrl
-                SSR.touchUrl(subscriptionUrl, 60000);  
+                SSR.touchUrl(subscriptionUrl, 60000);
                 String2.log(datasetID + " sent a subscription request to the remote ERDDAP dataset.");
                 //String2.log("subscriptionUrl=" + subscriptionUrl); //don't normally display; flags are ~confidential
             }
         } catch (Throwable st) {
             String2.log(
-                String2.ERROR + ": an exception occurred while trying to subscribe to the remote ERDDAP dataset.\n" + 
-                "  If the subscription hasn't been set up already, you may need to\n" + 
+                String2.ERROR + ": an exception occurred while trying to subscribe to the remote ERDDAP dataset.\n" +
+                "  If the subscription hasn't been set up already, you may need to\n" +
                 "  use a small reloadEveryNMinutes, or have the remote ERDDAP admin add onChange.\n" +
                 MustBe.throwableToString(st) //don't display; flags are ~confidential
                 );
         }
     }
 
-    /** 
-     * Call this in the constructor if this dataset has a child and it is a FromErddap, 
+    /**
+     * Call this in the constructor if this dataset has a child and it is a FromErddap,
      * to try to subscribe to the remote ERDDAP's dataset.
      *
-     * <p>It's ok that this is done every time. 
-     * emailIfAlreadyValid=false so there won't be excess email confirmation requests 
+     * <p>It's ok that this is done every time.
+     * emailIfAlreadyValid=false so there won't be excess email confirmation requests
      * and if flagKeyKey changes, the new tFlagUrl will be sent.
      *
      * @param tChild a child dataset that is a fromErddap dataset
@@ -1119,47 +1130,50 @@ public abstract class EDD {
             String underlyingID = File2.getNameNoExtension(tfeSourceUrl);
             String tFlagUrl = flagUrl(datasetID);
 
-            if (EDStatic.urlIsThisComputer(tfeSourceUrl)) { 
+            if (EDStatic.urlIsThisComputer(tfeSourceUrl)) {
                 //underlying dataset is on this ERDDAP -- subscribe directly!
                 EDStatic.subscriptions.addAndValidate(underlyingID, //throw exception if trouble
-                    String2.isSomething(tEmail)? tEmail : EDStatic.adminEmail, 
+                    String2.isSomething(tEmail)? tEmail : EDStatic.adminEmail,
                     tFlagUrl);
-                if (verbose) String2.log("  " + datasetID + 
+                if (verbose) String2.log("  " + datasetID +
                     " successfully subscribed directly to local datasetID=" + underlyingID);
                 return; //success
+
+            } else if (!EDStatic.subscribeToRemoteErddapDataset) {
+                cause = "\nCause: <subscribeToRemoteErddapDataset> is set to 'false'.";
 
             } else if (EDStatic.urlIsLocalhost(thisErddapUrl)) {
                 cause = "\nCause: This ERDDAP isn't publicly accessible.";
 
-            } else if (!String2.isSomething(tEmail)) { 
+            } else if (!String2.isSomething(tEmail)) {
                 cause = "\nCause: The subscription system on this ERDDAP isn't set up.";
 
             } else {
                 //this erddap's subscription system is active
                 //so try to subscribe to dataset on remote erddap
-                String subscriptionUrl = tfeSourceUrl.substring(0, gpo + 1) + 
+                String subscriptionUrl = tfeSourceUrl.substring(0, gpo + 1) +
                         Subscriptions.ADD_HTML + "?" +
-                    "datasetID=" + underlyingID + 
+                    "datasetID=" + underlyingID +
                     "&email=" + tEmail +
-                    "&emailIfAlreadyValid=false" + 
+                    "&emailIfAlreadyValid=false" +
                     "&action=" + SSR.minimalPercentEncode(tFlagUrl); // %encode deals with & within flagUrl
-                if (verbose) String2.log("  " + datasetID + 
+                if (verbose) String2.log("  " + datasetID +
                     " is subscribing to underlying fromErddap dataset:\n  " + subscriptionUrl);
                 SSR.touchUrl(subscriptionUrl, 60000);  //may throw exception
                 return; //success
 
             }
         } catch (Throwable st) {
-            cause = "\nCause: " + MustBe.throwableToString(st); 
+            cause = "\nCause: " + MustBe.throwableToString(st);
         }
         //it only gets here if there is trouble
         String2.log(
             "\n" +
-            "WARNING: datasetID=" + datasetID + 
-            " failed to subscribe to its child, fromErddap, underlying dataset.\n" + 
+            "WARNING: datasetID=" + datasetID +
+            " failed to subscribe to its child, fromErddap, underlying dataset.\n" +
             "If the subscription hasn't been set up already, keep this dataset up-to-date by\n" +
             "using a small reloadEveryNMinutes, or have the remote ERDDAP admin add an <onChange>." +
-            cause + "\n"); 
+            cause + "\n");
     }
 
 
@@ -1176,13 +1190,13 @@ public abstract class EDD {
      * EDStatic.fullDatasetDirectory/[last2char]/tDatasetID/
      */
     public static String datasetDir(String tDatasetID) {
-        return EDStatic.fullDatasetDirectory + 
+        return EDStatic.fullDatasetDirectory +
             (tDatasetID.length() <= 2? tDatasetID : tDatasetID.substring(tDatasetID.length() - 2)) +
             "/" +
             tDatasetID + "/";
     }
 
-    /** 
+    /**
      * This deletes the specified dataset's cached dataset info.
      * No error if it doesn't exist.
      */
@@ -1196,7 +1210,7 @@ public abstract class EDD {
         //was: delete individual files, e.g, dir + QUICK_RESTART_FILENAME
     }
 
-    /** 
+    /**
      * This deletes this dataset's cached dataset info.
      * No error if it doesn't exist.
      */
@@ -1221,10 +1235,10 @@ public abstract class EDD {
     }
 
 
-    /** 
+    /**
      * The directory to be used for caching files for this dataset (with "/" at end).
      * ensureValid() creates this for each dataset.
-     * The cache cleaner in RunLoadDatasets won't remove it, 
+     * The cache cleaner in RunLoadDatasets won't remove it,
      *   but my testing environment (2+ things running) may remove it.
      */
     public String cacheDirectory() {
@@ -1235,13 +1249,13 @@ public abstract class EDD {
      */
     public static String cacheDirectory(String tDatasetID) {
 
-        return EDStatic.fullCacheDirectory + 
+        return EDStatic.fullCacheDirectory +
             (tDatasetID.length() <= 2? tDatasetID : tDatasetID.substring(tDatasetID.length() - 2)) +
             "/" +
             tDatasetID + "/"; //dir is created by EDD.ensureValid
     }
 
-    /** 
+    /**
      * The directory to be used for a cache of decompressed files for this dataset (with "/" at end).
      * ensureValid() creates this for each dataset.
      */
@@ -1253,49 +1267,49 @@ public abstract class EDD {
      */
     public static String decompressedDirectory(String tDatasetID) {
 
-        return EDStatic.fullDecompressedDirectory + 
+        return EDStatic.fullDecompressedDirectory +
             (tDatasetID.length() <= 2? tDatasetID : tDatasetID.substring(tDatasetID.length() - 2)) +
             "/" +
             tDatasetID + "/"; //dir is created by EDD.ensureValid
     }
 
 
-    /** 
-     * This returns the link tag for an HTML head section which advertises 
+    /**
+     * This returns the link tag for an HTML head section which advertises
      * the RSS feed for this dataset.
      */
     public String rssHeadLink() {
-        return 
+        return
             "<link rel=\"alternate\" type=\"application/rss+xml\" \n" +
             "  href=\"" + EDStatic.preferredErddapUrl + //prefer the https link
                 "/rss/" + datasetID + ".rss\" \n" +
             "  title=\"ERDDAP: " + title() + "\">\n";
     }
 
-    /** 
+    /**
      * This returns the a/href tag which advertises the RSS feed for this dataset.
      */
     public String rssHref(String loggedInAs) {
-        return 
+        return
             "<a rel=\"alternate\" type=\"application/rss+xml\" " +
             "  href=\"" + EDStatic.preferredErddapUrl + //prefer the https link
             "/rss/" + datasetID+ ".rss\" \n" +
             "  title=\"\"><img alt=\"RSS\"\n" +
             "    title=\"" + EDStatic.subscriptionRSS + "\" \n" +
-            "    src=\"" + EDStatic.imageDirUrl(loggedInAs) + "rss.gif\" ></a>"; //no img end tag 
+            "    src=\"" + EDStatic.imageDirUrl(loggedInAs) + "rss.gif\" ></a>"; //no img end tag
     }
 
-    /** 
+    /**
      * This returns the a/href tag which advertises the email subscription url for this dataset
      * (or "" if !EDStatic.subscriptionSystemActive).
      *
      */
     public String emailHref(String loggedInAs) {
-        if (EDStatic.subscriptionSystemActive) 
-            return 
+        if (EDStatic.subscriptionSystemActive)
+            return
             "<a rel=\"alternate\" \n" +
             "  href=\"" + EDStatic.preferredErddapUrl + //prefer the https link
-                "/" + Subscriptions.ADD_HTML + 
+                "/" + Subscriptions.ADD_HTML +
                 "?datasetID=" + datasetID+ "&amp;showErrors=false&amp;email=\" \n" +
             "  title=\"\"><img alt=\"Subscribe\"\n" +
             "    title=\"" + XML.encodeAsHTMLAttribute(EDStatic.subscriptionEmail) + "\" \n" +
@@ -1305,20 +1319,20 @@ public abstract class EDD {
 
     /**
      * This is used by EDDXxx.fromXml to get Attributes from the e.g., datasets.xml file.
-     * 
-     * @param xmlReader with the (e.g.,) ...<globalAttributes> having just been read.    
+     *
+     * @param xmlReader with the (e.g.,) ...<globalAttributes> having just been read.
      *    The subsequent tags must all be &lt;att name=\"attName\" type=\"someType\"&gt;someValue&lt;/att&gt; .
      *    <br>someType can be:
      *    <br>for single values: boolean, unsignedShort, short, int, long, float, double, or string,
      *       (these are standard XML atomic data types),
-     *    <br>or for space-separated values: 
+     *    <br>or for space-separated values:
      *       booleanList, unsignedShortList, shortList, intList, longList, floatList, doubleList, or stringList,
      *       (these could be defined in an XML schema as xml Lists: space separated lists of atomic types).
      *    <br>Or, type=\"someType\" can be omitted (interpreted as 'string').
      *    <br>If type='stringList', individual values with interior whitespace or commas
      *    must be completely enclosed in double quotes with interior double
      *    quotes converted to 2 double quotes. For String values without interior whitespace or commas,
-     *    you don't have to double quote the whole value. 
+     *    you don't have to double quote the whole value.
      *    This doesn't match the xml definition of list as applied to strings,
      *    but a stringList type could be defined as string data which has special
      *    meaning to this application.
@@ -1329,7 +1343,7 @@ public abstract class EDD {
     public static Attributes getAttributesFromXml(SimpleXMLReader xmlReader) throws Throwable {
 
         //process the tags
-        if (reallyVerbose) String2.log("    getAttributesFromXml...");
+        if (debugMode) String2.log("    getAttributesFromXml...");
         Attributes tAttributes = new Attributes();
         int startOfTagsN = xmlReader.stackSize();
         String tName = null, tType =  null;
@@ -1337,10 +1351,10 @@ public abstract class EDD {
             xmlReader.nextTag();
             String topTag = xmlReader.topTag();
             if (xmlReader.stackSize() == startOfTagsN) {
-                if (reallyVerbose) String2.log("      leaving getAttributesFromXml");
+                if (debugMode) String2.log("      leaving getAttributesFromXml");
                 return tAttributes; //the </attributes> tag
             }
-            if (xmlReader.stackSize() > startOfTagsN + 1) 
+            if (xmlReader.stackSize() > startOfTagsN + 1)
                 xmlReader.unexpectedTagException();
 
             if (topTag.equals("att")) {
@@ -1349,26 +1363,26 @@ public abstract class EDD {
 
             } else if (topTag.equals("/att")) {
                 String content = xmlReader.content();
-                //if (reallyVerbose) 
-                //    String2.log("      tags=" + xmlReader.allTags() + 
+                //if (reallyVerbose)
+                //    String2.log("      tags=" + xmlReader.allTags() +
                 //        " name=" + tName + " type=" + tType + " content=" + content);
                 if (!String2.isSomething(tName))
                     throw new IllegalArgumentException("datasets.xml error on line #" + xmlReader.lineNumber() +
                         ": An <att> tag doesn't have a \"name\" attribute.");
-                if (tType == null) 
+                if (tType == null)
                     tType = "string";
                 PrimitiveArray pa;
                 if (content.length() == 0) {
                     //content="" interpreted as want to delete that attribute
                     pa = new StringArray();  //always make it a StringArray (to hold "null")
-                    pa.addString("null"); 
+                    pa.addString("null");
                 } else if (tType.equals("string") || tType.equals("String")) { //spec requests "string"; support "String" to be nice?
                     //for "string", don't want to split at commas
-                    pa = new StringArray(); 
+                    pa = new StringArray();
                     pa.addString(content);
                 } else {
                     //for all other types, List designation is irrelevant
-                    if (tType.endsWith("List")) 
+                    if (tType.endsWith("List"))
                         tType = tType.substring(0, tType.length() - 4);
                     if (tType.equals("string"))  //the xml name
                         tType = "String"; //the PrimitiveArray name
@@ -1376,17 +1390,17 @@ public abstract class EDD {
                     if (tType.equals("unsignedShort")) { //the xml name
                         //parse as ints, then convert to char
                         tType = "char"; //the PrimitiveArray name
-                        pa = PrimitiveArray.ssvFactory(PrimitiveArray.elementStringToClass("int"), 
-                            content); 
+                        pa = PrimitiveArray.ssvFactory(PAType.fromCohortString("int"),
+                            content);
                         pa = new CharArray(pa);
                     } else {
-                        pa = PrimitiveArray.ssvFactory(PrimitiveArray.elementStringToClass(tType), 
-                            content); 
+                        pa = PrimitiveArray.ssvFactory(PAType.fromCohortString(tType),
+                            content);
                     }
                 }
-                //if (tName.equals("_FillValue")) 
-                //    String2.log(">>EDD attribute name=\"" + tName + "\" content=" + content + 
-                //    "\n  type=" + pa.elementClassString() + " pa=" + pa.toString());
+                //if (tName.equals("_FillValue"))
+                //    String2.log(">>EDD attribute name=\"" + tName + "\" content=" + content +
+                //    "\n  type=" + pa.elementTypeString() + " pa=" + pa.toString());
                 tAttributes.add(tName, pa);
                 //String2.log(">>????EDD _FillValue=" + tAttributes.get("_FillValue"));
 
@@ -1397,22 +1411,22 @@ public abstract class EDD {
     }
 
     /**
-     * This is used by EDDXxx.fromXml to get the sourceName,destinationName,attributes information for an 
+     * This is used by EDDXxx.fromXml to get the sourceName,destinationName,attributes information for an
      * axisVariable or dataVariable from the e.g., datasets.xml file.
      * Unofficial: this is becoming the standard for &lt;axisVariable&gt;.
-     * 
-     * @param xmlReader with the ...&lt;axisVariable&gt; or ...&lt;dataVariable&gt; having just been read.    
+     *
+     * @param xmlReader with the ...&lt;axisVariable&gt; or ...&lt;dataVariable&gt; having just been read.
      *    The allowed subtags are sourceName, destinationName, and addAttributes.
-     * @return Object[4] [0]=sourceName, [1]=destinationName, [2]=addAttributes, 
+     * @return Object[4] [0]=sourceName, [1]=destinationName, [2]=addAttributes,
      *    [3]=values PrimitiveArray.
-     *    This doesn't check the validity of the objects. The objects may be null. 
+     *    This doesn't check the validity of the objects. The objects may be null.
      *    The xmlReader will have just read ...&lt;/axisVariable&gt; or ...&lt;/dataVariable&gt;.
      * @throws Throwable if trouble
      */
     public static Object[] getSDAVVariableFromXml(SimpleXMLReader xmlReader) throws Throwable {
 
         //process the tags
-        if (reallyVerbose) String2.log("  getSDAVVariableFromXml...");
+        if (debugMode) String2.log("  getSDAVVariableFromXml...");
         String startOfTags = xmlReader.allTags();
         int startOfTagsN = xmlReader.stackSize();
         int startOfTagsLength = startOfTags.length();
@@ -1425,11 +1439,11 @@ public abstract class EDD {
             String content = xmlReader.content();
             //if (reallyVerbose) String2.log("    topTag=" + topTag + " content=" + content);
             if (xmlReader.stackSize() == startOfTagsN) { //the /variable tag
-                if (reallyVerbose) String2.log("    leaving getSDAVVariableFromXml" +
+                if (debugMode) String2.log("    leaving getSDAVVariableFromXml" +
                     " sourceName=" + tSourceName + " destName=" + tDestinationName);
                 return new Object[]{tSourceName, tDestinationName, tAttributes, tValuesPA};
             }
-            if (xmlReader.stackSize() > startOfTagsN + 1) 
+            if (xmlReader.stackSize() > startOfTagsN + 1)
                 xmlReader.unexpectedTagException();
 
             if      (topTag.equals( "sourceName")) {}
@@ -1439,9 +1453,9 @@ public abstract class EDD {
             else if (topTag.equals( "addAttributes"))
                 tAttributes = getAttributesFromXml(xmlReader);
             else if (topTag.equals( "values")) { //2017-04-27 what is this? An unfinished system for specifying a set of values for a GridAxisVariable?
-                //always make a PA 
+                //always make a PA
                 String type = xmlReader.attributeValue("type");
-                if (type == null) 
+                if (type == null)
                     type = "";
                 if (type.endsWith("List"))
                     type = type.substring(0, type.length() - 4);
@@ -1449,25 +1463,25 @@ public abstract class EDD {
                     type = "char"; //the PrimitiveArray name
                 else if (type.equals("string")) //the xml name
                     type = "String"; //the PrimitiveArray name
-                Class elementClass = PrimitiveArray.elementStringToClass(type); //throws Throwable if trouble
+                PAType elementPAType = PAType.fromCohortString(type); //throws Throwable if trouble
                 double start      = String2.parseDouble(xmlReader.attributeValue("start"));
                 double increment  = String2.parseDouble(xmlReader.attributeValue("increment"));
                 int n             = String2.parseInt(xmlReader.attributeValue("n"));
-                if (!Double.isNaN(start) && 
+                if (!Double.isNaN(start) &&
                     increment > 0 && //this could change to !NaN and !0
                     n > 0 && n < Integer.MAX_VALUE) {
                     //make PA with 1+ evenly spaced values
-                    tValuesPA = PrimitiveArray.factory(elementClass, n, false);
-                    for (int i = 0; i < n; i++) 
+                    tValuesPA = PrimitiveArray.factory(elementPAType, n, false);
+                    for (int i = 0; i < n; i++)
                         tValuesPA.addDouble(start + i * increment);
                 } else {
                     //make PA with correct type, but size=0
-                    tValuesPA = PrimitiveArray.factory(elementClass, 0, "");
+                    tValuesPA = PrimitiveArray.factory(elementPAType, 0, "");
                 }
             } else if (topTag.equals("/values")) {
                 if (tValuesPA.size() == 0) {
-                    //make a new PA from content values 
-                    tValuesPA = PrimitiveArray.csvFactory(tValuesPA.elementClass(), content);         
+                    //make a new PA from content values
+                    tValuesPA = PrimitiveArray.csvFactory(tValuesPA.elementType(), content);
                 }
                 if (reallyVerbose) String2.log("values for sourceName=" + tSourceName + "=" + tValuesPA.toString());
 
@@ -1477,22 +1491,22 @@ public abstract class EDD {
     }
 
     /**
-     * This is used by EDDXxx.fromXml to get the 
-     * sourceName,destinationName,attributes,dataType information for an 
+     * This is used by EDDXxx.fromXml to get the
+     * sourceName,destinationName,attributes,dataType information for an
      * axisVariable or dataVariable from the e.g., datasets.xml file.
      * Unofficial: this is becoming the standard for &lt;dataVariable&gt;.
-     * 
-     * @param xmlReader with the ...&lt;axisVariable&gt; or ...&lt;dataVariable&gt; having just been read.    
-     *    The allowed subtags are sourceName, destinationName, addAttributes, and dataType. 
+     *
+     * @param xmlReader with the ...&lt;axisVariable&gt; or ...&lt;dataVariable&gt; having just been read.
+     *    The allowed subtags are sourceName, destinationName, addAttributes, and dataType.
      * @return Object[4] 0=sourceName, 1=destinationName, 2=addAttributes, 3=dataType.
-     *    This doesn't check the validity of the objects. The objects may be null. 
+     *    This doesn't check the validity of the objects. The objects may be null.
      *    The xmlReader will have just read ...&lt;/axisVariable&gt; or ...&lt;/dataVariable&gt;
      * @throws Throwable if trouble
      */
     public static Object[] getSDADVariableFromXml(SimpleXMLReader xmlReader) throws Throwable {
 
         //process the tags
-        if (reallyVerbose) String2.log("  getSDADVVariableFromXml...");
+        if (debugMode) String2.log("  getSDADVVariableFromXml...");
         String startOfTags = xmlReader.allTags();
         int startOfTagsN = xmlReader.stackSize();
         int startOfTagsLength = startOfTags.length();
@@ -1504,11 +1518,11 @@ public abstract class EDD {
             String content = xmlReader.content();
             //if (reallyVerbose) String2.log("    topTag=" + topTag + " content=" + content);
             if (xmlReader.stackSize() == startOfTagsN) { //the /variable tag
-                if (reallyVerbose) String2.log("    leaving getSDADVVariableFromXml" +
+                if (debugMode) String2.log("    leaving getSDADVVariableFromXml" +
                     " sourceName=" + tSourceName + " destName=" + tDestinationName + " dataType=" + tDataType);
                 return new Object[]{tSourceName, tDestinationName, tAttributes, tDataType};
             }
-            if (xmlReader.stackSize() > startOfTagsN + 1) 
+            if (xmlReader.stackSize() > startOfTagsN + 1)
                 xmlReader.unexpectedTagException();
 
             if      (topTag.equals( "sourceName")) {}
@@ -1537,7 +1551,7 @@ public abstract class EDD {
             accessibleTo = null;  //accessible to all
             return;
         }
-        
+
         accessibleTo = csvList.trim().length() == 0? new String[0] : //accessible to no one
             String2.split(csvList, ',');
         Arrays.sort(accessibleTo);
@@ -1546,7 +1560,7 @@ public abstract class EDD {
     /**
      * This gets accessibleTo.
      *
-     * @return accessibleTo 
+     * @return accessibleTo
      *    null indicates the dataset is accessible to anyone (i.e., it is public).
      *    length=0 means it is accessible to no one.
      *    length>0 means it is accessible to some roles.
@@ -1562,7 +1576,7 @@ public abstract class EDD {
      */
     protected boolean setGraphsAccessibleTo(String s) {
         //dataset is public
-        if (accessibleTo == null) 
+        if (accessibleTo == null)
             return graphsAccessibleToPublic = true;
 
         //dataset is private
@@ -1572,7 +1586,7 @@ public abstract class EDD {
         if (s.equals("public"))
             return graphsAccessibleToPublic = true;
 
-        throw new RuntimeException(String2.ERROR + 
+        throw new RuntimeException(String2.ERROR +
             ": <graphsAccessibleTo> must be \"auto\", null (like \"auto\"), or \"public\".");
     }
 
@@ -1597,11 +1611,11 @@ public abstract class EDD {
      */
     public boolean isAccessibleTo(String roles[]) {
         boolean showMessage = false;
-        String message = showMessage? 
-            datasetID + " accessibleTo=" + String2.toSSVString(accessibleTo) + 
+        String message = showMessage?
+            datasetID + " accessibleTo=" + String2.toSSVString(accessibleTo) +
             "\n  user roles=" + String2.toSSVString(roles) +
             "\n  accessible=" :
-            ""; 
+            "";
 
         //dataset is accessible to all?
         if (accessibleTo == null) {
@@ -1648,80 +1662,96 @@ public abstract class EDD {
      */
     public abstract String accessibleViaSubset();
 
-    /** 
+    /**
      * This indicates why the dataset isn't accessible via SOS
      * (or "" if it is).
      */
     public abstract String accessibleViaSOS();
 
-    /** 
+    /**
      * This indicates why the dataset isn't accessible via the ESRI GeoServices REST
      * specification (or "" if it is).
      */
     public abstract String accessibleViaGeoServicesRest();
 
-    /** 
+    /**
      * This indicates why the dataset isn't accessible via WCS
      * (or "" if it is).
      */
     public abstract String accessibleViaWCS();
 
-    /** 
+    /**
      * This indicates why the dataset isn't accessible via .ncCF and .ncCFMA file types
      * (or "" if it is).
-     * Currently, this is only for some of the Discrete Sampling Geometries cdm_data_type 
+     * Currently, this is only for some of the Discrete Sampling Geometries cdm_data_type
      * representations at
-     * http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/cf-conventions.html
+     * https://cfconventions.org/Data/cf-conventions/cf-conventions-1.8/cf-conventions.html
      */
     public abstract String accessibleViaNcCF();
 
-    /** 
+    /**
      * This indicates why the dataset isn't accessible via WMS
      * (or "" if it is).
      */
     public abstract String accessibleViaWMS();
 
-    /** 
-     * This indicates the base directory if the dataset is accessible via the 
-     * /files/ service (or "" if it isn't available).
+    /**
+     * This indicates if the dataset is accessible via the
+     * /files/ service.
      */
-    public String accessibleViaFilesDir() {
-        return accessibleViaFilesDir;
+     public boolean accessibleViaFiles() {
+         return accessibleViaFiles;
+     }
+
+    /**
+     * This converts a dnlsTable into a table ready for /files/ response.
+     *
+     * @param fileTable Input columns: directory (String), name (String), lastModified (long), size (long).
+     *   Output columns: "Name" (String), "Last modified" (long millis),
+     *   "Size" (long), and "Description" (String, but no content)
+     * @throws RuntimeException if trouble
+     */
+    public static void accessibleViaFilesMakeReadyForUser(Table table) {
+        String colNames = table.getColumnNamesCSVString();
+        Test.ensureEqual(colNames, "directory,name,lastModified,size", "");
+        table.removeColumn(0); //directory
+        table.setColumnName(0, "Name");
+        table.setColumnName(1, "Last modified");
+        table.setColumnName(2, "Size");
+        table.addColumn("Description", new StringArray(table.nRows(), true));
     }
 
-    /** 
-     * This indicates the file name regex if accessibleViaFilesDir != "".
-     */
-    public String accessibleViaFilesRegex() {
-        return accessibleViaFilesRegex;
-    }
 
-    /** 
-     * If accessibleViaFiles isn't "", this indicates if subdirectories
-     * are available via the /files/ service.
-     */
-    public boolean accessibleViaFilesRecursive() {
-        return accessibleViaFilesRecursive;
-    }
-
-    /** 
-     * This returns a fileTable (formatted like 
-     * FileVisitorDNLS.oneStep(tDirectoriesToo=false, size is LongArray,
-     * and lastMod is LongArray of epochMillis)
+    /**
+     * This returns a fileTable
      * with valid files (or null if unavailable or any trouble).
      * This is a copy of any internal data, so client can modify the contents.
      *
-     * @param nextPath is the partial path (with trailing slash) to be appended 
+     * @param nextPath is the partial path (with trailing slash) to be appended
      *   onto the local fileDir (or wherever files are, even url).
      * @return null if trouble,
-     *   or Object[2] where [0] is a sorted DNLS table which just has files in fileDir + nextPath and 
-     *   [1] is a sorted String[] with the short names of directories that are 1 level lower.
+     *   or Object[3] where
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis),
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
      */
     public Object[] accessibleViaFilesFileTable(String nextPath) {
         return null;
     }
 
-    /** 
+    /**
+     * This converts a relativeFileName into a full localFileName.
+     *
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+     public String accessibleViaFilesGetLocal(String relativeFileName) {
+         return null;
+     }
+
+    /**
      * This indicates why the dataset isn't accessible via the FGDC service
      * (or "" if it is).
      */
@@ -1740,7 +1770,7 @@ public abstract class EDD {
                 File2.delete(tName); //delete any existing file
                 try {
                     //is a pre-made, external file available?
-                    if (fgdcFile == null) {  
+                    if (fgdcFile == null) {
                         //No.  Write fgdc to temp file
                         StringWriter writer = new StringWriter(65536);  //most are ~40KB
                         writeFGDC(writer);
@@ -1751,7 +1781,7 @@ public abstract class EDD {
                         //then swap into place to replace old version quickly
                         if (accessibleViaFGDC.length() == 0)
                             File2.rename(tName + tmp, tName);
-                        else File2.delete(tName + tmp);                
+                        else File2.delete(tName + tmp);
 
                     } else if (fgdcFile.length() > 0) {
                         if (String2.isUrl(fgdcFile)) {
@@ -1763,29 +1793,29 @@ public abstract class EDD {
                         } else if (File2.isFile(fgdcFile)) {
                             //copy the file to datasetDir
                             File2.copy(fgdcFile, tName);
-                        } else {  
+                        } else {
                             //file doesn't exist
                             throw new SimpleException(
-                                EDStatic.resourceNotFound + " the <fgdcFile> specified in datasets.xml.");
+                                EDStatic.resourceNotFound + "the <fgdcFile> specified in datasets.xml.");
                         }
-                            
+
                     } else {
                         accessibleViaFGDC = MessageFormat.format(
-                            EDStatic.noXxx, "FGDC"); 
+                            EDStatic.noXxx, "FGDC");
                     }
-                    
+
                 } catch (Throwable t) {
                     String2.log(MessageFormat.format(
                         EDStatic.noXxxBecause2,
-                        "FGDC", 
+                        "FGDC",
                         (t instanceof SimpleException?
                             MustBe.getShortErrorMessage(t) :
                             MustBe.throwableToString(t))));
                     if (accessibleViaFGDC.length() == 0)
                         accessibleViaFGDC = String2.canonical(MustBe.getShortErrorMessage(t));
-                    File2.delete(tName + tmp);                
-                    File2.delete(tName);                
-                }  
+                    File2.delete(tName + tmp);
+                    File2.delete(tName);
+                }
             } else {
                 accessibleViaFGDC = String2.canonical(
                     MessageFormat.format(EDStatic.noXxxBecause2,      "FGDC",
@@ -1795,7 +1825,7 @@ public abstract class EDD {
         return accessibleViaFGDC;
     }
 
-    /** 
+    /**
      * This indicates why the dataset isn't accessible via the ISO 19115 service
      * (or "" if it is).
      */
@@ -1825,7 +1855,7 @@ public abstract class EDD {
                         //then swap into place to replace old version quickly
                         if (accessibleViaISO19115.length() == 0)
                             File2.rename(tName + tmp, tName);
-                        else File2.delete(tName + tmp);                
+                        else File2.delete(tName + tmp);
 
                     } else if (iso19115File.length() > 0) {
                         if (String2.isUrl(iso19115File)) {
@@ -1836,29 +1866,29 @@ public abstract class EDD {
                         } else if (File2.isFile(iso19115File)) {
                             //copy the file to datasetDir
                             File2.copy(iso19115File, tName);
-                        } else {  
+                        } else {
                             //file doesn't exist
                             throw new SimpleException(
-                                EDStatic.resourceNotFound + " the <iso19115File> specified in datasets.xml.");
+                                EDStatic.resourceNotFound + "the <iso19115File> specified in datasets.xml.");
                         }
-                            
+
                     } else {
                         accessibleViaISO19115 = MessageFormat.format(
-                            EDStatic.noXxx, "ISO 19115-2/19139"); 
+                            EDStatic.noXxx, "ISO 19115-2/19139");
                     }
 
                 } catch (Throwable t) {
                     String2.log(MessageFormat.format(
                         EDStatic.noXxxBecause2,
-                        "ISO 19115-2/19139", 
+                        "ISO 19115-2/19139",
                         (t instanceof SimpleException?
                             MustBe.getShortErrorMessage(t) :
                             MustBe.throwableToString(t))));
                     if (accessibleViaISO19115.length() == 0)
                         accessibleViaISO19115 = String2.canonical(
                             MustBe.getShortErrorMessage(t));
-                    File2.delete(tName + tmp);                
-                    File2.delete(tName);                
+                    File2.delete(tName + tmp);
+                    File2.delete(tName);
                 }
             } else {
                 accessibleViaISO19115 = String2.canonical(
@@ -1871,21 +1901,21 @@ public abstract class EDD {
 
 
 
-    /** 
+    /**
      * This writes the dataset's FGDC-STD-001-1998
-     * "Content Standard for Digital Geospatial Metadata" with 
+     * "Content Standard for Digital Geospatial Metadata" with
      * "Extensions for Remote Sensing Metadata"
      * XML to the writer.
      *
-     * <p>This is usually just called by the dataset's constructor, 
+     * <p>This is usually just called by the dataset's constructor,
      * at the end of EDDTable/Grid.ensureValid.
-     * 
+     *
      * @param writer a UTF-8 writer
      * @throws Throwable if trouble
      */
     protected abstract void writeFGDC(Writer writer) throws Throwable;
 
-    /** 
+    /**
      * This writes the dataset's ISO 19115-2/19139 XML to the writer.
      * <br>The template is initially based on THREDDS ncIso output from
      * <br>https://oceanwatch.pfeg.noaa.gov/thredds/iso/satellite/MH/chla/8day
@@ -1894,10 +1924,10 @@ public abstract class EDD {
      *
      * <p>Help with schema: http://www.schemacentral.com/sc/niem21/e-gmd_contact-1.html
      * <br>List of nilReason: http://www.schemacentral.com/sc/niem21/a-gco_nilReason.html
-     * 
-     * <p>This is usually just called by the dataset's constructor, 
+     *
+     * <p>This is usually just called by the dataset's constructor,
      * at the end of EDDTable/Grid.ensureValid.
-     * 
+     *
      * @param writer a UTF-8 writer
      * @throws Throwable if trouble
      */
@@ -1919,17 +1949,17 @@ public abstract class EDD {
     public abstract String dapDescription();
 
 
-    /** 
-     * The datasetID is a very short string identifier 
+    /**
+     * The datasetID is a very short string identifier
      *  (recommended: [A-Za-z][A-Za-z0-9_]* )
-     * for this dataset, 
+     * for this dataset,
      * often the source of the dataset (e.g., "erd") and the source's
-     * name for the dataset (e.g., "ATssta8day") combined (e.g., "erdATssta8day").  
-     * <br>The datasetID must be unique, 
+     * name for the dataset (e.g., "ATssta8day") combined (e.g., "erdATssta8day").
+     * <br>The datasetID must be unique,
      *   as datasetID is used as the virtual directory for this dataset.
      * <br>This is for use in this program (it is part of the datasets name
      *   that is shown to the user) and shouldn't (if at all possible)
-     *   change over time (whereas the 'title' might change). 
+     *   change over time (whereas the 'title' might change).
      * <br>This needn't match any external name for this dataset (e.g., the
      *   id used by the source, or close to it), but it is sometimes helpful for users if it does.
      * <br>It is usually &lt; 15 characters long.
@@ -1938,14 +1968,14 @@ public abstract class EDD {
      */
     public String datasetID() {return datasetID; }
 
-    /** 
+    /**
      * The className is the name of the non-abstract subclass of this EDD, e.g., EDDTableFromDapSequence.
-     * 
+     *
      * @return the className
      */
     public String className() {return className; }
 
-    /** 
+    /**
      * onChange is a list of 0 or more actions (starting with http://, https://, or mailto: )
      * to be done whenever the dataset changes significantly.
      * onChange may be null.
@@ -1954,22 +1984,22 @@ public abstract class EDD {
      */
     public StringArray onChange() {return onChange; }
 
-    /** 
-     * The title is a descriptive title for this dataset, 
-     * e.g., "SST Anomaly, Pathfinder Ver 5.0, Day and Night, 0.05 degrees, Global, Science Quality".  
+    /**
+     * The title is a descriptive title for this dataset,
+     * e.g., "SST Anomaly, Pathfinder Ver 5.0, Day and Night, 0.05 degrees, Global, Science Quality".
      * It is usually &lt; 80 characters long.
      * The information is often originally from the CF global metadata for "title".
      *
      * @return the title
      */
     public String title() {
-        if (title == null) 
+        if (title == null)
             title = combinedGlobalAttributes.getString("title");
         return title;
     }
 
-    /** 
-     * The summary is a longer description for this dataset.  
+    /**
+     * The summary is a longer description for this dataset.
      * It is usually &lt; 500 characters long.
      * It may have newline characters (usually at &lt;= 72 chars per line).
      * The information is often originally from the CF global metadata for "summary".
@@ -1977,12 +2007,12 @@ public abstract class EDD {
      * @return the summary
      */
     public String summary() {
-        if (summary == null) 
+        if (summary == null)
             summary = combinedGlobalAttributes.getString("summary");
-        return summary; 
+        return summary;
     }
 
-    /** 
+    /**
      * The extendedSummary is summary() plus a list of variable names, long names, and units.
      *
      * @return the extendedSummary
@@ -1990,9 +2020,9 @@ public abstract class EDD {
     public String extendedSummary() {
         String tSummary = summary();
         if (extendedSummaryPartB == null) {
-            String nllSummary = String2.noLongLinesAtSpace(tSummary, 100, ""); //as it will be shown 
+            String nllSummary = String2.noLongLinesAtSpace(tSummary, 100, ""); //as it will be shown
             int nllSummaryLength = nllSummary.length();
-            int nLines = 0; 
+            int nLines = 0;
             for (int i = 0; i < nllSummaryLength; i++) {
                 if (nllSummary.charAt(i) == '\n')
                     nLines++;
@@ -2000,7 +2030,7 @@ public abstract class EDD {
 
             //standardize the blank lines
             StringBuilder sb = new StringBuilder();
-            if (tSummary.endsWith("\n\n")) {     
+            if (tSummary.endsWith("\n\n")) {
                 //do nothing
             } else if (tSummary.endsWith("\n")) {
                 sb.append('\n');   nLines++;
@@ -2014,21 +2044,21 @@ public abstract class EDD {
             //list the stationVariables, trajectoryVariables, profileVariables?
 
             //add the list of variables
-            sb.append("VARIABLES"); 
-            if (this instanceof EDDGrid) 
+            sb.append("VARIABLES");
+            if (this instanceof EDDGrid)
                 sb.append(" (all of which use the dimensions " + ((EDDGrid)this).allDimString() + ")");
             sb.append(":\n");
             nLines++;
             for (int dv = 0; dv < dataVariables.length; dv++) {
                 EDV edv = dataVariables[dv];
-                String lName = edv.destinationName().length() == edv.longName().length()? "" : 
+                String lName = edv.destinationName().length() == edv.longName().length()? "" :
                     edv.longName();
                 String tUnits = edv.units() == null? "" : edv.units();
                 String glue = lName.length() > 0 && tUnits.length() > 0? ", " : "";
-                sb.append(edv.destinationName() + 
-                    (lName.length() > 0 || tUnits.length() > 0? 
+                sb.append(edv.destinationName() +
+                    (lName.length() > 0 || tUnits.length() > 0?
                         " (" + lName + glue + tUnits + ")" : "") +
-                    "\n");                
+                    "\n");
 
                 nLines++;
                 if (nLines > 30 && dv < dataVariables.length - 4) { //don't do this if just a few more dv
@@ -2039,61 +2069,61 @@ public abstract class EDD {
             extendedSummaryPartB = sb.toString();  //it is important that assignment be atomic
         }
         return extendedSummaryPartB.length() == 0? tSummary :
-            tSummary + extendedSummaryPartB; 
+            tSummary + extendedSummaryPartB;
     }
 
-    /** 
+    /**
      * The institution identifies the source of the data which should receive
      * credit for the data, suitable for "Data courtesy of " in the legend on a graph,
-     * e.g., NOAA NESDIS OSDPD. 
+     * e.g., NOAA NESDIS OSDPD.
      * It is usually &lt; 20 characters long.
      * The information is often originally from the CF global metadata for "institution".
-     * 
+     *
      * @return the institution
      */
     public String institution() {
-        if (institution == null) 
+        if (institution == null)
             institution = combinedGlobalAttributes.getString(EDStatic.INSTITUTION);
-        return institution; 
+        return institution;
     }
 
-    /** 
-     * The infoUrl identifies a url with information about the dataset. 
-     * The information was supplied by the constructor and is stored as 
+    /**
+     * The infoUrl identifies a url with information about the dataset.
+     * The information was supplied by the constructor and is stored as
      * global metadata for "infoUrl" (non-standard).
-     * 
+     *
      * @return the infoUrl
      */
     public String infoUrl() {
-        if (infoUrl == null) 
+        if (infoUrl == null)
             infoUrl = combinedGlobalAttributes.getString("infoUrl");
-        return infoUrl; 
+        return infoUrl;
     }
 
-    /** 
+    /**
      * The localSourceUrl identifies the source (usually) url actually used
-     * to get data. 
+     * to get data.
      * The information was supplied by the constructor.
      * For a FromErddap, this is the URL of the dataset on the remote ERDDAP.
-     * 
+     *
      * @return the localSourceUrl
      */
     public String localSourceUrl() {
-        return localSourceUrl; 
+        return localSourceUrl;
     }
 
-    /** 
+    /**
      * The publicSourceUrl identifies the source (usually) url from the
-     * combinedGlobalAttributes. 
+     * combinedGlobalAttributes.
      * For a FromErddap, this is the (e.g.,) opendap server that the remote ERDDAP
      * gets data from.
-     * 
+     *
      * @return the publicSourceUrl
      */
     public String publicSourceUrl() {
-        if (publicSourceUrl == null) 
+        if (publicSourceUrl == null)
             publicSourceUrl = combinedGlobalAttributes.getString("sourceUrl");
-        return publicSourceUrl; 
+        return publicSourceUrl;
     }
 
     /**
@@ -2103,7 +2133,7 @@ public abstract class EDD {
      * For example,
      * &lt;convertToPublicSourceUrl from="http://192.168.31.18/" to="https://oceanwatch.pfeg.noaa.gov/" /&gt;
      * will cause a matching local sourceUrl (such as http://192.168.31.18/thredds/dodsC/satellite/BA/ssta/5day)
-     * into a public sourceUrl (https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/BA/ssta/5day). 
+     * into a public sourceUrl (https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/BA/ssta/5day).
      *
      * @param tLocalSourceUrl
      * @return publicSourceUrl (or tLocalSourceUrl if no change specified).
@@ -2120,34 +2150,34 @@ public abstract class EDD {
         return tLocalSourceUrl;
     }
 
-    /** 
-     * The defaultDataQuery is used if the user requests .html with no query. 
-     * 
+    /**
+     * The defaultDataQuery is used if the user requests .html with no query.
+     *
      * @return the defaultDataQuery.  Won't be null. May be "".
      */
     public String defaultDataQuery() {
         return defaultDataQuery == null? "" : defaultDataQuery;
     }
 
-    /** 
-     * The defaultGraphQuery is used if the user requests .graph with no query. 
-     * 
+    /**
+     * The defaultGraphQuery is used if the user requests .graph with no query.
+     *
      * @return the defaultGraphQuery.  Won't be null. May be "".
      */
     public String defaultGraphQuery() {
         return defaultGraphQuery == null? "" : defaultGraphQuery;
     }
 
-    /** 
-     * The cdm_data_type global attribute identifies the type of data. 
+    /**
+     * The cdm_data_type global attribute identifies the type of data.
      * Valid values include the CF featureType's + Grid.
-     * 
+     *
      * @return the cdmDataType
      */
     public String cdmDataType() {
-        if (cdmDataType == null) 
+        if (cdmDataType == null)
             cdmDataType = combinedGlobalAttributes.getString("cdm_data_type");
-        return cdmDataType; 
+        return cdmDataType;
     }
 
     /** This returns the accessConstraints (e.g., for ERDDAP's SOS, WCS, WMS)
@@ -2163,7 +2193,7 @@ public abstract class EDD {
             EDStatic.accessRequiresAuthorization;
     }
 
-    /** This returns the fees (e.g., for ERDDAP's SOS, WCS, WMS) 
+    /** This returns the fees (e.g., for ERDDAP's SOS, WCS, WMS)
      * from combinedGlobalAttributes (checked first)
      * or EDStatic (from setup.xml). */
     public String fees() {
@@ -2171,7 +2201,7 @@ public abstract class EDD {
         return fees == null? EDStatic.fees : fees;
     }
 
-    /** This returns the keywords (e.g., for ERDDAP's SOS, WCS, WMS) 
+    /** This returns the keywords (e.g., for ERDDAP's SOS, WCS, WMS)
      * from combinedGlobalAttributes (checked first)
      * or EDStatic (from setup.xml).
      */
@@ -2185,7 +2215,7 @@ public abstract class EDD {
         //split it  (this makes duplicates, so sort and remove them)
         //if (kw.indexOf('>') >= 0)   //gcmd keywords may be separated with '>'
         //    return String2.split(kw, '>');
-        //if (kw.indexOf('|') >= 0)  
+        //if (kw.indexOf('|') >= 0)
         //    return String2.split(kw, '|');
         //StringArray sa = StringArray.wordsAndQuotedPhrases(kw); //comma or space separated
         StringArray sa = StringArray.fromCSV(kw);
@@ -2215,18 +2245,17 @@ public abstract class EDD {
         return sub == null? EDStatic.sosUrnBase : sub;
     }
 
-    /** This returns the default value of drawLandMask (false=under, true=over)
-     * for this dataset (or this ERDDAP installation as specified in setup.xml).
+    /** This returns the default value of drawLandMask ("under", "over", "outline", or "off")
+     * for variables in this dataset.
      * The combinedAttributes setting (if any) has priority over the setup.xml setting.
      */
-    public boolean defaultDrawLandMask() {
-        String dlm = combinedGlobalAttributes().getString("drawLandMask"); 
-        if (dlm == null) 
-            return EDStatic.drawLandMask.equals("over");
-        return !dlm.equals("under"); //'over' is preferred
+    public String defaultDrawLandMask() {
+        String dlm = combinedGlobalAttributes().getString("drawLandMask");
+        int which = String2.indexOf(SgtMap.drawLandMask_OPTIONS, dlm);
+        return which < 1? EDStatic.drawLandMask : dlm;
     }
 
-    /** 
+    /**
      * The global attributes from the source.
      *
      * @return the global attributes from the source.
@@ -2234,22 +2263,22 @@ public abstract class EDD {
     public Attributes sourceGlobalAttributes() {return sourceGlobalAttributes; }
 
     /**
-     * The global attributes which will be added to (and take precedence over) 
+     * The global attributes which will be added to (and take precedence over)
      * the sourceGlobalAttributes when results files are created.
      *
-     * @return the global attributes which will be added to (and take precedence over) 
+     * @return the global attributes which will be added to (and take precedence over)
      * the sourceGlobal attributes when results files are created.
      */
     public Attributes addGlobalAttributes() {return addGlobalAttributes; }
 
     /**
      * The source+add global attributes, then tweaked (e.g., remove "null" values).
-     * 
+     *
      * @return the source+add global attributes.
      */
     public Attributes combinedGlobalAttributes() {return combinedGlobalAttributes;  }
 
-    /** 
+    /**
      * This returns the data variable which has the specified source name.
      *
      * @return the specified data variable sourceName
@@ -2259,12 +2288,12 @@ public abstract class EDD {
 
         int which = String2.indexOf(dataVariableSourceNames(), tSourceName);
         if (which < 0) throw new SimpleException(
-            MessageFormat.format(EDStatic.errorNotFound, 
-                "sourceVariableName=" + tSourceName));
+            MessageFormat.format(EDStatic.errorNotFound,
+                "sourceVariableName=" + tSourceName + " in datasetID=" + datasetID));
         return dataVariables[which];
     }
 
-    /** 
+    /**
      * This returns the data variable which has the specified destination name.
      *
      * @return the specified data variable destinationName
@@ -2272,10 +2301,10 @@ public abstract class EDD {
      */
     public EDV findDataVariableByDestinationName(String tDestinationName) {
 
-        int which = String2.indexOf(dataVariableDestinationNames(), tDestinationName.split("/")[0]);
+        int which = String2.indexOf(dataVariableDestinationNames(), tDestinationName.split("/")[0]);  //why split? why would there be a '/'
         if (which < 0) throw new SimpleException(
-            MessageFormat.format(EDStatic.errorNotFound, 
-                "destinationVariableName=" + tDestinationName));
+            MessageFormat.format(EDStatic.errorNotFoundIn,
+                "destinationVariableName=" + tDestinationName, "datasetID=" + datasetID));
         return dataVariables[which];
     }
 
@@ -2322,7 +2351,7 @@ public abstract class EDD {
      */
     public EDV[] dataVariables() {return dataVariables; }
 
-    /** 
+    /**
      * This returns the axis or data variable which has the specified destination name.
      * This implementation only knows about data variables, so subclasses
      * like EDDGrid that have axis variables, too, overwrite it.
@@ -2330,79 +2359,79 @@ public abstract class EDD {
      * @return the specified axis or data variable destinationName
      * @throws Throwable if not found
      */
-    public EDV findVariableByDestinationName(String tDestinationName) 
+    public EDV findVariableByDestinationName(String tDestinationName)
         throws Throwable {
         return findDataVariableByDestinationName(tDestinationName);
     }
 
-    /** 
+    /**
      * creationTimeMillis indicates when this dataset was created.
-     * 
+     *
      * @return when this dataset was created
      */
     public long creationTimeMillis() {return creationTimeMillis; }
 
 
-    /** 
+    /**
      * reloadEveryNMinutes indicates how often this program should check
-     * for new data for this dataset by recreating this EDD, e.g., 60. 
-     * 
+     * for new data for this dataset by recreating this EDD, e.g., 60.
+     *
      * @return the suggested number of minutes between refreshes
      */
     public int getReloadEveryNMinutes() {return reloadEveryNMinutes; }
 
-    /** 
+    /**
      * This sets reloadEveryNMinutes.
-     * 
+     *
      * @param minutes if &lt;=0 or == Integer.MAX_VALUE,
      *    this uses DEFAULT_RELOAD_EVERY_N_MINUTES.
      */
     public void setReloadEveryNMinutes(int tReloadEveryNMinutes) {
-        reloadEveryNMinutes = 
+        reloadEveryNMinutes =
             tReloadEveryNMinutes <= 0 || tReloadEveryNMinutes == Integer.MAX_VALUE?
             DEFAULT_RELOAD_EVERY_N_MINUTES : tReloadEveryNMinutes;
     }
 
-    /** 
+    /**
      * updateEveryNMillis indicates how often this program should check
-     * for new data for this dataset and do an incremental update, e.g., 1000. 
-     * 
+     * for new data for this dataset and do an incremental update, e.g., 1000.
+     *
      * @return the number of milliseconds until dataset needs an incremental update
      */
     public int getUpdateEveryNMillis() {return updateEveryNMillis; }
 
-    /** 
+    /**
      * This sets updateEveryNMillis.
-     * 
+     *
      * @param tUpdateEveryNMillis Use 0 to never update.  (&lt;=0 and Integer.MAX_VALUE are treated as 0.)
      */
     public void setUpdateEveryNMillis(int tUpdateEveryNMillis) {
-        updateEveryNMillis = 
-            tUpdateEveryNMillis < 1 || tUpdateEveryNMillis == Integer.MAX_VALUE? 0 : 
+        updateEveryNMillis =
+            tUpdateEveryNMillis < 1 || tUpdateEveryNMillis == Integer.MAX_VALUE? 0 :
                 tUpdateEveryNMillis;
         if (updateEveryNMillis > 0 && updateLock == null)
             updateLock = new ReentrantLock();
     }
 
     /**
-     * This provides the framework for the updateEveryNMillis system 
+     * This provides the framework for the updateEveryNMillis system
      * to do a quick incremental update of this dataset (i.e., for real time datasets),
      * but leaves the class specific work to lowUpdate() (which here does nothing,
      * but which subclasses like EDDGridFromDap overwrite).
-     * 
+     *
      * <p>Concurrency issue: This avoids 2+ simultaneous updates.
      *
-     * <p>See &lt;updateEveryNMillis&gt; in constructor. 
-     * Note: It is pointless and counter-productive to set updateEveryNMillis 
+     * <p>See &lt;updateEveryNMillis&gt; in constructor.
+     * Note: It is pointless and counter-productive to set updateEveryNMillis
      * to be less than a fairly reliable update time (e.g., 1000 ms).
      *
      * @return true if a change was made
-     * @throws Throwable if serious trouble. 
+     * @throws Throwable if serious trouble.
      *   For simple failures, this writes info to log.txt but doesn't throw an exception.
      *   If the dataset has changed in a serious / incompatible way and needs a full
-     *     reload, this throws WaitThenTryAgainException 
+     *     reload, this throws WaitThenTryAgainException
      *     (usually, catcher calls LoadDatasets.tryToUnload(...) and EDD.requestReloadASAP(tDatasetID))..
-     *   If the changes needed are probably fine but are too extensive to deal with here, 
+     *   If the changes needed are probably fine but are too extensive to deal with here,
      *     this calls EDD.requestReloadASAP(tDatasetID) and returns without doing anything.
      */
     public boolean update() throws Throwable {
@@ -2413,8 +2442,8 @@ public abstract class EDD {
         //return quickly if dataset doesn't need to be updated
         long startUpdateMillis = System.currentTimeMillis();
         if (startUpdateMillis - lastUpdate < updateEveryNMillis) {
-            if (reallyVerbose) String2.log("update(" + datasetID + 
-                "): no need to update:  startUpdateMillis-last=" + 
+            if (reallyVerbose) String2.log("update(" + datasetID +
+                "): no need to update:  startUpdateMillis-last=" +
                 (startUpdateMillis - lastUpdate) + " < updateEvery=" + updateEveryNMillis);
             return false;
         }
@@ -2422,30 +2451,32 @@ public abstract class EDD {
         //if another thread is currently updating this dataset, wait for it then return
         String msg = "update(" + datasetID + "): ";
         if (!updateLock.tryLock()) {
-            updateLock.lock();   //block until other thread's update finishes and I get the lock
+            //block until other thread's update finishes and I get the lock
+            if (!updateLock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS)) {
+                if (verbose) String2.log(msg + "gave up waiting for another thread to do the update.");
+                return false;  //give up trying        //better to throw exception?
+            }
             updateLock.unlock(); //immediately unlock and return (since other thread did the update)
-            if (verbose) String2.log(msg + "waited " + 
+            if (verbose) String2.log(msg + "waited " +
                 (System.currentTimeMillis() - startUpdateMillis) +
                 "ms for another thread to do the update.");
-            return false; 
-        }
-
-        //updateLock is locked by this thread.   Do the update!
+            return false;
+        } //else: this thread got the lock. Do the update!
         try {
             return lowUpdate(msg, startUpdateMillis);
 
-        } finally {  
+        } finally {
             lastUpdate = startUpdateMillis;     //say dataset is now up-to-date (or at least tried)
             updateLock.unlock();  //then ensure updateLock is always unlocked
         }
     }
 
     /**
-     * This does the actual incremental update of this dataset 
+     * This does the actual incremental update of this dataset
      * (i.e., for real time datasets).
      * This stub in EDD does nothing, but subclasses (like EDDGridFromDap) overwrite this
-     * 
-     * <p>Concurrency issue: The changes here are first prepared and 
+     *
+     * <p>Concurrency issue: The changes here are first prepared and
      * then applied as quickly as possible (but not atomically!).
      * There is a chance that another thread will get inconsistent information
      * (from some things updated and some things not yet updated).
@@ -2454,12 +2485,12 @@ public abstract class EDD {
      * @param msg the start of a log message, e.g., "update(thisDatasetID): ".
      * @param startUpdateMillis the currentTimeMillis at the start of this update.
      * @return true if a change was made
-     * @throws Throwable if serious trouble. 
+     * @throws Throwable if serious trouble.
      *   For simple failures, this writes info to log.txt but doesn't throw an exception.
      *   If the dataset has changed in a serious / incompatible way and needs a full
-     *     reload, this throws WaitThenTryAgainException 
+     *     reload, this throws WaitThenTryAgainException
      *     (usually, catcher calls LoadDatasets.tryToUnload(...) and EDD.requestReloadASAP(tDatasetID))..
-     *   If the changes needed are probably fine but are too extensive to deal with here, 
+     *   If the changes needed are probably fine but are too extensive to deal with here,
      *     this calls EDD.requestReloadASAP(tDatasetID) and returns without doing anything.
      */
     public boolean lowUpdate(String msg, long startUpdateMillis) throws Throwable {
@@ -2467,9 +2498,9 @@ public abstract class EDD {
     }
 
     /**
-     * This marks this dataset so that it will be reloaded soon 
-     * (but not as fast as possible -- via requestReloadASAP) 
-     * by setting the creationTime to 0, making it appear as if the 
+     * This marks this dataset so that it will be reloaded soon
+     * (but not as fast as possible -- via requestReloadASAP)
+     * by setting the creationTime to 0, making it appear as if the
      * dataset was created long, long ago.
      * In LoadDatasets, &lt;=0 is treated as special case to force reload
      * no matter what reloadEveryNMinutes is.
@@ -2484,7 +2515,7 @@ public abstract class EDD {
      * to mark this dataset so that it will be reloaded as soon as possible.
      *
      * <p>Normal use: if a true source error occurs while getting data
-     *   (e.g., not ClientAbortException) 
+     *   (e.g., not ClientAbortException)
      *   then edd throws a gov.noaa.pfel.erddap.dataset.WaitThenTryAgainException.
      *   which ERDDAP will catch and then call LoadDatasets.tryToUnload and requestReloadASAP().
      */
@@ -2512,7 +2543,7 @@ public abstract class EDD {
      *    stored as byte[] via word.getBytes(String2.UTF_8).
      * @param jump the jumpTables from String2.makeJumpTable(word).
      * @return a rating value for this dataset (lower numbers are better),
-     *   or Integer.MAX_VALUE if words.length == 0 or 
+     *   or Integer.MAX_VALUE if words.length == 0 or
      *   one of the words wasn't found or a negative search word was found.
      */
     public int searchRank(boolean isNegative[], byte words[][], int jump[][]) {
@@ -2536,9 +2567,9 @@ public abstract class EDD {
             }
             rank += po;
             //Exact penalty value doesn't really matter. Any large penalty will
-            //  force rankings to be ranked by n words found first, 
+            //  force rankings to be ranked by n words found first,
             //  then the quality of those found.
-            //rank += po < 0? penalty : po;  
+            //rank += po < 0? penalty : po;
         }
         //special case of deprecated datasets
         if (title().indexOf("DEPRECATED") >= 0)
@@ -2549,7 +2580,7 @@ public abstract class EDD {
         //int rank = Math2.roundToInt((1000.0 * rank) / words.length * penalty);
         //if (rank >= 1000? Integer.MAX_VALUE : rank;
         //return rank;
-        
+
         //return rank == words.length * penalty? Integer.MAX_VALUE : rank;
     }
 
@@ -2583,7 +2614,7 @@ public abstract class EDD {
     public static String flagUrl(String tDatasetID) {
         //see also Erddap.doSetDatasetFlag
         return EDStatic.preferredErddapUrl + //prefer https
-            "/setDatasetFlag.txt?datasetID=" + tDatasetID + 
+            "/setDatasetFlag.txt?datasetID=" + tDatasetID +
             "&flagKey=" + flagKey(tDatasetID);  //will be different if https is supported
     }
 
@@ -2603,7 +2634,7 @@ public abstract class EDD {
         }
         return searchBytes;
     }
-    
+
     /**
      * This makes the searchString (mixed case) used to create searchBytes or searchDocument.
      *
@@ -2621,11 +2652,12 @@ public abstract class EDD {
         sb.append("datasetID=" + datasetID + "\n");
         //protocol=...  is suggested in Advanced Search for text searches from protocols
         //protocol=griddap and protocol=tabledap *were* mentioned in searchHintsTooltip, now commented out
-        sb.append("protocol=" + dapProtocol() + "\n");  
+        sb.append("protocol=" + dapProtocol() + "\n");
         sb.append("className=" + className + "\n");
         if (accessibleViaSOS().length()      == 0) sb.append("protocol=SOS\n");
         if (accessibleViaWCS().length()      == 0) sb.append("protocol=WCS\n");
         if (accessibleViaWMS().length()      == 0) sb.append("protocol=WMS\n");
+        if (accessibleViaFiles()                 ) sb.append("protocol=files\n");
         if (accessibleViaFGDC().length()     == 0) sb.append("service=FGDC\n");
         if (accessibleViaISO19115().length() == 0) sb.append("service=ISO19115\n");
         if (accessibleViaMAG().length()      == 0) sb.append("service=MakeAGraph\n");
@@ -2635,9 +2667,10 @@ public abstract class EDD {
             sb.append("variableName=" + dataVariables[dv].destinationName() + "\n");
             sb.append("sourceName="   + dataVariables[dv].sourceName() + "\n");
             sb.append("long_name="    + dataVariables[dv].longName() + "\n");
+            sb.append("type="         + dataVariables[dv].destinationDataType() + "\n");
         }
         sb.append(combinedGlobalAttributes.toString() + "\n");
-        for (int dv = 0; dv < dataVariables.length; dv++) 
+        for (int dv = 0; dv < dataVariables.length; dv++)
             sb.append(dataVariables[dv].combinedAttributes().toString() + "\n");
         return sb;
     }
@@ -2657,9 +2690,9 @@ public abstract class EDD {
         //"datasetID" Store.YES lets me later figure out which dataset a given document is for.
         doc.add(new Field("datasetID",                 datasetID,      Field.Store.YES, Field.Index.NOT_ANALYZED));
         doc.add(new Field(EDStatic.luceneDefaultField, searchString(), Field.Store.NO,  Field.Index.ANALYZED));
-        
-        //Do duplicate searches of title (boost=10, plus it is shorter, so scores higher), 
-        //  so score from lucene and original are closer. 
+
+        //Do duplicate searches of title (boost=10, plus it is shorter, so scores higher),
+        //  so score from lucene and original are closer.
         //!!! FUTURE: support separate searches within the datasets' titles
         //   If so, add support in searchEngine=original, too.
         Field field = new Field("title",               title(),        Field.Store.NO,  Field.Index.ANALYZED);
@@ -2683,21 +2716,21 @@ public abstract class EDD {
         doc.add(field);
 
         sb.setLength(0);
-        for (int dv = 0; dv < dataVariables.length; dv++) 
+        for (int dv = 0; dv < dataVariables.length; dv++)
             sb.append(dataVariables[dv].destinationName() + ", ");
         field = new Field("variableName", sb.toString(), fs, fi);
         field.setBoost(10);
         doc.add(field);
 
         sb.setLength(0);
-        for (int dv = 0; dv < dataVariables.length; dv++) 
+        for (int dv = 0; dv < dataVariables.length; dv++)
             sb.append(dataVariables[dv].sourceName() + ", ");
         field = new Field("variableSourceName", sb.toString(), fs, fi);
         field.setBoost(5);
         doc.add(field);
 
         sb.setLength(0);
-        for (int dv = 0; dv < dataVariables.length; dv++) 
+        for (int dv = 0; dv < dataVariables.length; dv++)
             sb.append(dataVariables[dv].longName() + ", ");
         field = new Field("variableLongName", sb.toString(), fs, fi);
         field.setBoost(5);
@@ -2712,7 +2745,7 @@ public abstract class EDD {
         doc.add(field);
 
         sb.setLength(0);
-        for (int dv = 0; dv < dataVariables.length; dv++) 
+        for (int dv = 0; dv < dataVariables.length; dv++)
             sb.append(dataVariables[dv].combinedAttributes().toString() + "\n");
         String2.replaceAll(sb, "\"", ""); //no double quotes (esp around attribute values)
         String2.replaceAll(sb, "\n    ", "\n"); //occurs for all attributes
@@ -2721,10 +2754,10 @@ public abstract class EDD {
         doc.add(field);
 
         //protocol=...  is suggested in Advanced Search for text searches from protocols
-        //protocol=griddap and protocol=tabledap *were* mentioned in searchHintsTooltip, 
+        //protocol=griddap and protocol=tabledap *were* mentioned in searchHintsTooltip,
         //  now commented out
         sb.setLength(0);
-        sb.append(dapProtocol());  
+        sb.append(dapProtocol());
         if (accessibleViaSOS().length()      == 0) sb.append(", SOS");
         if (accessibleViaWCS().length()      == 0) sb.append(", WCS");
         if (accessibleViaWMS().length()      == 0) sb.append(", WMS");
@@ -2756,11 +2789,11 @@ public abstract class EDD {
 
     /**
      * This returns the types of data files that this dataset can be returned as.
-     * These are short descriptive names that are put in the 
-     * request url after the dataset name and before the "?", e.g., ".nc". 
+     * These are short descriptive names that are put in the
+     * request url after the dataset name and before the "?", e.g., ".nc".
      *
      * @return the types of data files that this dataset can be returned as
-     *   (e.g., ".nc"). 
+     *   (e.g., ".nc").
      */
     public abstract String[] dataFileTypeNames();
 
@@ -2768,32 +2801,32 @@ public abstract class EDD {
      * This returns the file extensions corresponding to the dataFileTypes.
      * E.g., dataFileTypeName=".ncCF" returns dataFileTypeExtension=".nc".
      *
-     * @return the file extensions corresponding to the dataFileTypes 
+     * @return the file extensions corresponding to the dataFileTypes
      *   (e.g., ".nc").
      */
     public abstract String[] dataFileTypeExtensions();
 
     /**
      * This returns descriptions (up to 80 characters long, suitable for a tooltip)
-     * corresponding to the dataFileTypes. 
+     * corresponding to the dataFileTypes.
      *
      * @return descriptions corresponding to the dataFileTypes.
      */
     public abstract String[] dataFileTypeDescriptions();
 
     /**
-     * This returns an info URL corresponding to the dataFileTypes. 
+     * This returns an info URL corresponding to the dataFileTypes.
      *
      * @return an info URL corresponding to the dataFileTypes (an element is "" if not not available)
      */
     public abstract String[] dataFileTypeInfo();
 
     /**
-     * This returns the types of image files that this dataset can be returned 
-     * as. These are short descriptive names that are put in the 
-     * request url after the dataset name and before the "?", e.g., ".largePng". 
+     * This returns the types of image files that this dataset can be returned
+     * as. These are short descriptive names that are put in the
+     * request url after the dataset name and before the "?", e.g., ".largePng".
      *
-     * @return the types of image files that this dataset can be returned as 
+     * @return the types of image files that this dataset can be returned as
      *   (e.g., ".largePng").
      */
     public abstract String[] imageFileTypeNames();
@@ -2802,13 +2835,13 @@ public abstract class EDD {
      * This returns the file extensions corresponding to the imageFileTypes,
      * e.g., imageFileTypeNames=".largePng" returns imageFileTypeExtensions=".png".
      *
-     * @return the file extensions corresponding to the imageFileTypes 
+     * @return the file extensions corresponding to the imageFileTypes
      *   (e.g., ".png").
      */
     public abstract String[] imageFileTypeExtensions();
 
     /**
-     * This returns descriptions corresponding to the imageFileTypes 
+     * This returns descriptions corresponding to the imageFileTypes
      * (each is suitable for a tooltip).
      *
      * @return descriptions corresponding to the imageFileTypes.
@@ -2816,7 +2849,7 @@ public abstract class EDD {
     public abstract String[] imageFileTypeDescriptions();
 
     /**
-     * This returns an info URL corresponding to the imageFileTypes. 
+     * This returns an info URL corresponding to the imageFileTypes.
      *
      * @return an info URL corresponding to the imageFileTypes.
      */
@@ -2828,8 +2861,8 @@ public abstract class EDD {
      * @return the "[name] - [description]" for all dataFileTypes and imageFileTypes.
      */
     public abstract String[] allFileTypeOptions();
-     
-    /** 
+
+    /**
      * This returns the file extension corresponding to a dataFileType
      * or imageFileType.
      *
@@ -2848,7 +2881,7 @@ public abstract class EDD {
         if (po >= 0)
             return imageFileTypeExtensions()[po];
 
-        //The pngInfo fileTypeNames could be in regular list, 
+        //The pngInfo fileTypeNames could be in regular list,
         //  but audience is so small, and normal audience might be confused
         if (".smallPngInfo".equals(fileTypeName) ||
             ".pngInfo".equals(fileTypeName) ||
@@ -2864,13 +2897,13 @@ public abstract class EDD {
              ".delete".equals(fileTypeName)))
             return ".json";
 
-        throw new SimpleException(Table.QUERY_ERROR +  
+        throw new SimpleException(Table.QUERY_ERROR +
             MessageFormat.format(EDStatic.queryErrorFileType, fileTypeName));
     }
 
     /**
      * This returns a suggested fileName (no dir or extension).
-     * It doesn't add a random number, so will return the same results 
+     * It doesn't add a random number, so will return the same results
      * if the inputs are the same.
      *
      * @param loggedInAs is only used for POST datasets (which overwrite EDD.suggestFileName)
@@ -2882,7 +2915,7 @@ public abstract class EDD {
      */
     public String suggestFileName(String loggedInAs, String userDapQuery, String fileTypeName) {
 
-        //decode userDapQuery to a canonical form to avoid slight differences in percent-encoding 
+        //decode userDapQuery to a canonical form to avoid slight differences in percent-encoding
         try {
             userDapQuery = SSR.percentDecode(userDapQuery);
         } catch (Exception e) {
@@ -2893,10 +2926,10 @@ public abstract class EDD {
         if (".iso19115".equals(fileTypeName)) return datasetID + iso19115Suffix;//without trailing .xml
         if (".ncml".equals(fileTypeName))     return datasetID + "_ncml";       //without trailing .xml
 
-        //include fileTypeName in hash so, e.g., different sized .png 
+        //include fileTypeName in hash so, e.g., different sized .png
         //  have different file names
         String name = datasetID + "_" + //so all files from this dataset will sort together
-            String2.md5Hex12(userDapQuery + fileTypeName); 
+            String2.md5Hex12(userDapQuery + fileTypeName);
         //String2.log("%% suggestFileName=" + name + "\n  from query=" + userDapQuery + "\n  from type=" + fileTypeName);
         return name;
     }
@@ -2906,28 +2939,28 @@ public abstract class EDD {
      *
      * <br>This is just a suggestion. It makes big assumptions. But for e.g., UAF,
      * any guess is probably better than none.
-     * It also depends on how aggressive you want to be. 
+     * It also depends on how aggressive you want to be.
      * This is not very aggressive.
      *
-     * @param epochSecondsLastTime the last time value (of the time data, not 
+     * @param epochSecondsLastTime the last time value (of the time data, not
      *    the time it was updated).
      *    I know this may be startTime or centeredTime of a composite.
-     *    I know this may catch a recent update promptly, by chance. 
+     *    I know this may catch a recent update promptly, by chance.
      *    This method does the best it can.
      * @return a reloadEveryNMinutes value for the dataset.
-     *    Currently, 60 min is the shortest suggestion returned. 
+     *    Currently, 60 min is the shortest suggestion returned.
      *    EDD.DEFAULT_RELOAD_EVERY_N_MINUTES (10080) is only returned as the default
-     *    (e.g., for epochSecondsLastTime=Integer.MAX_VALUE) and is unaffected by 
+     *    (e.g., for epochSecondsLastTime=Integer.MAX_VALUE) and is unaffected by
      *    suggestReloadEveryNMinutesFactor.
      */
     public static int suggestReloadEveryNMinutes(double epochSecondsLastTime) {
         if (!Double.isFinite(epochSecondsLastTime) || Math.abs(epochSecondsLastTime) > 1e18)
             return DEFAULT_RELOAD_EVERY_N_MINUTES;  //DEFAULT is only returned as the default
-        double daysAgo = (System.currentTimeMillis()/1000 - epochSecondsLastTime) / 
+        double daysAgo = (System.currentTimeMillis()/1000 - epochSecondsLastTime) /
             Calendar2.SECONDS_PER_DAY;
-        int snm = 
+        int snm =
             daysAgo < -370?  Calendar2.MINUTES_PER_30DAYS :   //1+ yr  forecast,       update monthly (might be updated)
-            daysAgo < -32?   8 * Calendar2.MINUTES_PER_DAY :  //1-12 month forecast,   update every 8 days 
+            daysAgo < -32?   8 * Calendar2.MINUTES_PER_DAY :  //1-12 month forecast,   update every 8 days
             daysAgo < -11?    Calendar2.MINUTES_PER_DAY :     //11-32 day forecast,    update daily
             daysAgo < -1.2?  180 :                            //1-11 day forecast,     update every 3 hours
             daysAgo < 0.5?   60 :                             //1day forcst/12hr delay,update hourly
@@ -2940,7 +2973,7 @@ public abstract class EDD {
         snm = Math2.roundToInt(suggestReloadEveryNMinutesFactor * snm);
         snm = Math.min(suggestReloadEveryNMinutesMax, snm);
         snm = Math.max(suggestReloadEveryNMinutesMin, snm);
-        if (debugMode) 
+        if (debugMode)
             String2.log("suggestReloadEveryNMinutes daysAgo=" + (float)daysAgo + " suggest=" + snm + " minutes");
         return snm;
     }
@@ -2952,25 +2985,25 @@ public abstract class EDD {
      * any guess is probably better than none.
      * It is conservative.
      *
-     * @param epochSecondsLastTime the last time value (of the time data, not 
+     * @param epochSecondsLastTime the last time value (of the time data, not
      *    the time it was updated).
      *    I know this may be startTime or centeredTime of a composite.
-     *    I know this may catch a recent update promptly, by chance. 
+     *    I know this may catch a recent update promptly, by chance.
      *    This method does the best it can.
      * @return a testOutOfDate value for the dataset.
      *    If trouble or if the dataset lastTime is apparently inactive, this
      *    returns "".
      */
     public static String suggestTestOutOfDate(double epochSecondsLastTime) {
-        if (!Double.isFinite(epochSecondsLastTime) || 
+        if (!Double.isFinite(epochSecondsLastTime) ||
             Math.abs(epochSecondsLastTime) > 1e17)
             return "";
         double nowES = System.currentTimeMillis() / 1000.0;
         double daysAgo = (nowES - epochSecondsLastTime) / Calendar2.SECONDS_PER_DAY;
         return   //be conservative. assume it was just updated or just about to be updated
             daysAgo > 70?  "" :            //dataset will have no new data?
-            daysAgo > 0.6? "now-" + 
-                Math2.roundToInt(Math.ceil(2 * daysAgo)) + "days"  : 
+            daysAgo > 0.6? "now-" +
+                Math2.roundToInt(Math.ceil(2 * daysAgo)) + "days"  :
             daysAgo > -1?  "now-1day"   :  //6hr or nowcast + 1 day delay
             daysAgo > -3?  "now+1day"   :  //3day forecast
             daysAgo > -6?  "now+4days"  :  //6day forecast
@@ -2981,40 +3014,41 @@ public abstract class EDD {
     /**
      * This responds to an OPeNDAP-style query.
      *
-     * @param request may be null. If null, no attempt will be made to include 
+     * @param request may be null. If null, no attempt will be made to include
      *   the loginStatus in startHtmlBody.
      * @param response may be used by .subset to redirect the response
      *   (if not .subset request, it may be null).
-     * @param loggedInAs  the name of the logged in user (or null if not logged in).
-     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs, 
+     * @param ipAddress The IP address of the user (for statistics).
+     * @param loggedInAs  The name of the logged in user (or null if not logged in).
+     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs,
      *   but it unusual cases (EDDTableFromPost?) it could be.
      *   Normally, this is just used to determine which erddapUrl to use (http vs https).
      * @param requestUrl the part of the user's request, after EDStatic.baseUrl, before '?'.
-     * @param userQuery the part of the user's request after the '?', 
+     * @param userQuery the part of the user's request after the '?',
      *   still percentEncoded, may be null.
      * @param outputStreamSource  the source of an outputStream that receives the results,
      *    usually already buffered.
      *     If all goes well, this calls out.close() at the end.
      * @param dir the directory to use for temporary/cache files
      * @param fileName the name for the 'file' (no dir, no extension),
-     *    which is used to write the suggested name for the file to the response 
+     *    which is used to write the suggested name for the file to the response
      *    header.
      * @param fileTypeName the fileTypeName for the new file.
      * @throws Throwable if trouble
      */
-    public abstract void respondToDapQuery(HttpServletRequest request, 
+    public abstract void respondToDapQuery(HttpServletRequest request,
         HttpServletResponse response,
-        String loggedInAs, String requestUrl, String userQuery, 
+        String ipAddress, String loggedInAs, String requestUrl, String userQuery,
         OutputStreamSource outputStreamSource,
         String dir, String fileName, String fileTypeName) throws Throwable;
 
     /**
      * This responds to a graph query.
      *
-     * @param request may be null. If null, no attempt will be made to include 
+     * @param request may be null. If null, no attempt will be made to include
      *   the loginStatus in startHtmlBody.
      * @param loggedInAs  the name of the logged in user (or null if not logged in).
-     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs, 
+     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs,
      *   but it unusual cases (EDDTableFromPost?) it could be.
      *   Normally, this is just used to determine which erddapUrl to use (http vs https).
      * @param requestUrl the part of the user's request, after EDStatic.baseUrl, before '?'.
@@ -3023,24 +3057,24 @@ public abstract class EDD {
      *    usually already buffered.
      * @param dir the directory to use for temporary/cache files
      * @param fileName the name for the 'file' (no dir, no extension),
-     *    which is used to write the suggested name for the file to the response 
+     *    which is used to write the suggested name for the file to the response
      *    header.
      * @param fileTypeName the fileTypeName for the new file.
      * @throws Throwable if trouble
      */
-    public abstract void respondToGraphQuery(HttpServletRequest request, 
-        String loggedInAs, String requestUrl, String userQuery, 
+    public abstract void respondToGraphQuery(HttpServletRequest request,
+        String loggedInAs, String requestUrl, String userQuery,
         OutputStreamSource outputStreamSource,
         String dir, String fileName, String fileTypeName) throws Throwable;
 
     /**
-     * This deletes the old file (if any) and makes a new actual file 
+     * This deletes the old file (if any) and makes a new actual file
      * based on an OPeNDAP DAP-style query.
      *
-     * @param request may be null. If null, no attempt will be made to include 
+     * @param request may be null. If null, no attempt will be made to include
      *   the loginStatus in startHtmlBody.
      * @param loggedInAs  the name of the logged in user (or null if not logged in).
-     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs, 
+     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs,
      *   but it unusual cases (EDDTableFromPost?) it could be.
      *   Normally, this is just used to determine which erddapUrl to use (http vs https).
      * @param userDapQuery the part of the user's request after the '?'.
@@ -3050,25 +3084,25 @@ public abstract class EDD {
      * @return fileName + fileExtension for the resulting file
      * @throws Throwable if trouble
      */
-    public String makeNewFileForDapQuery(HttpServletRequest request, 
-        String loggedInAs, String userDapQuery, 
+    public String makeNewFileForDapQuery(HttpServletRequest request,
+        String loggedInAs, String userDapQuery,
         String dir, String fileName, String fileTypeName) throws Throwable {
 
         String fileTypeExtension = fileTypeExtension(fileTypeName);
         File2.delete(dir + fileName + fileTypeExtension);
 
-        return lowMakeFileForDapQuery(request, null, loggedInAs, userDapQuery, 
+        return lowMakeFileForDapQuery(request, null, loggedInAs, userDapQuery,
             dir, fileName, fileTypeName);
     }
 
     /**
-     * This reuses an existing file or makes a new actual file based on an 
+     * This reuses an existing file or makes a new actual file based on an
      * OPeNDAP DAP-style query.
      *
-     * @param request may be null. If null, no attempt will be made to include 
+     * @param request may be null. If null, no attempt will be made to include
      *   the loginStatus in startHtmlBody.
      * @param loggedInAs  the name of the logged in user (or null if not logged in).
-     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs, 
+     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs,
      *   but it unusual cases (EDDTableFromPost?) it could be.
      *   Normally, this is just used to determine which erddapUrl to use (http vs https).
      * @param userDapQuery the part of the user's request after the '?'.
@@ -3078,8 +3112,8 @@ public abstract class EDD {
      * @return fileName + fileExtension for the resulting file
      * @throws Throwable if trouble
      */
-    public String reuseOrMakeFileForDapQuery(HttpServletRequest request, 
-        String loggedInAs, String userDapQuery, 
+    public String reuseOrMakeFileForDapQuery(HttpServletRequest request,
+        String loggedInAs, String userDapQuery,
         String dir, String fileName, String fileTypeName) throws Throwable {
 
         String fileTypeExtension = fileTypeExtension(fileTypeName);
@@ -3089,7 +3123,7 @@ public abstract class EDD {
                 "EDD.makeFileForDapQuery reusing " + fileName + fileTypeExtension);
             return fileName + fileTypeExtension;
         }
-        return lowMakeFileForDapQuery(request, null, loggedInAs, userDapQuery, 
+        return lowMakeFileForDapQuery(request, null, loggedInAs, userDapQuery,
             dir, fileName, fileTypeName);
     }
 
@@ -3104,12 +3138,12 @@ public abstract class EDD {
      * But that approach isn't as good, because it requires all data be obtained and
      * then written to file before response to user can be started.
      *
-     * @param request may be null. If null, no attempt will be made to include 
+     * @param request may be null. If null, no attempt will be made to include
      *   the loginStatus in startHtmlBody.
      * @param response may be used by .subset to redirect the response
      *   (if not .subset request, it may be null).
      * @param loggedInAs  the name of the logged in user (or null if not logged in).
-     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs, 
+     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs,
      *   but it unusual cases (EDDTableFromPost?) it could be.
      *   Normally, this is just used to determine which erddapUrl to use (http vs https).
      * @param userDapQuery the part of the user's request after the '?'.
@@ -3119,14 +3153,14 @@ public abstract class EDD {
      * @return fileName + fileExtension
      * @throws Throwable if trouble
      */
-    public String lowMakeFileForDapQuery(HttpServletRequest request, 
+    public String lowMakeFileForDapQuery(HttpServletRequest request,
         HttpServletResponse response,
-        String loggedInAs, String userDapQuery, 
+        String loggedInAs, String userDapQuery,
         String dir, String fileName, String fileTypeName) throws Throwable {
 
         String fileTypeExtension = fileTypeExtension(fileTypeName);
         String fullName = dir + fileName + fileTypeExtension;
-       
+
         //POLICY: because this procedure may be used in more than one thread,
         //do work on unique temp files names using randomInt, then rename to proper file name.
         //If procedure fails half way through, there won't be a half-finished file.
@@ -3138,12 +3172,13 @@ public abstract class EDD {
         try {
 
             //send the data to the outputStream
-            respondToDapQuery(request, response, loggedInAs,
+            respondToDapQuery(request, response, "lowMakeFileForDapQuery", //ipAddress
+                loggedInAs,
                 "/" + EDStatic.warName +
                 (this instanceof EDDGrid? "/griddap/" :
                  this instanceof EDDTable? "/tabledap/" :
-                 "/UNKNOWN/") + 
-                 datasetID + fileTypeName, 
+                 "/UNKNOWN/") +
+                 datasetID + fileTypeName,
                 userDapQuery, outputStreamSource, dir, fileName, fileTypeName);
 
             //close the outputStream
@@ -3173,7 +3208,7 @@ public abstract class EDD {
      * to an html document (e.g., the top of a Data Access Form).
      *
      * @param loggedInAs  the name of the logged in user (or null if not logged in).
-     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs, 
+     *   Normally, this is not used to test if this edd is accessibleTo loggedInAs,
      *   but it unusual cases (EDDTableFromPost?) it could be.
      *   Normally, this is just used to determine which erddapUrl to use (http vs https).
      * @param writer
@@ -3181,7 +3216,7 @@ public abstract class EDD {
      * @param showSubsetLink if true, a link is shown to this dataset's .subset form
      *    (if accessibleViaSubset() is "").
      * @param showFilesLink if true, a link is shown to this dataset's /files/ page
-     *    (if accessibleViaFiles() is "").
+     *    (if accessibleViaFiles() is true).
      * @param showGraphLink if true, a link is shown to this dataset's Make A Graph form
      *    (if accessibleViaMAG() is "").
      * @param userDapQuery  the part of the user's request after the '?', still percentEncoded, may be null.
@@ -3189,66 +3224,66 @@ public abstract class EDD {
      * @throws Throwable if trouble
      */
     public void writeHtmlDatasetInfo(
-        String loggedInAs, Writer writer, 
+        String loggedInAs, Writer writer,
         boolean showSubsetLink, boolean showDafLink, boolean showFilesLink, boolean showGraphLink,
-        String userDapQuery, String otherRows) 
+        String userDapQuery, String otherRows)
         throws Throwable {
         //String type = this instanceof EDDGrid? "Gridded" :
         //   this instanceof EDDTable? "Tabular" : "(type???)";
-        
+
         boolean isLoggedIn = loggedInAs != null && !loggedInAs.equals(EDStatic.loggedInAsHttps);
         boolean isAccessible =  isAccessibleTo(EDStatic.getRoles(loggedInAs));
         boolean graphsAccessible = isAccessible || graphsAccessibleToPublic();
         String tErddapUrl = EDStatic.erddapUrl(loggedInAs);
         String tQuery = userDapQuery == null || userDapQuery.length() == 0? "" :
-            //since this may be direct from user, I need to XML encode it 
+            //since this may be direct from user, I need to XML encode it
             //to prevent HTML insertion security vulnerability
             //(which allows hacker to insert his javascript into pages returned by server)
             //See Tomcat (Definitive Guide) pg 147...
-            XML.encodeAsHTMLAttribute("?" + userDapQuery); 
+            XML.encodeAsHTMLAttribute("?" + userDapQuery);
         String dapUrl = tErddapUrl + "/" + dapProtocol() + "/" + datasetID;
         String dafLink = "", subsetLink = "", graphLink = "", filesLink = "";
-        if (isAccessible && showDafLink) 
-            dafLink = 
-                "     | <a rel=\"alternate\" " +  
+        if (isAccessible && showDafLink)
+            dafLink =
+                "     | <a rel=\"alternate\" " +
                     "title=\"" + EDStatic.clickAccess + "\" \n" +
-                "         href=\"" + dapUrl + ".html" + 
+                "         href=\"" + dapUrl + ".html" +
                     tQuery + "\">" + EDStatic.daf + "</a>\n";
-        if (isAccessible && showSubsetLink && accessibleViaSubset().length() == 0) 
-            subsetLink = 
+        if (isAccessible && showSubsetLink && accessibleViaSubset().length() == 0)
+            subsetLink =
                 "     | <a rel=\"alternate\" " +
                     "title=\"" + EDStatic.dtSubset + "\" \n" +
-                "         href=\"" + dapUrl + ".subset" + 
-                    tQuery + 
-                    (tQuery.length() == 0? "" : XML.encodeAsHTMLAttribute(EDDTable.DEFAULT_SUBSET_VIEWS)) + 
+                "         href=\"" + dapUrl + ".subset" +
+                    tQuery +
+                    (tQuery.length() == 0? "" : XML.encodeAsHTMLAttribute(EDDTable.DEFAULT_SUBSET_VIEWS)) +
                     "\">" + EDStatic.subset + "</a>\n";
-        if (isAccessible && showFilesLink && accessibleViaFilesDir().length() > 0) //> because it has sourceDir
-            filesLink = 
+        if (isAccessible && showFilesLink && accessibleViaFiles) //> because it has sourceDir
+            filesLink =
                 "     | <a rel=\"alternate\" " +
-                    "title=\"" + 
+                    "title=\"" +
                     XML.encodeAsHTMLAttribute(EDStatic.filesDescription +
-                        (this instanceof EDDTableFromFileNames? "" : 
-                            "\n" + EDStatic.warning + " " + 
+                        (this instanceof EDDTableFromFileNames? "" :
+                            "\n" + EDStatic.warning + " " +
                             String2.replaceAll(EDStatic.filesWarning, "<br>", ""))) +
                     "\" \n" +
-                "         href=\"" + tErddapUrl + "/files/" + datasetID + "/\">" + 
+                "         href=\"" + tErddapUrl + "/files/" + datasetID + "/\">" +
                 EDStatic.EDDFiles + "</a>\n";
-        if (graphsAccessible && showGraphLink && accessibleViaMAG().length() == 0) 
-            graphLink = 
+        if (graphsAccessible && showGraphLink && accessibleViaMAG().length() == 0)
+            graphLink =
                 "     | <a rel=\"alternate\" " +
                     "title=\"" + EDStatic.dtMAG + "\" \n" +
-                "         href=\"" + dapUrl + ".graph" + 
+                "         href=\"" + dapUrl + ".graph" +
                     tQuery + "\">" + EDStatic.EDDMakeAGraph + "</a>\n";
-        String tSummary = extendedSummary(); 
+        String tSummary = extendedSummary();
         String tLicense = combinedGlobalAttributes().getString("license");
         boolean nonStandardLicense = tLicense != null && !tLicense.equals(EDStatic.standardLicense);
         tLicense = tLicense == null? "" :
             "    | " +
-            (nonStandardLicense? "<span class=\"warningColor\">" : "") + 
-            EDStatic.license + " " + 
+            (nonStandardLicense? "<span class=\"warningColor\">" : "") +
+            EDStatic.license + " " +
             (nonStandardLicense? "</span>" : "") +
             //link below should have rel=\"license\"
-            EDStatic.htmlTooltipImage(loggedInAs, 
+            EDStatic.htmlTooltipImage(loggedInAs,
                 "<div class=\"standard_max_width\">" + XML.encodeAsPreHTML(tLicense) +
                 "</div>") +
             "\n";
@@ -3257,12 +3292,12 @@ public abstract class EDD {
         writer.write(
             //"<p><strong>" + type + " Dataset:</strong>\n" +
             "<table class=\"compact nowrap\">\n" +
-            "  <tr>\n" +    
+            "  <tr>\n" +
             "    <td>" + EDStatic.EDDDatasetTitle + ":&nbsp;</td>\n" +
-            "    <td style=\"vertical-align:middle\"><span class=\"standoutColor\" style=\"font-size:130%; line-height:130%;\"><strong>" + 
+            "    <td style=\"vertical-align:middle\"><span class=\"standoutColor\" style=\"font-size:130%; line-height:130%;\"><strong>" +
                 encTitle + "</strong>\n" +
             (graphsAccessible? "      " + emailHref(loggedInAs) + "\n" +
-                               "      " + rssHref(loggedInAs) + "\n" : "") + 
+                               "      " + rssHref(loggedInAs) + "\n" : "") +
             "      </span>\n" +
             "    </td>\n" +
             "  </tr>\n" +
@@ -3274,29 +3309,29 @@ public abstract class EDD {
             otherRows + "\n" +
             "  <tr>\n" +
             "    <td>" + EDStatic.EDDInformation + ":&nbsp;</td>\n" +
-            "    <td>" + EDStatic.EDDSummary + " " + 
-                EDStatic.htmlTooltipImage(loggedInAs, 
+            "    <td>" + EDStatic.EDDSummary + " " +
+                EDStatic.htmlTooltipImage(loggedInAs,
                     "<div class=\"standard_max_width\">" + XML.encodeAsPreHTML(tSummary) +
-                    "</div>") + 
+                    "</div>") +
                 "\n" +
             tLicense +
-            (accessibleViaFGDC.length() > 0? "" : 
+            (accessibleViaFGDC.length() > 0? "" :
                 "     | <a rel=\"alternate\" \n" +
                 "          title=\"" + EDStatic.EDDFgdcMetadata + "\" \n" +
                 "          href=\"" + dapUrl + ".fgdc\">" + EDStatic.EDDFgdc + "</a>\n") +
-            (accessibleViaISO19115().length() > 0? "" : 
+            (accessibleViaISO19115().length() > 0? "" :
                 "     | <a rel=\"alternate\" \n" +
                 "          title=\"" + EDStatic.EDDIso19115Metadata + "\" \n" +
                 "          href=\"" + dapUrl + ".iso19115\">" + EDStatic.EDDIso19115 + "</a>\n") +
             "     | <a rel=\"alternate\" \n" +
             "          title=\"" + EDStatic.clickInfo + "\" \n" +
-            "          href=\"" + tErddapUrl + "/info/" + datasetID + "/index.html\">" + 
+            "          href=\"" + tErddapUrl + "/info/" + datasetID + "/index.html\">" +
                 EDStatic.EDDMetadata + "</a>\n" +
             "     | <a rel=\"bookmark\" \n" +
             "          title=\"" + EDStatic.clickBackgroundInfo + "\" \n" +
-            "          href=\"" + XML.encodeAsHTMLAttribute(infoUrl()) + "\">" + 
-                EDStatic.EDDBackground + 
-                (infoUrl().startsWith(EDStatic.baseUrl)? "" : EDStatic.externalLinkHtml(tErddapUrl)) + 
+            "          href=\"" + XML.encodeAsHTMLAttribute(infoUrl()) + "\">" +
+                EDStatic.EDDBackground +
+                (infoUrl().startsWith(EDStatic.baseUrl)? "" : EDStatic.externalLinkHtml(tErddapUrl)) +
                 "</a>\n" +
                 subsetLink + "\n" +
                 dafLink + "\n" +
@@ -3314,7 +3349,7 @@ public abstract class EDD {
      * @return the kml code for the screenOverlay.
      */
     public String getKmlIconScreenOverlay() {
-        return 
+        return
             "  <ScreenOverlay id=\"Logo\">\n" + //generic id
             "    <description>" + EDStatic.erddapUrl + //always use non-https url
                 "</description>\n" +
@@ -3337,66 +3372,66 @@ public abstract class EDD {
      *
      * @param sourceAtts   must not be null
      * @param tCdmDataType can be a specific type (e.g., "Grid") or null (for the default list)
-     * @param tLocalSourceUrl a real URL (starts with "http"), a fileDirectory (with or without trailing '/'), 
+     * @param tLocalSourceUrl a real URL (starts with "http"), a fileDirectory (with or without trailing '/'),
      *     or a fake fileDirectory (not ideal).
      * @throws Exception if trouble
      */
-    public static void addDummyRequiredGlobalAttributesForDatasetsXml(Attributes sourceAtts, 
+    public static void addDummyRequiredGlobalAttributesForDatasetsXml(Attributes sourceAtts,
         String tCdmDataType, String tLocalSourceUrl) throws Exception {
 
         //get the readyToUseAddGlobalAttributes for suggestions
-        Attributes addAtts = makeReadyToUseAddGlobalAttributesForDatasetsXml(sourceAtts, 
+        Attributes addAtts = makeReadyToUseAddGlobalAttributesForDatasetsXml(sourceAtts,
             tCdmDataType, tLocalSourceUrl, null, new HashSet());
         String aConventions  = addAtts.getString("Conventions");
-        String aInfo         = addAtts.getString("infoUrl"); 
+        String aInfo         = addAtts.getString("infoUrl");
         String aIns          = addAtts.getString("institution");
 
         String name = "cdm_data_type";
         String value = sourceAtts.getString(name);
-        if (!String2.isSomething2(value))            
-            sourceAtts.add(name, tCdmDataType == null? 
-                "???" + String2.toSVString(CDM_TYPES, "|", false) : 
+        if (!String2.isSomething2(value))
+            sourceAtts.add(name, tCdmDataType == null?
+                "???" + String2.toSVString(CDM_TYPES, "|", false) :
                 tCdmDataType);
 
         name = "Conventions";
-        value = sourceAtts.getString(name); 
-        if (String2.isSomething2(aConventions) && !aConventions.equals(value))  
+        value = sourceAtts.getString(name);
+        if (String2.isSomething2(aConventions) && !aConventions.equals(value))
             sourceAtts.add(name, (value == null? "" : value) + "???" + aConventions);
 
-        //for all of the rest, if something already there, don't suggest anything 
+        //for all of the rest, if something already there, don't suggest anything
         name = "infoUrl";
-        value = sourceAtts.getString(name); 
-        if (!String2.isSomething2(value)) 
+        value = sourceAtts.getString(name);
+        if (!String2.isSomething2(value))
             sourceAtts.add(name, "???" + (aInfo == null || aInfo.equals("???")? "" : aInfo));
 
         name = "institution";
-        value = sourceAtts.getString(name); 
-        if (!String2.isSomething2(value)) 
+        value = sourceAtts.getString(name);
+        if (!String2.isSomething2(value))
             sourceAtts.add(name, "???" + (aIns == null || aIns.equals("???")? "" : aIns));
 
         name = "license";
-        value = sourceAtts.getString(name); 
-        if (!String2.isSomething2(value)) 
+        value = sourceAtts.getString(name);
+        if (!String2.isSomething2(value))
             sourceAtts.add(name, "???" + addAtts.getString(name));
 
         name = "standard_name_vocabulary";
-        value = sourceAtts.getString(name); 
-        if (!String2.isSomething2(value)) 
+        value = sourceAtts.getString(name);
+        if (!String2.isSomething2(value))
             sourceAtts.add(name, "???" + FileNameUtility.getStandardNameVocabulary());
 
         name = "summary";
-        value = sourceAtts.getString(name); 
-        if (!String2.isSomething2(value)) 
+        value = sourceAtts.getString(name);
+        if (!String2.isSomething2(value))
             sourceAtts.add(name, "???" + addAtts.getString(name));
 
         name = "title";
-        value = sourceAtts.getString(name); 
-        if (!String2.isSomething2(value)) 
+        value = sourceAtts.getString(name);
+        if (!String2.isSomething2(value))
             sourceAtts.add(name, "???" + addAtts.getString(name));
     }
 
     /**
-     * This is used by generateDatasetsXml to find out if a table 
+     * This is used by generateDatasetsXml to find out if a table
      * has longitude, latitude, and time variables.
      *
      * @param addTable with columns meanings that exactly parallel sourceTable
@@ -3405,14 +3440,14 @@ public abstract class EDD {
      * @return true if it probably does
      */
     public static boolean hasLonLatTime(Table addTable) {
-        return 
+        return
             addTable.findColumnNumber(EDV.LON_NAME) >= 0 &&
             addTable.findColumnNumber(EDV.LAT_NAME) >= 0 &&
             addTable.findColumnNumber(EDV.TIME_NAME) >= 0;
     }
 
     /**
-     * This is used by generateDatasetsXml to find out if a table 
+     * This is used by generateDatasetsXml to find out if a table
      * probably has longitude, latitude, and time variables.
      *
      * @param sourceTable  This can't be null.
@@ -3432,15 +3467,15 @@ public abstract class EDD {
         for (int col = 0; col < sn; col++) {
             String colName = addTable.getColumnName(col).toLowerCase();
             String units = getAddOrSourceAtt(
-                   addTable.columnAttributes(col), 
+                   addTable.columnAttributes(col),
                 sourceTable.columnAttributes(col), "units", null);
-            if (colName.equals(EDV.LON_NAME) || 
+            if (colName.equals(EDV.LON_NAME) ||
                 colName.equals("lon") ||
-                EDV.LON_UNITS.equals(units)) 
+                EDV.LON_UNITS.equals(units))
                 hasLon = true;
-            else if (colName.equals(EDV.LAT_NAME) || 
-                     colName.equals("lat") || 
-                EDV.LAT_UNITS.equals(units)) 
+            else if (colName.equals(EDV.LAT_NAME) ||
+                     colName.equals("lat") ||
+                EDV.LAT_UNITS.equals(units))
                 hasLat = true;
             else if (colName.equals(EDV.TIME_NAME) || Calendar2.isTimeUnits(units))
                 hasTime = true;
@@ -3468,8 +3503,8 @@ public abstract class EDD {
 
         for (int col = 0; col < sn; col++) {
             //class not always known
-            Class tClass = addTable.getColumn(col).elementClass();
-            boolean isNumeric = tClass != String.class && tClass != char.class;
+            PAType tPAType = addTable.getColumn(col).elementType();
+            boolean isNumeric = tPAType != PAType.STRING && tPAType != PAType.CHAR;
             String colName = addTable.getColumnName(col);
             String     sourceName = sourceTable == null? colName : sourceTable.getColumnName(col);
             Attributes sourceAtts = sourceTable == null? null : sourceTable.columnAttributes(col);
@@ -3482,7 +3517,7 @@ public abstract class EDD {
                 scaleFactor = sourceAtts.getFloat("scale_factor");
 
             //ensure destination name is valid
-            colName = suggestDestinationName(colName, sourceAtts, addAtts, units, 
+            colName = suggestDestinationName(colName, sourceAtts, addAtts, units,
                 positive, scaleFactor, false); //tryToFindLLAT - do it below
             addTable.setColumnName(col, colName);
 
@@ -3529,7 +3564,7 @@ public abstract class EDD {
                 }
             } else if ((colNameLC.equals(EDV.ALT_NAME) || colNameLC.equals(EDV.DEPTH_NAME))) {
                 if (isNumeric &&
-                    (units == null || units.length() == 0 || 
+                    (units == null || units.length() == 0 ||
                      String2.indexOf(EDV.METERS_VARIANTS, units) >= 0)) { //case sensitive
                     addTable.setColumnName(col, colNameLC);
                     if (!EDV.ALT_UNITS.equals(units))
@@ -3581,7 +3616,7 @@ public abstract class EDD {
     }
 
     /**
-     * This is used by generateDatasetsXml to change the 
+     * This is used by generateDatasetsXml to change the
      * names in the addTable to longitude, latitude, altitude/depth, and time,
      * if warranted.
      * This also ensures that destinationNames are valid names (e.g., no bad chars).
@@ -3607,8 +3642,8 @@ public abstract class EDD {
         //Does it have the correct name and correct units (or units="")?
         for (int col = 0; col < sn; col++) {
             //class not always known
-            Class tClass = addTable.getColumn(col).elementClass();
-            boolean isNumeric = tClass != String.class && tClass != char.class;
+            PAType tPAType = addTable.getColumn(col).elementType();
+            boolean isNumeric = tPAType != PAType.STRING && tPAType != PAType.CHAR;
             String colName = addTable.getColumnName(col);
             String     sourceName = sourceTable == null? colName : sourceTable.getColumnName(col);
             Attributes sourceAtts = sourceTable == null? null : sourceTable.columnAttributes(col);
@@ -3622,7 +3657,7 @@ public abstract class EDD {
 
             //ensure destination name is valid
             //String2.log("> old=" + colName);
-            colName = suggestDestinationName(colName, sourceAtts, addAtts, units, 
+            colName = suggestDestinationName(colName, sourceAtts, addAtts, units,
                 positive, scaleFactor, false); //tryToFindLLAT - do it below
             //String2.log("> new=" + colName);
             addTable.setColumnName(col, colName);
@@ -3670,10 +3705,10 @@ public abstract class EDD {
                         !"lat".equals(sourceName.toLowerCase()))
                         addAtts.set("source_name", sourceName);
                 }
-            } else if (!hasAltDepth && 
+            } else if (!hasAltDepth &&
                        (colNameLC.equals(EDV.ALT_NAME) || colNameLC.equals(EDV.DEPTH_NAME))) {
                 if (isNumeric &&
-                    (units == null || units.length() == 0 || 
+                    (units == null || units.length() == 0 ||
                      String2.indexOf(EDV.METERS_VARIANTS, units) >= 0)) { //case sensitive
                     addTable.setColumnName(col, colNameLC);
                     if (!EDV.ALT_UNITS.equals(units))
@@ -3724,13 +3759,13 @@ public abstract class EDD {
                 }
             }
         }
-        //String2.log(">> hasLat=" + hasLat + " hasLon=" + hasLon + " hasTime=" + hasTime); 
+        //String2.log(">> hasLat=" + hasLat + " hasLon=" + hasLon + " hasTime=" + hasTime);
 
         //look for lat and lon and time with date and time
         for (int col = 0; col < sn; col++) {
             //class not always known
-            Class tClass = addTable.getColumn(col).elementClass();
-            boolean isNumeric = tClass != String.class && tClass != char.class;
+            PAType tPAType = addTable.getColumn(col).elementType();
+            boolean isNumeric = tPAType != PAType.STRING && tPAType != PAType.CHAR;
             String colName = addTable.getColumnName(col);
             String colNameLC = colName.toLowerCase();
             String     sourceName = sourceTable == null? colName : sourceTable.getColumnName(col);
@@ -3739,7 +3774,7 @@ public abstract class EDD {
             String units    = getAddOrSourceAtt(addAtts, sourceAtts, "units",         null);
             String positive = getAddOrSourceAtt(addAtts, sourceAtts, "positive",      null);
             String stdName  = getAddOrSourceAtt(addAtts, sourceAtts, "standard_name", null);
-            if (!hasLon && isNumeric && 
+            if (!hasLon && isNumeric &&
                 colNameLC.equals("lon") &&  //extra criteria compared to below
                 (EDV.LON_STANDARD_NAME.equals(stdName) || EDV.probablyLon(colName, units))) {
                 addTable.setColumnName(col, EDV.LON_NAME);
@@ -3751,7 +3786,7 @@ public abstract class EDD {
                 if (stdName == null)
                     addAtts.set("standard_name", EDV.LON_STANDARD_NAME);
                 hasLon = true;
-            } else if (!hasLat && isNumeric && 
+            } else if (!hasLat && isNumeric &&
                 colNameLC.equals("lat") &&  //extra criteria compared to below
                 (EDV.LAT_STANDARD_NAME.equals(stdName) || EDV.probablyLat(colName, units))) {
                 addTable.setColumnName(col, EDV.LAT_NAME);
@@ -3767,7 +3802,7 @@ public abstract class EDD {
                 units.indexOf('d') >= 0 && units.indexOf('H') >= 0) {   //has date and has hour!
                 addTable.setColumnName(col, EDV.TIME_NAME);
                 if (Calendar2.isStringTimeUnits(units) &&
-                    addTable.getColumn(col).elementClass() != String.class)
+                    addTable.getColumn(col).elementType() != PAType.STRING)
                     addTable.setColumn(col, new StringArray(addTable.getColumn(col)));
                 if (!String2.looselyEquals(sourceName, EDV.TIME_NAME))
                     addAtts.set("source_name", sourceName);
@@ -3775,14 +3810,14 @@ public abstract class EDD {
                     addAtts.set("standard_name", EDV.TIME_STANDARD_NAME);
                 hasTime = true;
             }
-            //String2.log(">> hasTime=" + hasTime + " col=" + addTable.getColumnName(col) + " units=" + units + " timeUnits=" + EDVTimeStamp.hasTimeUnits(units));             
+            //String2.log(">> hasTime=" + hasTime + " col=" + addTable.getColumnName(col) + " units=" + units + " timeUnits=" + EDVTimeStamp.hasTimeUnits(units));
         }
 
         //look for LLAT
         for (int col = 0; col < sn; col++) {
             //class not always known
-            Class tClass = addTable.getColumn(col).elementClass();
-            boolean isNumeric = tClass != String.class && tClass != char.class;
+            PAType tPAType = addTable.getColumn(col).elementType();
+            boolean isNumeric = tPAType != PAType.STRING && tPAType != PAType.CHAR;
             String colName = addTable.getColumnName(col);
             String colNameLC = colName.toLowerCase();
             String     sourceName = sourceTable == null? colName : sourceTable.getColumnName(col);
@@ -3791,7 +3826,7 @@ public abstract class EDD {
             String units    = getAddOrSourceAtt(addAtts, sourceAtts, "units",         null);
             String positive = getAddOrSourceAtt(addAtts, sourceAtts, "positive",      null);
             String stdName  = getAddOrSourceAtt(addAtts, sourceAtts, "standard_name", null);
-            if (!hasLon && isNumeric && 
+            if (!hasLon && isNumeric &&
                 (EDV.LON_STANDARD_NAME.equals(stdName) || EDV.probablyLon(colName, units))) {
                 addTable.setColumnName(col, EDV.LON_NAME);
                 if (!String2.looselyEquals(sourceName, EDV.LON_NAME) &&
@@ -3802,7 +3837,7 @@ public abstract class EDD {
                 if (stdName == null)
                     addAtts.set("standard_name", EDV.LON_STANDARD_NAME);
                 hasLon = true;
-            } else if (!hasLat && isNumeric && 
+            } else if (!hasLat && isNumeric &&
                 (EDV.LAT_STANDARD_NAME.equals(stdName) || EDV.probablyLat(colName, units))) {
                 addTable.setColumnName(col, EDV.LAT_NAME);
                 if (!String2.looselyEquals(sourceName, EDV.LAT_NAME) &&
@@ -3813,7 +3848,7 @@ public abstract class EDD {
                 if (stdName == null)
                     addAtts.set("standard_name", EDV.LAT_STANDARD_NAME);
                 hasLat = true;
-            } else if (!hasAltDepth && 
+            } else if (!hasAltDepth &&
                 isNumeric &&
                 String2.indexOf(EDV.METERS_VARIANTS, units) >= 0 && //case sensitive
                 (colNameLC.indexOf("altitude") >= 0 ||
@@ -3827,7 +3862,7 @@ public abstract class EDD {
                 if (stdName == null)
                     addAtts.set("standard_name", EDV.ALT_STANDARD_NAME);
                 hasAltDepth = true;
-            } else if (!hasAltDepth && 
+            } else if (!hasAltDepth &&
                 isNumeric &&
                 String2.indexOf(EDV.METERS_VARIANTS, units) >= 0 && //case sensitive
                 (colNameLC.indexOf("depth") >= 0 ||
@@ -3845,7 +3880,7 @@ public abstract class EDD {
                     !"uuuu".equals(units) && !"yyyy".equals(units) && !"YYYY".equals(units)) { //many datasets have date components. Don't treat year as time.
                 addTable.setColumnName(col, EDV.TIME_NAME);
                 if (Calendar2.isStringTimeUnits(units) &&
-                    addTable.getColumn(col).elementClass() != String.class)
+                    addTable.getColumn(col).elementType() != PAType.STRING)
                     addTable.setColumn(col, new StringArray(addTable.getColumn(col)));
                 if (!String2.looselyEquals(sourceName, EDV.TIME_NAME))
                     addAtts.set("source_name", sourceName);
@@ -3853,9 +3888,9 @@ public abstract class EDD {
                     addAtts.set("standard_name", EDV.TIME_STANDARD_NAME);
                 hasTime = true;
             }
-            //String2.log(">> hasTime=" + hasTime + " col=" + addTable.getColumnName(col) + " units=" + units + " timeUnits=" + EDVTimeStamp.hasTimeUnits(units));             
+            //String2.log(">> hasTime=" + hasTime + " col=" + addTable.getColumnName(col) + " units=" + units + " timeUnits=" + EDVTimeStamp.hasTimeUnits(units));
         }
-        //String2.log(">> hasLat=" + hasLat + " hasLon=" + hasLon + " hasTime=" + hasTime); 
+        //String2.log(">> hasLat=" + hasLat + " hasLon=" + hasLon + " hasTime=" + hasTime);
         return hasLon && hasLat && hasTime;
     }
 
@@ -3873,7 +3908,7 @@ public abstract class EDD {
         phrase = phrase.toLowerCase().trim();
         while (phrase.endsWith("*") || phrase.endsWith("_"))
             phrase = phrase.substring(0, phrase.length() - 1).trim();
-        if (phrase.indexOf(',') < 0 && phrase.indexOf(';') < 0) 
+        if (phrase.indexOf(',') < 0 && phrase.indexOf(';') < 0)
             hashSet.add(phrase);
         chopUpAndAdd(phrase, hashSet);
     }
@@ -3891,20 +3926,20 @@ public abstract class EDD {
             return hashSet;
         String tWords[] = StringArray.arrayFromCSV(csv, ",;"); //split at , or ;
         int ntWords = tWords.length;
-        for (int tw = 0; tw < ntWords; tw++) 
+        for (int tw = 0; tw < ntWords; tw++)
             addAllAndParts(tWords[tw], hashSet);
         return hashSet;
     }
 
     /**
-     * This chops a csv list into words/phrases and adds them as is to hashSet.
+     * This chops a csv list into words/phrases and adds them as is and their parts to hashSet.
      *
      * @param phrase
      * @param hashset
      * @return the same hashSet for convenience
      */
     public static HashSet<String> chopUpCsvAndAdd(String csv, HashSet<String> hashSet) {
-        //String2.log("chopUpAndAdd " + phrase);
+        //String2.log(">> chopUpAndAdd " + csv);
         if (csv == null || csv.length() == 0)
             return hashSet;
         String tWords[] = StringArray.arrayFromCSV(csv, ",;"); //split at , or ;
@@ -3914,6 +3949,7 @@ public abstract class EDD {
             while (w.endsWith("*") || w.endsWith("_"))
                 w = w.substring(0, w.length() - 1).trim();
             hashSet.add(w);
+            chopUpAndAdd(w, hashSet);
         }
         return hashSet;
     }
@@ -3931,7 +3967,7 @@ public abstract class EDD {
         //remove . at end of sentence or abbreviation, but not within number or word.word
         if (phrase == null || phrase.length() == 0)
             return hashSet;
-        if (String2.isUrl(phrase)) 
+        if (String2.isUrl(phrase))
             return hashSet;
         //if (phrase.indexOf("http") >= 0) String2.log(">> chopUpAndAdd " + phrase);
         phrase = String2.replaceAll(phrase, ". ", " ");         //too aggressive?
@@ -3944,9 +3980,9 @@ public abstract class EDD {
         char car[] = phraseLC.toCharArray();
         int nc = car.length;
         for (int c = 0; c < nc; c++) {
-            //want to break things up, but not parts of equations or URLs.  
-            //  keep /: mg/ml 
-            //    but break up in Title and GCMD keywords before calling this method, 
+            //want to break things up, but not parts of equations or URLs.
+            //  keep /: mg/ml
+            //    but break up in Title and GCMD keywords before calling this method,
             //    so Salinity/Density broken up
             //  keep ^: want to keep length^2
             //  keep .: end-of-sentence dealt with above, so now more likely part of a number or abbreviation
@@ -3973,11 +4009,11 @@ public abstract class EDD {
             s = removeExtensionsFromTitle(s);
             if (s.length() > 2) {
                 //String2.log("  add " + s);
-                hashSet.add(s); 
+                hashSet.add(s);
             } else if (String2.indexOf(KEEP_SHORT_KEYWORDS, s) >= 0 ||
                        String2.indexOf(KEEP_SHORT_UC_KEYWORDS, s) >= 0) {
                 hashSet.add(s); //uppercase will be upper-cased when written to generateDatasetsXml
-            }             
+            }
 
             //if it contains internal '-' or '/', also: split it and add words
             if (s.indexOf('-') > 0 ||
@@ -3990,7 +4026,7 @@ public abstract class EDD {
                     String ts = ttWords.get(ttw);
                     if (ts.length() > 2) {
                         //String2.log("  add " + ts);
-                        hashSet.add(ts); 
+                        hashSet.add(ts);
                     }
                 }
             }
@@ -3999,7 +4035,7 @@ public abstract class EDD {
     }
 
     /**
-     * This is used by generateDatasetsXml in subclasses to suggest 
+     * This is used by generateDatasetsXml in subclasses to suggest
      * keywords (GCMD and others) based on variable's standard_names, long_name,
      * and ioos_category (for use by makeReadyToUseAddGlobalAttributesForDatasetsXml).
      *
@@ -4007,7 +4043,7 @@ public abstract class EDD {
      * @param dataAddTable
      * @return a HashSet of suggested keywords (may be String[0])
      */
-    public static HashSet<String> suggestKeywords(Table dataSourceTable, 
+    public static HashSet<String> suggestKeywords(Table dataSourceTable,
         Table dataAddTable) {
 
         HashSet<String> keywordHashSet = new HashSet(128);
@@ -4022,7 +4058,7 @@ public abstract class EDD {
 
         //from the data variables
         for (int addCol = 0; addCol < dataAddTable.nColumns(); addCol++) {
-            //add the variable destinationName 
+            //add the variable destinationName
             String destName = dataAddTable.getColumnName(addCol);
             //String2.log(">> suggestKeywords destName=" + destName);
             String tdn = destName.trim();
@@ -4037,7 +4073,7 @@ public abstract class EDD {
             Attributes sourceAtts = sourceCol >= 0? dataSourceTable.columnAttributes(sourceCol) :
                 null;
 
-            //try to find standard_name 
+            //try to find standard_name
             String stdName = addAtts.getString("standard_name");
             if (stdName == null && sourceAtts != null)
                 stdName = sourceAtts.getString("standard_name");
@@ -4047,31 +4083,25 @@ public abstract class EDD {
                 for (int i = 0; i < tKeywords.length; i++) {
                     //add the whole gcmd keyword phrase
                     String tk = tKeywords[i];
-                    keywordHashSet.add(tk); 
+                    keywordHashSet.add(tk);
 
                     //add individual words from gcmd keywords
                     chopUpAndAdd(String2.replaceAll(tk, '/', ' '), keywordHashSet);
                 }
 
                 //add whole and parts of standard_name
-                if (stdName.indexOf("longitude") < 0 &&
-                    stdName.indexOf("latitude") < 0 &&
-                    //depth is interesting
-                    //altitude is interesting
-                    !stdName.equals("time")) {    //time     is in interesting longer standard_names
-                    keywordHashSet.add(stdName.toLowerCase());  
-                    chopUpAndAdd(stdName, keywordHashSet);  
-                }
+                keywordHashSet.add(stdName.toLowerCase());
+                chopUpAndAdd(stdName, keywordHashSet);
             }
 
-            //try to find long_name 
+            //try to find long_name
             String longName = addAtts.getString("long_name");
             if (longName == null && sourceAtts != null)
                 longName = sourceAtts.getString("long_name");
-            if (longName != null) 
+            if (longName != null)
                 chopUpAndAdd(longName, keywordHashSet);
 
-            //try to find ioos_category 
+            //try to find ioos_category
             String ioos = addAtts.getString("ioos_category");
             if (ioos == null && sourceAtts != null)
                 ioos = sourceAtts.getString("ioos_category");
@@ -4090,7 +4120,7 @@ public abstract class EDD {
     }
 
     /**
-     * If kw is a gcmd science keyword, it is cleaned up 
+     * If kw is a gcmd science keyword, it is cleaned up
      * (to title case, prefixed with "Earth Science > ").
      * Otherwise kw is returned as is.
      */
@@ -4133,119 +4163,119 @@ public abstract class EDD {
         HashMap<String,String> achm = EDStatic.gdxAcronymsHashMap();
         for (int i = 0; i < n; i++) {
             //String2.log(">> 1keyword#" + i + "=" + keys[i]);
-            chopUpAndAdd(achm.get(keys[i].toUpperCase()), keywords); 
+            chopUpAndAdd(achm.get(keys[i].toUpperCase()), keywords);
         }
 
-        if (keywords.contains("1st")) 
-            keywords.add(     "first");  
-        if (keywords.contains("2nd")) 
-            keywords.add(     "second");  
-        if (keywords.contains("3rd")) 
-            keywords.add(     "third");  
-        if (keywords.contains("4th")) 
-            keywords.add(     "fourth");  
-        if (keywords.contains("5th")) 
-            keywords.add(     "fifth");  
-        if (keywords.contains("6th")) 
-            keywords.add(     "sixth");  
-        if (keywords.contains("adcp"))  
+        if (keywords.contains("1st"))
+            keywords.add(     "first");
+        if (keywords.contains("2nd"))
+            keywords.add(     "second");
+        if (keywords.contains("3rd"))
+            keywords.add(     "third");
+        if (keywords.contains("4th"))
+            keywords.add(     "fourth");
+        if (keywords.contains("5th"))
+            keywords.add(     "fifth");
+        if (keywords.contains("6th"))
+            keywords.add(     "sixth");
+        if (keywords.contains("adcp"))
             chopUpAndAdd(     "current currents velocity", keywords);
-        if (keywords.contains("anomalies")) 
-            keywords.add(     "anomaly");  
-        if (keywords.contains("calcofi") || 
-            keywords.contains("CalCOFI"))  
+        if (keywords.contains("anomalies"))
+            keywords.add(     "anomaly");
+        if (keywords.contains("calcofi") ||
+            keywords.contains("CalCOFI"))
             chopUpAndAdd(     "California Cooperative Fisheries Investigations", keywords);
-        if (keywords.contains("cloud"))  
+        if (keywords.contains("cloud"))
             chopUpAndAdd(     "cloudiness", keywords);
-        if (keywords.contains("cloudiness"))  
+        if (keywords.contains("cloudiness"))
             addAllAndParts(   "cloud cover", keywords);
-        if (keywords.contains("coads") || keywords.contains("icoads"))  
+        if (keywords.contains("coads") || keywords.contains("icoads"))
             chopUpAndAdd(     "coads icoads international comprehensive Ocean Atmosphere Data Set", keywords);
-        if (keywords.contains("crm"))  
+        if (keywords.contains("crm"))
             addAllAndParts(   "coastal relief model", keywords);
-        if (keywords.contains("ctd")) 
-            chopUpAndAdd(     "conductivity temperature depth sonde", keywords);  
-        if (keywords.contains("1day")) 
-            keywords.add(     "daily");  
-        if (keywords.contains("daily")) 
-            keywords.add(     "day");  
-        if (keywords.contains("daytime")) 
-            chopUpAndAdd(     "day time", keywords);  
-        if (keywords.contains("dem")) 
-            chopUpAndAdd(     "digital elevation model", keywords);  
-        if (keywords.contains("dewpoint") || 
+        if (keywords.contains("ctd"))
+            chopUpAndAdd(     "conductivity temperature depth sonde", keywords);
+        if (keywords.contains("1day"))
+            keywords.add(     "daily");
+        if (keywords.contains("daily"))
+            keywords.add(     "day");
+        if (keywords.contains("daytime"))
+            chopUpAndAdd(     "day time", keywords);
+        if (keywords.contains("dem"))
+            chopUpAndAdd(     "digital elevation model", keywords);
+        if (keywords.contains("dewpoint") ||
             keywords.contains("dewpt") ||
-            (keywords.contains("dew") && keywords.contains("point"))) 
+            (keywords.contains("dew") && keywords.contains("point")))
             addAllAndParts(   "dew point", keywords);
-        if (keywords.contains("etopo"))  
+        if (keywords.contains("etopo"))
             chopUpAndAdd(     "global bathymetry topography", keywords);
-        if (keywords.contains("flh")) 
-            chopUpAndAdd(     "fluorescence line height", keywords);  
-        if (keywords.contains("fnmoc")) 
-            chopUpAndAdd(     "fleet numerical meteorology and oceanography center", keywords);  
-        if (keywords.contains("ghcn"))  
+        if (keywords.contains("flh"))
+            chopUpAndAdd(     "fluorescence line height", keywords);
+        if (keywords.contains("fnmoc"))
+            chopUpAndAdd(     "fleet numerical meteorology and oceanography center", keywords);
+        if (keywords.contains("ghcn"))
             chopUpAndAdd(     "global historical climatology network", keywords);
-        if (keywords.contains("ghrsst")) 
-            chopUpAndAdd(     "global high resolution sea surface temperature sst", keywords);  
-        if (keywords.contains("globec")) 
-            chopUpAndAdd(     "Global Ocean Ecosystems Dynamics", keywords);  
-        if (keywords.contains("goes")) 
-            chopUpAndAdd(     "geostationary operational environmental satellite", keywords);  
-        if (keywords.contains("gpcc")) 
-            chopUpAndAdd(     "global precipitation climatology centre rain rainfall", keywords);  
-        if (keywords.contains("gpcp")) 
-            chopUpAndAdd(     "global precipitation climatology project rain rainfall", keywords);  
-        if (keywords.contains("hfradar")) 
-            chopUpAndAdd(     "hf high frequency radar", keywords);  
-        if (keywords.contains("hf") && keywords.contains("radar")) 
-            chopUpAndAdd(     "high frequency hfradar", keywords);  
-        if (keywords.contains("hourly")) 
-            keywords.add(     "hour");  
-        if (keywords.contains("hycom")) 
-            chopUpAndAdd(     "hybrid coordinate ocean model", keywords);  
+        if (keywords.contains("ghrsst"))
+            chopUpAndAdd(     "global high resolution sea surface temperature sst", keywords);
+        if (keywords.contains("globec"))
+            chopUpAndAdd(     "Global Ocean Ecosystems Dynamics", keywords);
+        if (keywords.contains("goes"))
+            chopUpAndAdd(     "geostationary operational environmental satellite", keywords);
+        if (keywords.contains("gpcc"))
+            chopUpAndAdd(     "global precipitation climatology centre rain rainfall", keywords);
+        if (keywords.contains("gpcp"))
+            chopUpAndAdd(     "global precipitation climatology project rain rainfall", keywords);
+        if (keywords.contains("hfradar"))
+            chopUpAndAdd(     "hf high frequency radar", keywords);
+        if (keywords.contains("hf") && keywords.contains("radar"))
+            chopUpAndAdd(     "high frequency hfradar", keywords);
+        if (keywords.contains("hourly"))
+            keywords.add(     "hour");
+        if (keywords.contains("hycom"))
+            chopUpAndAdd(     "hybrid coordinate ocean model", keywords);
         //"icoads" see coads above
-        if (keywords.contains("ltm")) 
-            chopUpAndAdd(     "long term mean", keywords);  
-        if (keywords.contains("mday")) 
-            keywords.add(     "monthly");  
-        if (keywords.contains("monthly")) 
-            keywords.add(     "month");  
-        if (keywords.contains("mur")) 
-            chopUpAndAdd(     "multi-scale ultra-high resolution", keywords);  
-        if (keywords.contains("ncom")) 
+        if (keywords.contains("ltm"))
+            chopUpAndAdd(     "long term mean", keywords);
+        if (keywords.contains("mday"))
+            keywords.add(     "monthly");
+        if (keywords.contains("monthly"))
+            keywords.add(     "month");
+        if (keywords.contains("mur"))
+            chopUpAndAdd(     "multi-scale ultra-high resolution", keywords);
+        if (keywords.contains("ncom"))
             chopUpAndAdd(     "navy coastal ocean model", keywords);
-        if (keywords.contains("near-real")) 
+        if (keywords.contains("near-real"))
             chopUpAndAdd(     "near real time", keywords);
-        if (keywords.contains("nep")) 
-            chopUpAndAdd(     "north east pacific", keywords);  
-        if (keywords.contains("nighttime")) 
-            chopUpAndAdd(     "night time", keywords);  
-        if (keywords.contains("nrt")) 
-            chopUpAndAdd(     "near real time", keywords);  
-        if (keywords.contains("npp")) 
-            chopUpAndAdd(     "national polar orbiting partnership", keywords);  
+        if (keywords.contains("nep"))
+            chopUpAndAdd(     "north east pacific", keywords);
+        if (keywords.contains("nighttime"))
+            chopUpAndAdd(     "night time", keywords);
+        if (keywords.contains("nrt"))
+            chopUpAndAdd(     "near real time", keywords);
+        if (keywords.contains("npp"))
+            chopUpAndAdd(     "national polar orbiting partnership", keywords);
         if (keywords.contains("nseabaltic")) {
             addAllAndParts(   "north sea", keywords);
             addAllAndParts(   "baltic sea", keywords);
-        }                        
+        }
         /* for adding new terms
-        if (keywords.contains("ctd")) 
-            chopUpAndAdd(     "conductivity temperature depth", keywords);  
+        if (keywords.contains("ctd"))
+            chopUpAndAdd(     "conductivity temperature depth", keywords);
         */
-        if (keywords.contains("obpg")) 
-            chopUpAndAdd(     "Ocean Biology Processing Group NASA color", keywords);  
-        if (keywords.contains("oceans")) 
-            keywords.add(     "ocean");  
-        if (keywords.contains("olr")) 
-            chopUpAndAdd(     "outgoing longwave radiation", keywords);  
-        if (keywords.contains("poes")) 
+        if (keywords.contains("obpg"))
+            chopUpAndAdd(     "Ocean Biology Processing Group NASA color", keywords);
+        if (keywords.contains("oceans"))
+            keywords.add(     "ocean");
+        if (keywords.contains("olr"))
+            chopUpAndAdd(     "outgoing longwave radiation", keywords);
+        if (keywords.contains("poes"))
             chopUpAndAdd(     "polar orbiting environmental satellite", keywords);
-        if (keywords.contains("precipitation")) 
-            chopUpAndAdd(     "rain rainfall", keywords);  
-        if (keywords.contains("rain")) 
-            chopUpAndAdd(     "precipitation rainfall", keywords);  
-        if (keywords.contains("rainfall")) 
-            chopUpAndAdd(     "precipitation rain", keywords);  
+        if (keywords.contains("precipitation"))
+            chopUpAndAdd(     "rain rainfall", keywords);
+        if (keywords.contains("rain"))
+            chopUpAndAdd(     "precipitation rainfall", keywords);
+        if (keywords.contains("rainfall"))
+            chopUpAndAdd(     "precipitation rain", keywords);
         if (keywords.contains("real-time")) {
             addAllAndParts(   "real time", keywords);
             keywords.add(     "realtime");
@@ -4254,25 +4284,25 @@ public abstract class EDD {
             chopUpAndAdd(     "regional ocean modeling system", keywords);
             keywords.add(     "model");
         }
-        if (keywords.contains("rtofs")) 
-            chopUpAndAdd(     "real-time ocean forecast system", keywords);  
-        if (keywords.contains("smi")) 
-            chopUpAndAdd(     "standard mapped image", keywords);  
-        if (keywords.contains("trmm")) 
-            chopUpAndAdd(     "tropical rainfall measuring mission", keywords);  
-        if (keywords.contains("viirs")) 
-            chopUpAndAdd(     "visible infrared imaging radiometer suite", keywords);  
+        if (keywords.contains("rtofs"))
+            chopUpAndAdd(     "real-time ocean forecast system", keywords);
+        if (keywords.contains("smi"))
+            chopUpAndAdd(     "standard mapped image", keywords);
+        if (keywords.contains("trmm"))
+            chopUpAndAdd(     "tropical rainfall measuring mission", keywords);
+        if (keywords.contains("viirs"))
+            chopUpAndAdd(     "visible infrared imaging radiometer suite", keywords);
 
 
-        //add expanded common abbreviations and acronyms    
+        //add expanded common abbreviations and acronyms
         //use contains() so original isn't removed
-        if (keywords.contains("co2"))  
+        if (keywords.contains("co2"))
             addAllAndParts(   "carbon dioxide", keywords);
-        if (keywords.contains("carbon dioxide"))  
+        if (keywords.contains("carbon dioxide"))
             keywords.add(     "co2");
-        if (keywords.contains("co3"))  
+        if (keywords.contains("co3"))
             keywords.add(     "carbonate");
-        if (keywords.contains("carbonate"))  
+        if (keywords.contains("carbonate"))
             keywords.add(     "co3");
         if (keywords.contains("nh4"))
             keywords.add(     "ammonium");
@@ -4295,16 +4325,16 @@ public abstract class EDD {
         if (keywords.contains("phosphate"))
             keywords.add(     "po4");
 
-        if (keywords.contains("chl") || 
+        if (keywords.contains("chl") ||
             keywords.contains("chla") ||
             keywords.contains("chlor") ||
-            keywords.contains("chlora")) 
+            keywords.contains("chlora"))
             keywords.add(     "chlorophyll");
 
-        if (keywords.contains("eur"))  
+        if (keywords.contains("eur"))
             keywords.add(     "europe");
         if ((keywords.contains("hf") && keywords.contains("radar")) ||
-            keywords.contains("hfradar")) { 
+            keywords.contains("hfradar")) {
             keywords.add(     "hfradar");
             addAllAndParts(   "hf radar", keywords);
         }
@@ -4312,11 +4342,11 @@ public abstract class EDD {
             keywords.add(     "hfradio");
             addAllAndParts(   "hf radio", keywords);
         }
-        if (keywords.contains("hires")) 
+        if (keywords.contains("hires"))
             addAllAndParts(   "high resolution", keywords);
-        if (keywords.contains("glob"))  
+        if (keywords.contains("glob"))
             keywords.add(     "global");  //usually
-        if (keywords.contains("mod")) 
+        if (keywords.contains("mod"))
             keywords.add(     "modulus"); //usually
 
         if (keywords.contains("aoml") ||
@@ -4329,7 +4359,7 @@ public abstract class EDD {
             keywords.contains("nws") ||
             keywords.contains("osdpd") ||
             keywords.contains("ospo") ||
-            keywords.contains("pmel")) 
+            keywords.contains("pmel"))
             keywords.add(     "noaa");
 
         if (keywords.contains("afsc") ||
@@ -4360,21 +4390,21 @@ public abstract class EDD {
             keywords.contains("ncddc") ||
             keywords.contains("ncei")) {
             keywords.add(     "ncei");  //ncei
-            keywords.add(     "nesdis");  
+            keywords.add(     "nesdis");
             keywords.add(     "noaa");
         }
 
-        if (keywords.contains("obs")) 
+        if (keywords.contains("obs"))
             keywords.add(     "observations");
         if (keywords.contains("seawater")) {
             keywords.add(     "sea");
             keywords.add(     "water");
         }
-        if (keywords.contains("sea") && 
+        if (keywords.contains("sea") &&
             keywords.contains("water"))
             keywords.add(     "seawater");
-        if (keywords.contains("stdev"))  
-            addAllAndParts(   "standard deviation", keywords);  
+        if (keywords.contains("stdev"))
+            addAllAndParts(   "standard deviation", keywords);
 
 
         //name changes (both ways)
@@ -4384,76 +4414,76 @@ public abstract class EDD {
             keywords.add(     "osdpd");
 
         //expand common abbreviations   usually use remove() so original is removed
-        if (keywords.remove("anal")) 
+        if (keywords.remove("anal"))
             keywords.add(   "analysis");
-        if (keywords.remove("ann")) 
+        if (keywords.remove("ann"))
             keywords.add(   "annual");
-        if (keywords.remove("anom")) 
+        if (keywords.remove("anom"))
             keywords.add(   "anomaly");
-        if (keywords.remove("atmos")) 
+        if (keywords.remove("atmos"))
             keywords.add(   "atmosphere");
-        if (keywords.remove("avg")) 
+        if (keywords.remove("avg"))
             keywords.add(   "average");
-        if (keywords.remove("coef.") || keywords.remove("coef")) 
+        if (keywords.remove("coef.") || keywords.remove("coef"))
             keywords.add(   "coefficient");
         if (keywords.remove("climatologymeteorologyatmosphere")) {
             keywords.add(   "atmosphere");
             keywords.add(   "climatology");
             keywords.add(   "meteorology");
-        }            
-        if (keywords.remove("err")) 
+        }
+        if (keywords.remove("err"))
             keywords.add(   "error");
         if (keywords.remove("geoscientificinformation")) {
             keywords.add(   "geoscientific");
             keywords.add(   "information");
-        }                        
-        if (keywords.remove("merid.") || keywords.remove("merid")) 
+        }
+        if (keywords.remove("merid.") || keywords.remove("merid"))
             keywords.add(   "meridional");
-        if (keywords.remove("mon")) 
+        if (keywords.remove("mon"))
             keywords.add(   "monthly");
-        if (keywords.remove("phos")) 
+        if (keywords.remove("phos"))
             keywords.add(   "phosphate");
-        if (keywords.remove("precip")) 
+        if (keywords.remove("precip"))
             keywords.add(   "precipitation");
-        if (keywords.remove("sili")) 
+        if (keywords.remove("sili"))
             keywords.add(   "silicate");
-        if (keywords.remove("temp")) 
+        if (keywords.remove("temp"))
             keywords.add(   "temperature");
-        if (keywords.remove("u-veloc.")) 
+        if (keywords.remove("u-veloc."))
             keywords.add(   "u-velocity");
-        if (keywords.remove("univ"))  
+        if (keywords.remove("univ"))
             keywords.add(   "university");
-        if (keywords.remove("u.s"))  
+        if (keywords.remove("u.s"))
             keywords.add(   "us"); //will be upper-cased when written (it's in KEEP_SHORT_UC)
-        if (keywords.remove("v-veloc.") || keywords.remove("v-veloc")) 
+        if (keywords.remove("v-veloc.") || keywords.remove("v-veloc"))
             keywords.add(   "v-velocity");
-        if (keywords.remove("veloc.")   || keywords.remove("veloc")) 
+        if (keywords.remove("veloc.")   || keywords.remove("veloc"))
             keywords.add(   "velocity");
-        if (keywords.remove("w-veloc.") || keywords.remove("w-veloc")) 
+        if (keywords.remove("w-veloc.") || keywords.remove("w-veloc"))
             keywords.add(   "w-velocity");
-        
+
         //remove common uninteresting keywords >=3 chars
         String toRemove[] = {
-            "alt", "and", "apr", "april", "are", "aug", "august", 
-            "been", 
+            "alt", "and", "apr", "april", "are", "aug", "august",
+            "been",
             "can", "catalog", "catalog.html", "could",
-            "dec", "december", "deg",  "did", "dodsc", "does", 
-            "feb", "february", "for", "from", 
-            "gmt", 
-            "have", "has", "had", "html", "http", "https", 
-            "jan", "january", "jul", "july", "jun", "june", 
-            "last", "location", "lon", "lat", 
-            "mar", "march", "may", "might", "must", "m/s", 
-            "netcdf", "nov", "november", "null", 
-            "oct", "october", "other", 
+            "dec", "december", "deg",  "did", "dodsc", "does",
+            "feb", "february", "for", "from",
+            "gmt",
+            "have", "has", "had", "html", "http", "https",
+            "jan", "january", "jul", "july", "jun", "june",
+            "last", "location", "lon", "lat",
+            "mar", "march", "may", "might", "must", "m/s",
+            "netcdf", "nov", "november", "null",
+            "oct", "october", "other",
             "prof.",   //professor, profile?
             "sep", "september", "shall", "should",
             "that", "the", "these", "this", "those", "thredds",
-            "unknown", "uri", "url", "utc", 
+            "unknown", "uri", "url", "utc",
             "var", "vars", "variables", "ver",  //usually version, but could be vertical or ...
             "was", "were", "will", "would"};
-        for (int i = 0; i < toRemove.length; i++) 
-            keywords.remove(toRemove[i]);  
+        for (int i = 0; i < toRemove.length; i++)
+            keywords.remove(toRemove[i]);
 
         //always!
         keywords.add("data");
@@ -4480,19 +4510,19 @@ public abstract class EDD {
                 keywords.add(k);
             }
 
-            // ; separated gcmd phrases, but now hopefully caught sooner 
+            // ; separated gcmd phrases, but now hopefully caught sooner
             if (k.indexOf(" > ") > 0 && k.indexOf('<') < 0 &&
                 k.indexOf(';') >= 0) {
                 String sar[] = String2.split(k, ';');
                 for (int i2 = 0; i2 < sar.length; i2++) {
-                    if (sar[i2].length() > 3)                         
+                    if (sar[i2].length() > 3)
                         keywords.add(cleanIfGcmdKeyword(sar[i2]));
                 }
                 keywords.remove(k);
                 continue;
-            } 
+            }
 
-            //remove trailing :, * or _ 
+            //remove trailing :, * or _
             while (k.length() > 0 && ":*_".indexOf(k.charAt(k.length() - 1)) >= 0) {
                 keywords.remove(k);
                 k = k.substring(0, k.length() - 1).trim();
@@ -4526,7 +4556,7 @@ public abstract class EDD {
 
     /**
      * This is a convenience for dealing with attributes.
-     * 
+     *
      * @param addAtts may be null
      * @param sourceAtts may be null
      * @param oValue the current value. Specify null if none.
@@ -4549,45 +4579,45 @@ public abstract class EDD {
      * If attribute=name is in addAtts or sourceAtts, this calls addAtts.set(name, "null").
      * This returns String2.isSomething2(oValue)? oValue : value.
      */
-    static String removeAddOrSourceAtt(Attributes addAtts, Attributes sourceAtts, 
+    static String removeAddOrSourceAtt(Attributes addAtts, Attributes sourceAtts,
         String name, String oValue) {
         String                   value =    addAtts.getString(name);
         if (!String2.isSomething2(value)) value = sourceAtts.getString(name);
-        if ( String2.isSomething2(value)) 
+        if ( String2.isSomething2(value))
             addAtts.add(name, "null");
-        return String2.isSomething2(oValue)? oValue : 
+        return String2.isSomething2(oValue)? oValue :
                String2.isSomething2( value)? value : null;
     }
 
-    static void addIfNoAddOrSourceAtt(Attributes addAtts, Attributes sourceAtts, 
+    static void addIfNoAddOrSourceAtt(Attributes addAtts, Attributes sourceAtts,
         String name, String value) {
         if (!String2.isSomething2(   addAtts.getString(name)) &&
             !String2.isSomething2(sourceAtts.getString(name)))
             addAtts.add(name, value);
     }
 
-    static void addIfNoAddOrSourceAtt(Attributes addAtts, Attributes sourceAtts, 
+    static void addIfNoAddOrSourceAtt(Attributes addAtts, Attributes sourceAtts,
         String name, PrimitiveArray value) {
         if (!String2.isSomething2(   addAtts.getString(name)) &&
             !String2.isSomething2(sourceAtts.getString(name)))
             addAtts.add(name, value);
     }
 
-    /** 
-     * For generateDatasetsXml, this adds _FillValue and/or missing_value attributes to 
+    /**
+     * For generateDatasetsXml, this adds _FillValue and/or missing_value attributes to
      * addAtts if needed.
      *
      * Note that default CF/.nc _FillValues are the MIN_VALUE integers or
-     * 9.969...e36 for float and double 
+     * 9.969...e36 for float and double
      * (https://www.unidata.ucar.edu/software/netcdf/docs/file_format_specifications.html#classic_format_spec )
      * So it is important to catch those too and to explicitly define use of NaN.
      *
      * @param destVarName just for diagnostics
      * @param pa  the pa for a column of data from a sample file
-     *   (if null or size==0 or StringArray, nothing will be done).
+     *   (if null or StringArray, nothing will be done).
      *   For strongly typed source (e.g., .nc files), use sourcePA
      *   (so if packed, _FillValue and missing_value will be packed, too!),
-     *   else use destPA (which for e.g., EDDTableFromAsciiFiles is the correct dest type). 
+     *   else use destPA (which for e.g., EDDTableFromAsciiFiles is the correct dest type).
      * @param sourceAtts the variable's sourceAtts (may be null)
      * @param addAtts the variable's addAtts (if null, nothing will be done)
      * @return true if the change was made
@@ -4596,17 +4626,19 @@ public abstract class EDD {
         Attributes sourceAtts, Attributes addAtts) {
 
         // !!! This method is tricky. BE CAREFUL when making changes !!!
+        //String2.pressEnterToContinue(">> addMvFvAttsIfNeeded " + destVarName + " " + pa.elementType() + " size=" + pa.size() +
+        //    "\nsourceAtts=\n" + sourceAtts.toString() + "\naddAtts=\n" + addAtts.toString());
 
         if (pa == null || addAtts == null)
             return false;
 
-        //skip string or char pa's
-        Class eClass = pa.elementClass(); 
+        //skip string pa's
+        PAType ePAType = pa.elementType();
         int size = pa.size();
-        if (size == 0 || eClass == String.class)
+        if (ePAType == PAType.STRING)
             return false;
 
-        //skip if mv and fv already defined and different.  No slots for other values.
+        //are mv and fv are both already defined and same?
         String ofv = getAddOrSourceAtt(addAtts, sourceAtts, "_FillValue",    null); //original. may be null
         String omv = getAddOrSourceAtt(addAtts, sourceAtts, "missing_value", null); //original. may be null
         String sfv = ofv; //null means not yet set
@@ -4614,75 +4646,79 @@ public abstract class EDD {
         //String2.log(">> sfv=" + sfv + " smv=" + smv);
         if (sfv != null && smv != null && sfv.equals(smv))
             smv = null; //if same, pretend mv not defined
-        //if (sfv != null && smv != null && !sfv.equals(smv)) return false; //no, keep going in case need to change eClass
+        //if (sfv != null && smv != null && !sfv.equals(smv)) return false; //no, keep going in case need to change ePAType
 
-        if (eClass == char.class) {
+        if (ePAType == PAType.CHAR) {
 
-            int ti = (int)pa.missingValue(); //cohort mv is MAX_VALUE, e.g., 65536
-            String ts = "" + ti;                   //as String, e.g., "65536"
+            String ts = "0";
             if ((sfv == null || smv == null) && !ts.equals(sfv) && !ts.equals(smv) && pa.indexOf(ts) >= 0) {
                 if      (sfv == null && !ts.equals(smv)) sfv = ts; //sfv unset and new value isn't =smv
-                else if (smv == null && !ts.equals(sfv)) smv = ts; 
+                else if (smv == null && !ts.equals(sfv)) smv = ts;
             }
 
-            ti = 0;        //e.g., 0
-            ts = "" + ti;  //e.g., "0"
-            if ((sfv == null || smv == null) && !ts.equals(sfv) && !ts.equals(smv) && pa.indexOf(ts) >= 0) {
-                if      (sfv == null && !ts.equals(smv)) sfv = ts; //sfv unset and new value isn't =smv
-                else if (smv == null && !ts.equals(sfv)) smv = ts; 
-            }
+        } else if (pa.isIntegerType()) {
 
-        } else if (eClass == byte.class ||
-                   eClass == short.class ||
-                   eClass == int.class ||
-                   eClass == long.class) {
+            //get cohort missingValue (MAX_VALUE) as string that looks like an integer
+            String cohortMV = pa.missingValue().toString();  //e.g., "127" for ByteArray
+            //String2.pressEnterToContinue(">> pa.type=" + pa.elementType() + " cohortMV=" + cohortMV);
 
-            long ti = eClass == long.class? 
-                Long.MAX_VALUE : 
-                (int)pa.missingValue(); //cohort mv is MAX_VALUE, e.g., 127
-            String ts = "" + ti;            //as String, e.g., "127"
-            if ((sfv == null || smv == null) && !ts.equals(sfv) && !ts.equals(smv) && pa.indexOf(ts) >= 0) {
-                if      (sfv == null && !ts.equals(smv)) sfv = ts; //sfv unset and new value isn't =smv
-                else if (smv == null && !ts.equals(sfv)) smv = ts; 
-            }
-
-            ti = -ti; //e.g., -127
-            ts = "" + ti;  //e.g., "-127"
-            if ((sfv == null || smv == null) && !ts.equals(sfv) && !ts.equals(smv) && pa.indexOf(ts) >= 0) {
-                if      (sfv == null && !ts.equals(smv)) sfv = ts; //sfv unset and new value isn't =smv
-                else if (smv == null && !ts.equals(sfv)) smv = ts; 
-            }
-
-            ti = ti - 1; //e.g., -128
-            ts = "" + ti;  //e.g., "-128"
-            if ((sfv == null || smv == null) && !ts.equals(sfv) && !ts.equals(smv) && pa.indexOf(ts) >= 0) {
-                if      (sfv == null && !ts.equals(smv)) sfv = ts; //sfv unset and new value isn't =smv
-                else if (smv == null && !ts.equals(sfv)) smv = ts; 
+            //look for Unidata default _FillValue
+            if (sfv == null && smv == null && !pa.isUnsigned() && pa.size() > 0) {
+                //test 1 up from min of primitive type, e.g., "-127". Unidata uses these
+                String ts = "-" + cohortMV;
+                if (pa.indexOf(ts) >= 0) { //only if value is observed
+                    sfv = ts;
+                } else {
+                    ts = pa.MINEST_VALUE().toString();  //e.g., "-128"
+                    if (pa.indexOf(ts) >= 0)  //only if value is observed
+                        sfv = ts;
+                }
             }
 
             //min or max (but just one) is e.g. 99?
-            if (sfv == null || smv == null) {
+            if (sfv == null && smv == null && pa.size() > 0) {
                 //This is okay for longs because we're only looking for values
                 //that aren't huge (e.g., 9999999), so they are exactly represented as doubles.
                 double stats[] = pa.calculateStats();
-                int whichMv9 = DoubleArray.MV9.indexOf(stats[PrimitiveArray.STATS_MIN]); //this will only match integer MV9's
-                if (whichMv9 < 0)
-                    whichMv9 = DoubleArray.MV9.indexOf(stats[PrimitiveArray.STATS_MAX]);
-                if (whichMv9 >= 0) {
-                    double td = DoubleArray.MV9.getDouble(whichMv9);
-                    ti = Math2.roundToInt(td);
-                    if (td == ti) { //double check: only care about integer MV9's
-                        ts = "" + ti;
-                        if      (sfv == null && !ts.equals(smv)) sfv = ts; //sfv unset and new value isn't =smv
-                        else if (smv == null && !ts.equals(sfv)) smv = ts; 
+                if (stats[PrimitiveArray.STATS_N] > 0) {
+                    int whichMv9 = DoubleArray.MV9.indexOf(stats[PrimitiveArray.STATS_MIN]); //this will only match integer MV9's
+                    if (whichMv9 < 0)
+                        whichMv9 = DoubleArray.MV9.indexOf(stats[PrimitiveArray.STATS_MAX]);
+                    if (whichMv9 >= 0) {
+                        double td = DoubleArray.MV9.getDouble(whichMv9);
+                        int ti = Math2.roundToInt(td);
+                        if (td == ti)  //double check: only care about integer MV9's
+                            sfv = "" + ti;
                     }
                 }
             }
+
+            //cohort mv, if present
+            if (sfv == null || smv == null) {  //yes, ||
+                //get cohort missingValue (MAX_VALUE) as a string that looks like an integer
+                String ts = cohortMV;  //e.g., "127" for ByteArray
+                if ("palette".equals(destVarName) || "rgb".equals(destVarName) || "eightbitcolor".equals(destVarName)) { //common vars which have no missing values
+                } else if (pa.getMaxIsMV() || pa.indexOf(ts) >= 0) {
+                    if      (sfv == null && !ts.equals(smv)) sfv = ts;
+                    else if (smv == null && !ts.equals(sfv)) smv = ts;
+                }
+            }
+
+            //last: cohort mv, even if not present
+            if (sfv == null && smv == null) {
+                //get cohort missingValue (MAX_VALUE) as a string that looks like an integer
+                String ts = cohortMV;  //e.g., "127" for ByteArray
+                //String2.pressEnterToContinue(">> addMvFvAttsIfNeeded integerType max_value=" + ts + " sfv=" + sfv + " smv=" + smv);
+                //even if value is not observed
+                if ("palette".equals(destVarName) || "rgb".equals(destVarName) || "eightbitcolor".equals(destVarName)) {} //common vars which have no missing values
+                else sfv = ts;
+            }
+
         } else {  //float or double
 
             //this is good because it uses the observed min or max,
             //  so can find several related values
-            boolean isFloat = eClass == float.class;
+            boolean isFloat = ePAType == PAType.FLOAT;
             double stats[] = pa.calculateStats();
             boolean hasFinite = stats[PrimitiveArray.STATS_N] > 0;
             boolean hasNaN = stats[PrimitiveArray.STATS_N] < size;
@@ -4691,22 +4727,22 @@ public abstract class EDD {
 
             if (hasFinite) {
                 //-nc -9.9692099683868690e+36 or related -1e36
-                if ((sfv == null || smv == null) && 
+                if ((sfv == null || smv == null) &&
                     (min <= -1e300 || (min >= -1e37 && min <= -1e36))) {
                     String ts = isFloat? "" + (float)min : "" + min;
                     if      (sfv == null && !ts.equals(smv)) sfv = ts; // -nc is susceptible to rounding error differences
-                    else if (smv == null && !ts.equals(sfv)) smv = ts; 
+                    else if (smv == null && !ts.equals(sfv)) smv = ts;
                 }
 
                 //nc +9.9692099683868690e+36 (for float! or double) or related 1e36
-                if ((sfv == null || smv == null) && 
+                if ((sfv == null || smv == null) &&
                     (max >= 1e300 || (max >= 1e36 && max <= 1e37))) {
                     String ts = isFloat? "" + (float)max : "" + max;
                     if      (sfv == null && !ts.equals(smv)) sfv = ts; // nc is susceptible to rounding error differences
-                    else if (smv == null && !ts.equals(sfv)) smv = ts; 
+                    else if (smv == null && !ts.equals(sfv)) smv = ts;
                 }
 
-                //variants of 99, but just min or max 
+                //variants of 99, but just min or max
                 //String2.log(">> min=" + min + " max=" + max);
                 int whichMv9 = isFloat?
                     FloatArray.MV9.indexOf(Math2.doubleToFloatNaN(min)) :
@@ -4715,47 +4751,48 @@ public abstract class EDD {
                     whichMv9 = isFloat?
                         FloatArray.MV9.indexOf(Math2.doubleToFloatNaN(max)) :
                         DoubleArray.MV9.indexOf(max);
-                if ((sfv == null || smv == null) && 
+                if ((sfv == null || smv == null) &&
                     whichMv9 >= 0) {
                     String ts = DoubleArray.MV9.getString(whichMv9);
-                    if      (sfv == null && !ts.equals(smv)) sfv = ts; 
-                    else if (smv == null && !ts.equals(sfv)) smv = ts; 
+                    if      (sfv == null && !ts.equals(smv)) sfv = ts;
+                    else if (smv == null && !ts.equals(sfv)) smv = ts;
                 }
             }
 
             //NaN
             if ((sfv == null || smv == null) && hasNaN) {
                 String ts = "NaN";
-                if      (sfv == null && !ts.equals(smv)) sfv = ts; 
-                else if (smv == null && !ts.equals(sfv)) smv = ts; 
+                if      (sfv == null && !ts.equals(smv)) sfv = ts;
+                else if (smv == null && !ts.equals(sfv)) smv = ts;
             }
         }
 
-        boolean madeChange = false; 
-        PrimitiveArray   
+        boolean madeChange = false;
+        PrimitiveArray
             apa =    addAtts.get("_FillValue");
-        if (apa == null && sourceAtts != null) 
+        if (apa == null && sourceAtts != null)
             apa = sourceAtts.get("_FillValue");
-        if (sfv != null && (!sfv.equals(ofv) || (apa != null && apa.elementClass() != eClass))) {
-            addAtts.set("_FillValue", PrimitiveArray.factory(eClass, 1, sfv));
+        //String2.log("\n>> destVarName=" + destVarName + " ofv=" + ofv + " sfv=" + sfv + " ePAType=" + ePAType + " apa=" + (apa == null? "" : apa.toString()));
+        if (sfv != null && (!sfv.equals(ofv) || (apa != null && apa.elementType() != ePAType))) {
+            addAtts.set("_FillValue", PrimitiveArray.factory(ePAType, 1, sfv));
             madeChange = true;
         }
             apa =    addAtts.get("missing_value");
         if (apa == null && sourceAtts != null)
             apa = sourceAtts.get("missing_value");
-        //String2.pressEnterToContinue("\n>> destVarName=" + destVarName + " omv=" + omv + " smv=" + smv + " eClass=" + eClass.toString() + " apa=" + (apa == null? "" : apa.toString()));
-        if (smv != null && (!smv.equals(omv) || (apa != null && apa.elementClass() != eClass))) {
-            addAtts.set("missing_value", PrimitiveArray.factory(eClass, 1, smv));
+        //String2.log("\n>> destVarName=" + destVarName + " omv=" + omv + " smv=" + smv + " ePAType=" + ePAType + " apa=" + (apa == null? "" : apa.toString()));
+        if (smv != null && (!smv.equals(omv) || (apa != null && apa.elementType() != ePAType))) {
+            addAtts.set("missing_value", PrimitiveArray.factory(ePAType, 1, smv));
             madeChange = true;
         }
         return madeChange;
     }
 
     /**
-     * For generateDatasetsXml, this is like the other 
+     * For generateDatasetsXml, this is like the other
      * addMvFvAttsIfNeeded, but tries to work on each column
      * in the addTable.
-     * 
+     *
      * @param sourceTable  If null, nothing will be done.
      * @param addTable   If null, nothing will be done.
      * @return true if the change was made
@@ -4795,7 +4832,7 @@ public abstract class EDD {
         }
 
         int po = String2.findWholeWord(tSummary, acronym);
-        if (po >= 0) {  
+        if (po >= 0) {
             //that's good enough to add
             chopUpAndAdd(full, suggestedKeywords);
 
@@ -4805,7 +4842,7 @@ public abstract class EDD {
                 "/_.".indexOf(tSummary.charAt(po - 1)) >= 0 &&
                 "/_" .indexOf(tSummary.charAt(po + acronym.length())) >= 0)
                 return tSummary; //don't make the change
-            tSummary = tSummary.substring(0, po) + full + 
+            tSummary = tSummary.substring(0, po) + full +
                 tSummary.substring(po + acronym.length());
             if (debugMode) String2.log(">> expandInSummary " + acronym + " -> " + full);
             return tSummary;
@@ -4821,7 +4858,7 @@ public abstract class EDD {
      *
      * @param sourceAtts  usually not null
      * @param tCdmDataType a specific type (e.g., "Grid"); if null, the attribute won't be added
-     * @param tLocalSourceUrl a real local URL (starts with "http"), a fileDirectory (with or without trailing '/'), 
+     * @param tLocalSourceUrl a real local URL (starts with "http"), a fileDirectory (with or without trailing '/'),
      *     or a fake fileDirectory (not ideal).
      *     If an OPeNDAP url, it is without the .das, .dds, or .html extension.
      * @param externalAtts globalAtts from another source, or null.
@@ -4832,19 +4869,19 @@ public abstract class EDD {
      * @param suggestedKeywords suggested keywords (usually from suggestKeywords)
      * @param throws Exception if trouble
      */
-    public static Attributes makeReadyToUseAddGlobalAttributesForDatasetsXml(Attributes sourceAtts, 
+    public static Attributes makeReadyToUseAddGlobalAttributesForDatasetsXml(Attributes sourceAtts,
         String tCdmDataType, String tLocalSourceUrl, Attributes externalAtts,
         HashSet<String> suggestedKeywords) throws Exception {
 
 //TO DO: look at other metadata standards (e.g., FGDC) to find similar attributes to look for
 //fgdc: http://docs.google.com/viewer?a=v&q=cache:jqwVIfleOYoJ:portal.opengeospatial.org/files/%3Fartifact_id%3D16936+%22fgdc:title%22&hl=en&gl=us&pid=bl&srcid=ADGEESjCZAzZzsRrGP0bxE3vj2qf3e7UAtL0O9C7M6Vm9JSvkuaW74nBYChLJdQagIf0X0vm-0_qgAHUanv6WqhNu59ouFV4i3-wD-nzfUBmRg4npV2wrCrc2RIJ8Q7El65RjHCZiqzU&sig=AHIEtbRqR8ld45spO4SqD7nIYV2de1FGow
-  
+
         if (sourceAtts == null)
             sourceAtts = new Attributes();
         if (externalAtts == null)
             externalAtts = new Attributes();
         externalAtts.remove("Oceanwatch_Live_Access_Server");
-        if (reallyVerbose) 
+        if (reallyVerbose)
             String2.log("makeReadyToUseAddGlobalAttributesForDatasetsXml\n" +
                 (debugMode? "  sourceAtts=\n" + sourceAtts.toString() : "") +
                 "  sourceAtts.title=" + sourceAtts.getString("title") + "\n" +
@@ -4858,26 +4895,26 @@ public abstract class EDD {
         String tPublicSourceUrl = convertToPublicSourceUrl(tLocalSourceUrl);
         if (tPublicSourceUrl == null)
             tPublicSourceUrl = "";
-        boolean sourceUrlIsHyraxFile = 
+        boolean sourceUrlIsHyraxFile =
             tPublicSourceUrl.startsWith("http") &&
             tPublicSourceUrl.indexOf("/opendap/") > 0 &&
             (tPublicSourceUrl.endsWith("/") || tPublicSourceUrl.endsWith("/contents.html"));
-        boolean sourceUrlIsHyraxCatalog = 
+        boolean sourceUrlIsHyraxCatalog =
             tPublicSourceUrl.startsWith("http") &&
             tPublicSourceUrl.indexOf("/opendap/") > 0 &&
             !sourceUrlIsHyraxFile;
-        boolean sourceUrlIsThreddsCatalog = 
+        boolean sourceUrlIsThreddsCatalog =
             tPublicSourceUrl.startsWith("http") &&
             tPublicSourceUrl.indexOf("/thredds/catalog/") > 0;
 
         String sourceUrlAsTitle = String2.replaceAll(
-            //"extension" may be part of name with internal periods, 
+            //"extension" may be part of name with internal periods,
             //  so get it but remove known file type extensions
-            removeExtensionsFromTitle(File2.getNameAndExtension(tPublicSourceUrl)), 
+            removeExtensionsFromTitle(File2.getNameAndExtension(tPublicSourceUrl)),
             '_', ' ');
         sourceUrlAsTitle = String2.replaceAll(sourceUrlAsTitle, '\n', ' ');
         sourceUrlAsTitle = String2.replaceAllIgnoreCase(sourceUrlAsTitle, "Data iridl.ldeo.columbia.edu SOURCES ", "");
-        sourceUrlAsTitle = String2.replaceAllIgnoreCase(sourceUrlAsTitle, "data opendap.jpl.nasa.gov opendap ", "");        
+        sourceUrlAsTitle = String2.replaceAllIgnoreCase(sourceUrlAsTitle, "data opendap.jpl.nasa.gov opendap ", "");
         sourceUrlAsTitle = String2.replaceAllIgnoreCase(sourceUrlAsTitle, "aggregate", "");
         sourceUrlAsTitle = String2.replaceAllIgnoreCase(sourceUrlAsTitle, "aggregation", "");
         sourceUrlAsTitle = String2.replaceAllIgnoreCase(sourceUrlAsTitle, "ghrsst", "GHRSST");
@@ -4885,7 +4922,7 @@ public abstract class EDD {
         sourceUrlAsTitle = String2.replaceAll(sourceUrlAsTitle, "avhrr AVHRR", "AVHRR");
         sourceUrlAsTitle = String2.combineSpaces(sourceUrlAsTitle);
         int dpo = sourceUrlAsTitle.lastIndexOf(" dodsC ");
-        if (dpo >= 0) 
+        if (dpo >= 0)
             sourceUrlAsTitle = sourceUrlAsTitle.substring(dpo + 7);
         if ("catalog".equals(sourceUrlAsTitle))
             sourceUrlAsTitle = "";
@@ -4898,49 +4935,49 @@ public abstract class EDD {
         //  e.g., http://measures.gsfc.nasa.gov/thredds/dodsC/SWDB_aggregation/SWDB_L305.004/SWDB_Aggregation_L305_1997.ncml.ncml
         //and fix any bad characters in sourceAtt names.
         //  e.g. https://www.ngdc.noaa.gov/thredds/dodsC/ustec/tec/200609030400_tec.nc.das uses '_'
-        //http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/cf-conventions.html#_naming_conventions
+        //https://cfconventions.org/Data/cf-conventions/cf-conventions-1.8/cf-conventions.html#_naming_conventions
         //  says "Variable, dimension and attribute names should begin with a letter
         //  and be composed of letters, digits, and underscores."
-        //Technically, starting with _ is not allowed, but it is widely done: 
+        //Technically, starting with _ is not allowed, but it is widely done:
         //  e.g., _CoordinateAxes, _CoordSysBuilderd
         String sourceNames[] = sourceAtts.getNames();
         String removePrefixes[] = {"fgdc_", "fgdc:", "HDF5_GLOBAL_", "HDF5_GLOBAL."};
         //fgdc_metadata_url is fgdc metadata, so not so useful as infoUrl
         String infoUrl = null;
-        HashSet toRemove = new HashSet(Arrays.asList( 
+        HashSet toRemove = new HashSet(Arrays.asList(
             //Enter them lowercase here. The search for them is case-insensitive.
             "_ncproperties", //If I write this, netcdf nc4 code later throws Exception when it writes its own version
-            "cols", "columns", "cpu", 
+            "cols", "columns", "cpu",
             "cwhdf_version",
             "data_bins", "data_center", "data_maximum", "data_minimum", "day",
             "easternmost_longitude",
             "end_date_time", "end_day", "end_millisec", "end_time", "end_year",
             "end_orbit", "endorbitnumber", "end_orbit_number",
-            "et_affine", 
+            "et_affine",
             "file_quality_level", //from GHRSST, file-specific
             "first_index", "format", //e.g., hdf5
-            "fgdc_metadata_url", "fgdc:metadata_url", 
+            "fgdc_metadata_url", "fgdc:metadata_url",
             "gctp_datum", "gctp_parm", "gctp_sys", "gctp_zone",
-            //"gds_version_id", keep GHRSST Data Specification version id 
+            //"gds_version_id", keep GHRSST Data Specification version id
             "georange", "granulepointer",
             "ice_fraction", "inputpointer", "input_filename", "input_files",
             "intercept",
             "l2b_files", "l3_columns", "l3_rows",
-            "land_fraction", 
+            "land_fraction",
             "local_granule_id",
-            "lat%2eaxis", "lat%2ecomment", "lat%2elong_name", 
-            "lat%2estandard_name", "lat%2eunits", 
+            "lat%2eaxis", "lat%2ecomment", "lat%2elong_name",
+            "lat%2estandard_name", "lat%2eunits",
             "lat%2e_fillvalue", "lat%2evalid_max", "lat%2evalid_min",
-            "lat_axis", "lat_long_name", "lat_standard_name", "lat_units", 
-            "latitude_resolution", 
+            "lat_axis", "lat_long_name", "lat_standard_name", "lat_units",
+            "latitude_resolution",
             "latitude_step", "latitude_units",
             "latitudes",
-            "lon%2eaxis", "lon%2ecomment", "lon%2elong_name", 
+            "lon%2eaxis", "lon%2ecomment", "lon%2elong_name",
             "lon%2estandard_name", "lon%2eunits",
             "lon%2e_fillvalue", "lon%2evalid_max", "lon%2evalid_min",
-            "lon_axis", "lon_long_name", "lon_standard_name", "lon_units", 
+            "lon_axis", "lon_long_name", "lon_standard_name", "lon_units",
             "longitude_resolution",
-            "longitude_step", "longitude_units", 
+            "longitude_step", "longitude_units",
             "longitudes",
             "map_time_range", "minimum_bin_pts", "month",
             "ncei_template_version",
@@ -4950,23 +4987,23 @@ public abstract class EDD {
             "observation_date", "operationmode", "orbitparameterspointer",
             "orbit", "os",
             "parameter", "pass_date", "percent_rev_data_usage",
-            "period", 
-            "period_end_day", "period_end_year", "period_start_day", "period_start_year", 
+            "period",
+            "period_end_day", "period_end_year", "period_start_day", "period_start_year",
             "polygon_latitude", "polygon_longitude",
             "principal_year_day_for_collated_orbits",
             "qagranulepointer", "qapercentmissingdata", "qapercentoutofboundsdata",
-            "range_beginning_date", "rangebeginningdate", 
-            "range_beginning_time", "rangebeginningtime", 
-            "range_ending_date", "rangeendingdate", 
-            "range_ending_time", "rangeendingtime", 
+            "range_beginning_date", "rangebeginningdate",
+            "range_beginning_time", "rangebeginningtime",
+            "range_ending_date", "rangeendingdate",
+            "range_ending_time", "rangeendingtime",
             "revs_missing", "revs_used", "rows",
-            "scaling", "scaling_equation", "search_radius_km", "second_index", 
+            "scaling", "scaling_equation", "search_radius_km", "second_index",
             "slope",
             "southernmost_latitude",
-            "spatial_completeness_comment", 
-            "spatial_completeness_definition", 
-            "spatial_completeness_ratio", 
-            "start_date", "start_date_time", "start_day", "start_millisec", 
+            "spatial_completeness_comment",
+            "spatial_completeness_definition",
+            "spatial_completeness_ratio",
+            "start_date", "start_date_time", "start_day", "start_millisec",
             "start_orbit", "startorbitnumber", "start_orbit_number",
             "start_time", "start_year",
             "station_latitude", "station_longitude",
@@ -4976,16 +5013,16 @@ public abstract class EDD {
             "suggested_image_scaling_maximum",
             "suggested_image_scaling_minimum",
             "suggested_image_scaling_type",
-            "sw_point_latitude", "sw_point_longitude", 
-            "time%2eaxis", "time%2ecomment", "time%2elong_name", 
+            "sw_point_latitude", "sw_point_longitude",
+            "time%2eaxis", "time%2ecomment", "time%2elong_name",
             "time%2estandard_name", "time%2eunits",
             "time%2e_fillvalue", "time%2ecalendar",
-            "time_axis", "time_end", "time_epoch", "time_long_name", 
-            "time_mean_removed", "time_standard_name", "time_start", 
-            "time_units",            
+            "time_axis", "time_end", "time_epoch", "time_long_name",
+            "time_mean_removed", "time_standard_name", "time_start",
+            "time_units",
             "units", "uuid", //uuid is per file
-            "variable", "variable_1", "variable_2", "variable_3", "variable_4", "variable_5", 
-            "westernmost_longitude", 
+            "variable", "variable_1", "variable_2", "variable_3", "variable_4", "variable_5",
+            "westernmost_longitude",
             "wind_vector_cell_resolution", "wind_vector_source",
             "year"));
         for (int i = 0; i < sourceNames.length; i++) {
@@ -4996,12 +5033,12 @@ public abstract class EDD {
                 addAtts.set(sn, "null");    //remove toRemove att name
                 if (debugMode) String2.log(">>  useless sourceAttName=\"" + sn + "\" removed.");
             } else if (sn.startsWith("dsp_") ||  //dsp info is mostly specific to one time point
-                       sn.startsWith("EquatorCrossing") || 
-                       sn.startsWith("l3_actual_grid_") || 
-                       sn.startsWith("rep_") || 
-                       sn.endsWith("_dim_0.name") || 
-                       sn.endsWith("_dim_1.name") || 
-                       sn.endsWith("_dim_2.name") || 
+                       sn.startsWith("EquatorCrossing") ||
+                       sn.startsWith("l3_actual_grid_") ||
+                       sn.startsWith("rep_") ||
+                       sn.endsWith("_dim_0.name") ||
+                       sn.endsWith("_dim_1.name") ||
+                       sn.endsWith("_dim_2.name") ||
                        sn.endsWith("_dim_3.name")) {
                 addAtts.set(sn, "null");   //remove it
                 if (debugMode) String2.log(">>  useless sourceAttName=\"" + sn + "\" removed.");
@@ -5028,7 +5065,7 @@ public abstract class EDD {
                         !safeSN.equals("cw_start_time") &&
                         !safeSN.equals("cw_temporal_extent") &&
                         !safeSN.equals("cw_time"))
-                    addAtts.setIfNotAlreadySet(safeSN, sourceAtts.get(sn)); 
+                    addAtts.setIfNotAlreadySet(safeSN, sourceAtts.get(sn));
                 }
             } else {  //has one of removePrefixes
                 addAtts.set(sn, "null");   //remove full original prefixed att name
@@ -5039,12 +5076,12 @@ public abstract class EDD {
                 } else {
                     if (reallyVerbose)
                         String2.log("  bad     sourceAttName=\"" + sn + "\" converted to \"" + safeSN + "\".");
-                    addAtts.setIfNotAlreadySet(safeSN, sourceAtts.get(sn)); 
+                    addAtts.setIfNotAlreadySet(safeSN, sourceAtts.get(sn));
                 }
             }
         }
 
-        //convert non-CF/ACDD att names from a podaac dataset from Earth & Space Research 
+        //convert non-CF/ACDD att names from a podaac dataset from Earth & Space Research
         //  and other common att name mistakes.
         //removed above: GEORANGE, PERIOD, YEAR
         String gfrom[] = {    //PUT LEAST DESIREABLE TO THE RIGHT
@@ -5056,61 +5093,61 @@ public abstract class EDD {
             "acknowlegement", //no 'd' after 'g', from various sources
             "CALENDAR",      "Calendar",
             "COMMENT",       "Comment",      "COMMENTS",    "Comments",     "comments",
-            "CONTACT",       "Contact",      "CONTACTS",    "Contacts",     "contacts",      
-            "CONVENTIONS",   "conventions",  "Convention",  "convention",   "Metadata_Conventions", 
+            "CONTACT",       "Contact",      "CONTACTS",    "Contacts",     "contacts",
+            "CONVENTIONS",   "conventions",  "Convention",  "convention",   "Metadata_Conventions",
             "CREATION_DATE", "Creation_date",
             "CREATOR_EMAIL", "CreatorEmail", "creatorEmail",
-            "CREATOR_NAME",  "CreatorName",  "creatorName", 
+            "CREATOR_NAME",  "CreatorName",  "creatorName",
             "CREATOR_URL",   "CreatorURL",   "creatorURL",  "creatorUrl",   "creator_URL",
-            "DATE_CREATED",  "DateCreated",  "dateCreated", 
-            "DATE_ISSUED",   "DateIssued",   "dateIssued", 
-            "DATE_MODIFIED", "DateModified", "dateModified", 
-            "DATASUBTYPE",   "DATATYPE",      
-            "FeatureType",    
+            "DATE_CREATED",  "DateCreated",  "dateCreated",
+            "DATE_ISSUED",   "DateIssued",   "dateIssued",
+            "DATE_MODIFIED", "DateModified", "dateModified",
+            "DATASUBTYPE",   "DATATYPE",
+            "FeatureType",
             "HISTORY",       "History",      "_History",    "mac_history", "hisotry", //sic
-            "ID", 
-            "INSTITUTION",   "Institution",  "COMPANY",       
-            "INSTRUMENT",    "Instrument", 
+            "ID",
+            "INSTITUTION",   "Institution",  "COMPANY",
+            "INSTRUMENT",    "Instrument",
             "KEYWORDS",      "Keywords",     "KEYWORD",     "Keyword",     "keyword",
             "LICENSE",       "License",
             "PROGRAM",       "Program",
-            "PROJECT",       "Project", 
-            "REFERENCES",    "References",   "REFERENCE",   "Reference",   "reference",   
+            "PROJECT",       "Project",
+            "ref",           "REFERENCES",    "References",   "REFERENCE",   "Reference",   "reference",
             "SOURCE",        "Source",
             "SUMMARY",       "Summary",
             "TITLE",         "Title",
-            "VARIABLE",      "Variable",      
+            "VARIABLE",      "Variable",
             "VERSION",       "Version"};
         String gto[]   = { //if not already specified
             //with 'e' after 'g', as specified by ***INCORRECTLY*** by ACDD 1.3
             "acknowledgement","acknowledgement","acknowledgement",
-                "acknowledgement","acknowledgement","acknowledgement", 
+                "acknowledgement","acknowledgement","acknowledgement",
             "calendar",      "calendar",
-            "comment",       "comment",      "comment",     "comment",     "comment",     
+            "comment",       "comment",      "comment",     "comment",     "comment",
             "contact",       "contact",      "contact",     "contact",     "contact",   //not cf or acdd, but useful, often with name and email
             "Conventions",   "Conventions",  "Conventions", "Conventions", "Conventions",
-            "creation_date", "creation_date", 
-            "creator_email", "creator_email","creator_email", 
-            "creator_name",  "creator_name", "creator_name", 
-            "creator_url",   "creator_url",  "creator_url", "creator_url", "creator_url",   
-            "date_created",  "date_created", "date_created",  
-            "date_issued",   "date_issued",  "date_issued",  
-            "date_modified", "date_modified","date_modified", 
+            "creation_date", "creation_date",
+            "creator_email", "creator_email","creator_email",
+            "creator_name",  "creator_name", "creator_name",
+            "creator_url",   "creator_url",  "creator_url", "creator_url", "creator_url",
+            "date_created",  "date_created", "date_created",
+            "date_issued",   "date_issued",  "date_issued",
+            "date_modified", "date_modified","date_modified",
             "datasubtype",   "datatype",
-            "featureType", 
+            "featureType",
             "history",       "history",      "history",     "history",     "history",
             "id",
-            "institution",   "institution",  "institution",  
+            "institution",   "institution",  "institution",
             "instrument",    "instrument",
             "keywords",      "keywords",     "keywords",    "keywords",    "keywords",
             "license",       "license",
-            "program",       "program", 
+            "program",       "program",
             "project",       "project",
-            "references",    "references",   "references",  "references",  "references", 
+            "references",    "references",    "references",   "references",  "references",  "references",
             "source",        "source",
             "summary",       "summary",
             "title",         "title",
-            "variable",      "variable",      
+            "variable",      "variable",
             "version",       "version"};
         Test.ensureEqual(gfrom.length, gto.length, "length of gfrom vs gto");
         for (int i = 0; i < gfrom.length; i++) {
@@ -5149,7 +5186,7 @@ public abstract class EDD {
                 else                                    value = null; //null???
             }
         }
-        addAtts.set(name, value);            
+        addAtts.set(name, value);
         tCdmDataType = value; //may be null
 
         //atts related to cdm_data_type
@@ -5172,7 +5209,7 @@ public abstract class EDD {
                 if (!String2.isSomething2(value))
                     addAtts.set(name, "profile_id, ???");
             }
-        }        
+        }
 
         //Conventions
         name = "Conventions";
@@ -5204,7 +5241,7 @@ public abstract class EDD {
         if (creator_name.equals("Dave Foley") ||
             creator_name.equals("Roy Mendelssohn"))
             creator_name = "NOAA NMFS SWFSC ERD";
-        
+
         //creator_url     (not required, but useful ACDD and for ISO 19115 and FGDC)
         name = "creator_url";
         value = getAddOrSourceAtt(addAtts, sourceAtts, name, null);
@@ -5212,7 +5249,7 @@ public abstract class EDD {
 
         //dates -> ISO
         //a good test is s = EDDGridFromNcFiles.generateDatasetsXml("/u00/satellite/PH2/ssta/1day/", ".*.nc", "", ...
-        String dateAtts[] = {"date_created", "date_issued", "date_modified", 
+        String dateAtts[] = {"date_created", "date_issued", "date_modified",
             "date_metadata_modified", "time_coverage_start", "time_coverage_end"};
         for (int i = 0; i < dateAtts.length; i++) {
             name = dateAtts[i];
@@ -5225,7 +5262,7 @@ public abstract class EDD {
         }
 
         //note suffixForTitle //e.g. Thredds currentLevel name: "5-day" or "sal001", sometimes long
-        String suffixForTitle = removeExtensionsFromTitle(addAtts.getString("suffixForTitle"));  
+        String suffixForTitle = removeExtensionsFromTitle(addAtts.getString("suffixForTitle"));
         if (!String2.isSomething2(suffixForTitle))
             suffixForTitle = "";
         String suffixForTitleP = String2.isSomething2(suffixForTitle)? " (" + suffixForTitle + ")" : "";
@@ -5235,12 +5272,12 @@ public abstract class EDD {
         value =    getAddOrSourceAtt(addAtts, sourceAtts, name,          null);
         String oSummary = value;
         //best ones first
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "abstract",    value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Abstract",    value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "description", value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Description", value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "comment",     value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Comment",     value); 
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "abstract",    value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Abstract",    value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "description", value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Description", value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "comment",     value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Comment",     value);
         value =    getAddOrSourceAtt(addAtts, sourceAtts, "long_name",   value); //used below
         if (!String2.isSomething2(value)) {
             //from title metadata?    priority to source if >20 chars
@@ -5248,8 +5285,8 @@ public abstract class EDD {
                 value = "";
                 String sTitle = sourceAtts.getString("title");
                 String aTitle =    addAtts.getString("title");
-                if (!String2.isSomething2(sTitle)) sTitle =  sourceAtts.getString("Title");          
-                if (!String2.isSomething2(aTitle)) aTitle =     addAtts.getString("Title");   
+                if (!String2.isSomething2(sTitle)) sTitle =  sourceAtts.getString("Title");
+                if (!String2.isSomething2(aTitle)) aTitle =     addAtts.getString("Title");
                 sTitle = removeExtensionsFromTitle(String2.whitespacesToSpace(sTitle));
                 aTitle = removeExtensionsFromTitle(String2.whitespacesToSpace(aTitle));
                 if (!String2.isSomething2(aTitle))
@@ -5267,7 +5304,7 @@ public abstract class EDD {
                     }
                 }
                 if (String2.isSomething2(aTitle) &&
-                    !String2.looselyContains(value, aTitle)) 
+                    !String2.looselyContains(value, aTitle))
                     value += pre + aTitle + post;
             }
             value = removeExtensionsFromTitle(value);
@@ -5275,43 +5312,43 @@ public abstract class EDD {
         //if suffixForTitle's text isn't already included, add it
         if (String2.isSomething2(value)) {
             if (String2.isSomething2(suffixForTitle) &&
-                !String2.looselyContains(value, suffixForTitle)) 
+                !String2.looselyContains(value, suffixForTitle))
                 value += suffixForTitleP;
         } else {
             value = suffixForTitle;
         }
-        
+
         if (!String2.isSomething2(value))
             value = ""; //not null. useful below.
 
         String tValue = "";
         //add NOTE1/2/3/4/5 to summary
-        for (int i = 1; i <= 5; i++) 
+        for (int i = 1; i <= 5; i++)
             if (value.length() < 800 &&
                 String2.isSomething2(tValue = sourceAtts.getString("NOTE" + i)) &&
                 !String2.looselyContains(value, tValue))
                 value = String2.periodSpaceConcat(value, tValue);
-        
+
         //add comment1/2/3/4/5 to summary
-        for (int i = 1; i <= 5; i++) 
+        for (int i = 1; i <= 5; i++)
             if (value.length() < 800 &&
                 String2.isSomething2(tValue = sourceAtts.getString("comment" + i)) &&
-                !String2.looselyContains(value, tValue)) 
+                !String2.looselyContains(value, tValue))
                 value = String2.periodSpaceConcat(value, tValue);
 
         if (String2.isSomething2(value)) {
             //remove badly escaped FF(?)
             if (value.indexOf("\\012") >= 0) {
                 //change it
-                value = String2.replaceAll(value, "\\\\\\\\012", "\n"); 
-                value = String2.replaceAll(value, "\\\\\\012",   "\n"); 
-                value = String2.replaceAll(value, "\\\\012",     "\n"); 
-                value = String2.replaceAll(value, "\\012",       "\n"); 
+                value = String2.replaceAll(value, "\\\\\\\\012", "\n");
+                value = String2.replaceAll(value, "\\\\\\012",   "\n");
+                value = String2.replaceAll(value, "\\\\012",     "\n");
+                value = String2.replaceAll(value, "\\012",       "\n");
                 //There are datasets with just 012, but it's dangerous to change those.
             }
 
             //botched degree symbol
-            value = String2.replaceAll(value, "\u00ef\u00bf\u00bd", "°"); 
+            value = String2.replaceAll(value, "\u00ef\u00bf\u00bd", "°");
         }
 
         String tSummary = String2.isSomething2(value)? value : "";
@@ -5334,17 +5371,17 @@ public abstract class EDD {
         if (String2.isSomething2(value) &&
             value.startsWith("http://podaac.jpl.nasa.gov:8890/ws/metadata/dataset?format=iso&shortName="))
             value = "https://podaac.jpl.nasa.gov/dataset/" + value.substring(73);
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "onlink",          value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Onlink",          value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "url",             value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "URL",             value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "related_url",     value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "html_BACKGROUND", value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "documentation",   value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Website",         value); 
-        if (String2.isSomething2(value) && !value.startsWith("http")) value = "";  
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "references",      value); 
-        if (String2.isSomething2(value) && !value.startsWith("http")) value = "";  
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "onlink",          value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Onlink",          value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "url",             value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "URL",             value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "related_url",     value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "html_BACKGROUND", value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "documentation",   value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Website",         value);
+        if (String2.isSomething2(value) && !value.startsWith("http")) value = "";
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "references",      value);
+        if (String2.isSomething2(value) && !value.startsWith("http")) value = "";
         if (String2.isSomething2(value)) {
             //deal with ssv or csv list
             int po = value.indexOf(' ');
@@ -5368,24 +5405,24 @@ public abstract class EDD {
                 } else if (tPublicSourceUrl.startsWith("https://nomads.ncep.noaa.gov") &&
                     tPublicSourceUrl.indexOf("/rtofs/") > 0) {
                     value = "https://polar.ncep.noaa.gov/global/";
-                } else if (sourceUrlIsHyraxFile) {  
+                } else if (sourceUrlIsHyraxFile) {
                     value = File2.getDirectory(tPublicSourceUrl) + ".html";
-                } else if (sourceUrlIsHyraxCatalog) {  
+                } else if (sourceUrlIsHyraxCatalog) {
                     value = File2.getDirectory(tPublicSourceUrl) + "contents.html";
-                } else if (sourceUrlIsThreddsCatalog) {  
+                } else if (sourceUrlIsThreddsCatalog) {
                     value = File2.getDirectory(tPublicSourceUrl) + "catalog.html";
-                } else if (tPublicSourceUrl.endsWith("/")) {  
+                } else if (tPublicSourceUrl.endsWith("/")) {
                     value = tPublicSourceUrl;  //can't just add .html or .das
                 } else {
-                    value = tPublicSourceUrl + 
+                    value = tPublicSourceUrl +
                         ((tPublicSourceUrl.indexOf("/thredds/") > 0 ||       //most DAP servers, add .html:  THREDDS
                           tPublicSourceUrl.indexOf("/dodsC/") > 0 ||
-                          tPublicSourceUrl.indexOf("dap/") > 0)? ".html" :   //  and opendap/, tabledap/, griddap/, 
+                          tPublicSourceUrl.indexOf("dap/") > 0)? ".html" :   //  and opendap/, tabledap/, griddap/,
                         tPublicSourceUrl.indexOf("/dapper/") > 0? ".das" : //for DAPPER, add .das (no .html)
-                        ""); 
+                        "");
                 }
-            } else { 
-                value = getAddOrSourceAtt(addAtts, sourceAtts, "creator_url", value); 
+            } else {
+                value = getAddOrSourceAtt(addAtts, sourceAtts, "creator_url", value);
                 if (!String2.isSomething2(value)) value = "???";
             }
             if (reallyVerbose) String2.log("  new " + name + "=" + value);
@@ -5395,20 +5432,20 @@ public abstract class EDD {
         //institution
         name = "institution";
         value =    getAddOrSourceAtt(addAtts, sourceAtts, name,                  null);
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "creator_institution", value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "origin",              value); 
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Originating_or_generating_Center", value); 
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "creator_institution", value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "origin",              value);
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, "Originating_or_generating_Center", value);
         if (String2.isSomething2(value)) {
             //improve some common institution values
             if (value.indexOf("produced by the EUMETSAT O&SI SAF") >= 0)
-                value = "EUMETSAT OSI SAF";        
+                value = "EUMETSAT OSI SAF";
             else if (value.indexOf("Ocean Biology Processing Group") >= 0)
                 value = "NASA/GSFC OBPG";
         }
         String tInstitution = String2.isSomething2(value)? value : "";
         if (debugMode) String2.log(">> 1 tInstitution=" + tInstitution);
 
-        //take apart an email address (for creator_name, creator_email, tInstitution information) 
+        //take apart an email address (for creator_name, creator_email, tInstitution information)
         String tContact = getAddOrSourceAtt(addAtts, sourceAtts, "contact",             null);
         tContact =    getAddOrSourceAtt(    addAtts, sourceAtts, "contact_person_name", tContact);
         String tEmailSource = creator_email;
@@ -5423,13 +5460,13 @@ public abstract class EDD {
         tReference = sourceAtts.getString("references");
         if (!String2.isSomething2(tEmailSource) && String2.isSomething2(tReference) && tReference.indexOf('@') > 0)
             tEmailSource = tReference;
-        if (!String2.isSomething2(tEmailSource) && tSummary.indexOf('@') > 0) 
+        if (!String2.isSomething2(tEmailSource) && tSummary.indexOf('@') > 0)
             tEmailSource = tSummary;
         if (String2.isSomething2(tEmailSource)) {
             StringArray contactParts = StringArray.wordsAndQuotedPhrases(tEmailSource);
             int nParts = contactParts.size();
             for (int parti = 0; parti < nParts; parti++) {
-                if (contactParts.get(parti).indexOf('@') < 0) 
+                if (contactParts.get(parti).indexOf('@') < 0)
                     continue;
                 String part = contactParts.get(parti);
                 while (part.startsWith("(") || part.startsWith("[") || part.startsWith("<"))
@@ -5443,10 +5480,10 @@ public abstract class EDD {
                         int po = part.indexOf('@');  //it must exist
 
                         //creator_name e.g., Bob Simons from bob.simons, or erd.data, rsignell
-                        creator_name = part.substring(0, po); 
-                        creator_name = String2.replaceAll(creator_name, '.', ' '); 
-                        creator_name = String2.replaceAll(creator_name, '_', ' '); 
-                        creator_name = String2.replaceAll(creator_name, '-', ' '); 
+                        creator_name = part.substring(0, po);
+                        creator_name = String2.replaceAll(creator_name, '.', ' ');
+                        creator_name = String2.replaceAll(creator_name, '_', ' ');
+                        creator_name = String2.replaceAll(creator_name, '-', ' ');
                         creator_name = String2.whitespacesToSpace(creator_name);
                         creator_name = creator_name.indexOf(' ') >= 0?
                             String2.toTitleCase(creator_name) :
@@ -5457,18 +5494,18 @@ public abstract class EDD {
                             lcContactName.indexOf("info") >= 0 ||
                             lcContactName.indexOf("service") >= 0 ||
                             lcContactName.indexOf("support") >= 0 ||
-                            lcContactName.indexOf("webmaster") >= 0) 
+                            lcContactName.indexOf("webmaster") >= 0)
                             creator_name = "";
                     }
 
                     //tInstitution from email address
-                    //e.g., PODAAC JPL NASA from podaac.jpl.nasa.gov 
+                    //e.g., PODAAC JPL NASA from podaac.jpl.nasa.gov
                     if (!String2.isSomething2(tInstitution)) {
                         int po = part.indexOf('@');  //it must exist
-                        tInstitution = part.substring(po + 1);  
+                        tInstitution = part.substring(po + 1);
                         po = tInstitution.lastIndexOf('.'); //it must exist
                         //toUpperCase since probably acronym
-                        tInstitution = tInstitution.substring(0, po).toUpperCase(); 
+                        tInstitution = tInstitution.substring(0, po).toUpperCase();
                         if (tInstitution.equals("PODAAC JPL NASA"))
                             tInstitution = "JPL NASA";
                         if (debugMode) String2.log(">> 2 tInstitution=" + tInstitution);
@@ -5493,139 +5530,139 @@ public abstract class EDD {
             if (!String2.isSomething2(tsTitle)) tsTitle = "";
             String lcaTitle = taTitle.toLowerCase();
             String lcsTitle = tsTitle.toLowerCase();
-            String codeDir = sourceAtts.getString("code_dir");            
+            String codeDir = sourceAtts.getString("code_dir");
             //coads
             if (lcUrl.indexOf("/coads/") >= 0 ||
                 lcUrl.indexOf("/icoads/") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Eric.Freeman@noaa.gov";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ICOADS";                   
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA ICOADS";                   
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://icoads.noaa.gov";                   
+                if (!String2.isSomething2(creator_email)) creator_email = "Eric.Freeman@noaa.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ICOADS";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA ICOADS";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://icoads.noaa.gov";
             //crm
             } else if (lcUrl.indexOf("/crm/") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Barry.Eakins@noaa.gov";                   
-                if (!String2.isSomething2(creator_name) ||
-                    creator_name.equals("NOAA") ||
-                    creator_name.equals("NGDC")) creator_name  = "NOAA NCEI";  
-                if (!String2.isSomething2(tInstitution) ||
-                    tInstitution.equals("NOAA") ||
-                    tInstitution.equals("NGDC")) tInstitution  = "NOAA NCEI";                                   
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/mgg/coastal/crm.html";                   
-            //etopo
-            } else if (lcUrl.indexOf("/etopo") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Barry.Eakins@noaa.gov";                   
-                if (!String2.isSomething2(creator_name) ||
-                    creator_name.equals("NOAA") ||
-                    creator_name.equals("NGDC")) creator_name  = "NOAA NCEI";  
-                if (!String2.isSomething2(tInstitution) ||
-                    tInstitution.equals("NOAA") ||
-                    tInstitution.equals("NGDC")) tInstitution  = "NOAA NCEI";                                   
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/mgg/global/global.html";                   
-            //gfdl cm  (climate model)
-            } else if (lcUrl.indexOf(".gfdl.noaa.gov") >= 0 &&
-                       (lcUrl.indexOf("_cm") >= 0 ||
-                        lcUrl.indexOf("/cm") >= 0)) {
-                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA GFDL";                   
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA GFDL";                   
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://data1.gfdl.noaa.gov/nomads/forms/deccen/";                   
-            //godas
-            } else if (lcUrl.indexOf("/godas/") >= 0 ||
-                       lcaTitle.indexOf("godas") >= 0 ||
-                       lcsTitle.indexOf("godas") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Yan.Xue@noaa.gov";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NWS NCEP";                                   
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NWS NCEP";                                   
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cpc.ncep.noaa.gov/products/GODAS/";                   
-            //NCOM 
-            } else if (taTitle.indexOf("NCOM") >= 0 || //a project
-                       tsTitle.indexOf("NCOM") >= 0 || 
-                         lcUrl.indexOf("/ncom") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "frank.bub@navy.mil";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL)";                   
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "Naval Research Lab (NRL)";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www7320.nrlssc.navy.mil/global_ncom/glb8_3b/html/index.html";                   
-            //ncep reanalysis
-            } else if (lcUrl.indexOf("ncep") >= 0 &&
-                lcUrl.indexOf("reanalysis") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Wesley.Ebisuzaki@noaa.gov";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NWS NCEP, NCAR";
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NWS NCEP, NCAR";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cpc.ncep.noaa.gov/products/wesley/reanalysis.html";                   
-            //ncsu roms/toms  (several people run ROMS/TOMS at NCSU, but rhe is only email I found)
-            } else if (lcUrl.indexOf("meas.ncsu.edu") >= 0 ||
-                       lcaTitle.indexOf("roms/toms") >= 0 ||
-                       lcsTitle.indexOf("roms/toms") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "rhe@ncsu.edu";    
-                if (!String2.isSomething2(creator_name))  creator_name  = "Ruoying He";                 
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "NCSU";
-            //Neil Ganju
-            } else if (codeDir != null && codeDir.indexOf("/home/nganju") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "nganju@usgs.gov"; 
-                if (!String2.isSomething2(creator_name))  creator_name  = "Dr. Neil Ganju";
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "USGS WHCMSC";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://woodshole.er.usgs.gov/project-pages/estuaries/"; 
-                if (!String2.isSomething2(infoUrl))       infoUrl       = "https://woodshole.er.usgs.gov/project-pages/estuaries/";                   
-            //ngdc dem
-            } else if (lcUrl.indexOf("ngdc.noaa.gov") >= 0 &&
-                lcUrl.indexOf("/dem/") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Barry.Eakins@noaa.gov";                   
+                if (!String2.isSomething2(creator_email)) creator_email = "Barry.Eakins@noaa.gov";
                 if (!String2.isSomething2(creator_name) ||
                     creator_name.equals("NOAA") ||
                     creator_name.equals("NGDC")) creator_name  = "NOAA NCEI";
                 if (!String2.isSomething2(tInstitution) ||
                     tInstitution.equals("NOAA") ||
                     tInstitution.equals("NGDC")) tInstitution  = "NOAA NCEI";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/mgg/dem/demportal.html";                   
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/mgg/coastal/crm.html";
+            //etopo
+            } else if (lcUrl.indexOf("/etopo") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "Barry.Eakins@noaa.gov";
+                if (!String2.isSomething2(creator_name) ||
+                    creator_name.equals("NOAA") ||
+                    creator_name.equals("NGDC")) creator_name  = "NOAA NCEI";
+                if (!String2.isSomething2(tInstitution) ||
+                    tInstitution.equals("NOAA") ||
+                    tInstitution.equals("NGDC")) tInstitution  = "NOAA NCEI";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/mgg/global/global.html";
+            //gfdl cm  (climate model)
+            } else if (lcUrl.indexOf(".gfdl.noaa.gov") >= 0 &&
+                       (lcUrl.indexOf("_cm") >= 0 ||
+                        lcUrl.indexOf("/cm") >= 0)) {
+                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA GFDL";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA GFDL";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://data1.gfdl.noaa.gov/nomads/forms/deccen/";
+            //godas
+            } else if (lcUrl.indexOf("/godas/") >= 0 ||
+                       lcaTitle.indexOf("godas") >= 0 ||
+                       lcsTitle.indexOf("godas") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "Yan.Xue@noaa.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NWS NCEP";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NWS NCEP";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cpc.ncep.noaa.gov/products/GODAS/";
+            //NCOM
+            } else if (taTitle.indexOf("NCOM") >= 0 || //a project
+                       tsTitle.indexOf("NCOM") >= 0 ||
+                         lcUrl.indexOf("/ncom") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "frank.bub@navy.mil";
+                if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL)";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "Naval Research Lab (NRL)";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www7320.nrlssc.navy.mil/global_ncom/glb8_3b/html/index.html";
+            //ncep reanalysis
+            } else if (lcUrl.indexOf("ncep") >= 0 &&
+                lcUrl.indexOf("reanalysis") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "Wesley.Ebisuzaki@noaa.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NWS NCEP, NCAR";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NWS NCEP, NCAR";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cpc.ncep.noaa.gov/products/wesley/reanalysis.html";
+            //ncsu roms/toms  (several people run ROMS/TOMS at NCSU, but rhe is only email I found)
+            } else if (lcUrl.indexOf("meas.ncsu.edu") >= 0 ||
+                       lcaTitle.indexOf("roms/toms") >= 0 ||
+                       lcsTitle.indexOf("roms/toms") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "rhe@ncsu.edu";
+                if (!String2.isSomething2(creator_name))  creator_name  = "Ruoying He";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "NCSU";
+            //Neil Ganju
+            } else if (codeDir != null && codeDir.indexOf("/home/nganju") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "nganju@usgs.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "Dr. Neil Ganju";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "USGS WHCMSC";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://woodshole.er.usgs.gov/project-pages/estuaries/";
+                if (!String2.isSomething2(infoUrl))       infoUrl       = "https://woodshole.er.usgs.gov/project-pages/estuaries/";
+            //ngdc dem
+            } else if (lcUrl.indexOf("ngdc.noaa.gov") >= 0 &&
+                lcUrl.indexOf("/dem/") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "Barry.Eakins@noaa.gov";
+                if (!String2.isSomething2(creator_name) ||
+                    creator_name.equals("NOAA") ||
+                    creator_name.equals("NGDC")) creator_name  = "NOAA NCEI";
+                if (!String2.isSomething2(tInstitution) ||
+                    tInstitution.equals("NOAA") ||
+                    tInstitution.equals("NGDC")) tInstitution  = "NOAA NCEI";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/mgg/dem/demportal.html";
             //osmc
             } else if (lcUrl.indexOf("osmc.noaa.gov") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "OSMC.Webmaster@noaa.gov";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA OSMC";                   
+                if (!String2.isSomething2(creator_email)) creator_email = "OSMC.Webmaster@noaa.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "NOAA OSMC";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA OSMC";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.osmc.noaa.gov";                   
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.osmc.noaa.gov";
             //podaac ccmp flk
             } else if (lcUrl.indexOf("opendap") >= 0 &&
                        lcUrl.indexOf("/ccmp/") >= 0 &&
                        lcUrl.indexOf("/flk/") >= 0) {
                 if (!String2.isSomething2(creator_email)) creator_email = "support-podaac@earthdata.nasa.gov"; //was podaac@podaac.jpl.nasa.gov
-                if (!String2.isSomething2(creator_name))  creator_name  = "NASA GSFC MEaSUREs, NOAA";                   
+                if (!String2.isSomething2(creator_name))  creator_name  = "NASA GSFC MEaSUREs, NOAA";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA GSFC, NOAA";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://podaac.jpl.nasa.gov/dataset/CCMP_MEASURES_ATLAS_L4_OW_L3_0_WIND_VECTORS_FLK";                   
-            //rutgers roms 
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://podaac.jpl.nasa.gov/dataset/CCMP_MEASURES_ATLAS_L4_OW_L3_0_WIND_VECTORS_FLK";
+            //rutgers roms
             } else if (lcUrl.indexOf("marine.rutgers.edu") >= 0 &&
                        lcUrl.indexOf("/roms/") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "jwilkin@marine.rutgers.edu";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "Rutgers Marine";                                   
+                if (!String2.isSomething2(creator_email)) creator_email = "jwilkin@marine.rutgers.edu";
+                if (!String2.isSomething2(creator_name))  creator_name  = "Rutgers Marine";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "Rutgers";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://marine.rutgers.edu/po/";                   
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://marine.rutgers.edu/po/";
             //SeaDataNet
             } else if (tConventions.toLowerCase().indexOf("seadatanet") >= 0) {
-                //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "SeaDataNet";                                   
+                //if (!String2.isSomething2(creator_email)) creator_email = "";
+                if (!String2.isSomething2(creator_name))  creator_name  = "SeaDataNet";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "SeaDataNet";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.seadatanet.org/";                   
-            //TRMM 
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.seadatanet.org/";
+            //TRMM
             } else if (tPublicSourceUrl.indexOf("TRMM") >= 0 &&
                        lcUrl.indexOf("nasa") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Harold.F.Pierce@nasa.gov";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "Tropical Rainfall Measuring Mission (TRMM)";                                   
+                if (!String2.isSomething2(creator_email)) creator_email = "Harold.F.Pierce@nasa.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "Tropical Rainfall Measuring Mission (TRMM)";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA, JAXA";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://trmm.gsfc.nasa.gov/";                   
-                if (!String2.isSomething2(infoUrl))       infoUrl       = "https://trmm.gsfc.nasa.gov/";                   
-                if (!String2.isSomething2(tSummary))      tSummary =  
-                    "The Tropical Rainfall Measuring Mission (TRMM) is a joint mission between NASA and the Japan Aerospace Exploration Agency (JAXA) designed to monitor and study tropical rainfall.";         
-                
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://trmm.gsfc.nasa.gov/";
+                if (!String2.isSomething2(infoUrl))       infoUrl       = "https://trmm.gsfc.nasa.gov/";
+                if (!String2.isSomething2(tSummary))      tSummary =
+                    "The Tropical Rainfall Measuring Mission (TRMM) is a joint mission between NASA and the Japan Aerospace Exploration Agency (JAXA) designed to monitor and study tropical rainfall.";
+
             //woa
             } else if (lcUrl.matches(".*woa\\d{2}.*")) {
-                if (!String2.isSomething2(creator_email)) creator_email = "OCL.help@noaa.gov";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "CSIRO, NOAA NCEI OCL";                   
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "CSIRO, NOAA NCEI OCL";                   
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nodc.noaa.gov/access/oceanclimate.html";                   
-                if (!String2.isSomething2(infoUrl))       infoUrl       = "https://www.nodc.noaa.gov/OC5/indprod.html";                   
+                if (!String2.isSomething2(creator_email)) creator_email = "OCL.help@noaa.gov";
+                if (!String2.isSomething2(creator_name))  creator_name  = "CSIRO, NOAA NCEI OCL";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "CSIRO, NOAA NCEI OCL";
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nodc.noaa.gov/access/oceanclimate.html";
+                if (!String2.isSomething2(infoUrl))       infoUrl       = "https://www.nodc.noaa.gov/OC5/indprod.html";
             }
             if (debugMode) String2.log(">> out specific: creator email=" + creator_email + " name=" + creator_name + " url=" + creator_url + " institution=" + tIns);
         }
 
-        if (!String2.isSomething2(creator_url) && 
+        if (!String2.isSomething2(creator_url) &&
             "Earth & Space Research".equals(addAtts.getString("institution")))
             creator_url = "https://www.esr.org/";
 
@@ -5640,30 +5677,30 @@ public abstract class EDD {
             if (!String2.isSomething2(tIns)) tIns = "";
             //cwcgom.aoml
             if (tPublicSourceUrl.startsWith("https://cwcgom.aoml.noaa.gov")) {
-                if (!String2.isSomething2(creator_email)) creator_email = "Joaquin.Trinanes@noaa.gov";     
+                if (!String2.isSomething2(creator_email)) creator_email = "Joaquin.Trinanes@noaa.gov";
                 if (!String2.isSomething2(creator_name))  creator_name  = "Joaquin Trinanes";
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NESDIS CWCGOM, NOAA AOML";               
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NESDIS CWCGOM, NOAA AOML";
             //hycom
             } else if (tPublicSourceUrl.indexOf("hycom.org/") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "hycomdata@coaps.fsu.edu"; 
+                if (!String2.isSomething2(creator_email)) creator_email = "hycomdata@coaps.fsu.edu";
                 if (!String2.isSomething2(creator_name))  creator_name  = "HYCOM";
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "HYCOM";               
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "HYCOM";
                 if (!String2.isSomething2(creator_url))   creator_url   = "https://hycom.org/";
             //NAVO (before NRL)
             } else if (taTitle.indexOf("NAVO") >= 0 || //an office, AKA  NAVOCEANO
-                       tsTitle.indexOf("NAVO") >= 0 || 
+                       tsTitle.indexOf("NAVO") >= 0 ||
                        tPublicSourceUrl.indexOf("/navo") >= 0 ||
                        tPublicSourceUrl.indexOf("/NAVO") >= 0) {
-                if (!String2.isSomething2(creator_email)) creator_email = "CSO.navo.fct@navy.mil";                   
-                if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL) NAVOCEANO"; 
-                if (!String2.isSomething2(tInstitution))  tInstitution  = "Naval Research Lab (NRL) NAVOCEANO"; 
+                if (!String2.isSomething2(creator_email)) creator_email = "CSO.navo.fct@navy.mil";
+                if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL) NAVOCEANO";
+                if (!String2.isSomething2(tInstitution))  tInstitution  = "Naval Research Lab (NRL) NAVOCEANO";
                 if (!String2.isSomething2(creator_url))   creator_url   = "https://www.usno.navy.mil/NAVO";
             //NRL (after NAVO and NCOM)
-            } else if (tIns.indexOf("Naval Research Lab") >= 0 || 
+            } else if (tIns.indexOf("Naval Research Lab") >= 0 ||
                        tIns.indexOf("NRL") >= 0 ||
                        taTitle.indexOf("NRL") >= 0 ||
                        tsTitle.indexOf("NRL") >= 0) {
-                //if (!String2.isSomething2(creator_email)) creator_email = "firstname.lastname@nrlmry.navy.mil";                   
+                //if (!String2.isSomething2(creator_email)) creator_email = "firstname.lastname@nrlmry.navy.mil";
                 if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL)";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "Naval Research Lab (NRL)";
                 if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nrl.navy.mil/";
@@ -5671,24 +5708,24 @@ public abstract class EDD {
             } else if (tPublicSourceUrl.indexOf("opendap") >= 0 &&
                        tPublicSourceUrl.indexOf("jpl.nasa.gov") >= 0) {
                 if (tInstitution.equals("NASA/GSFC OBPG")) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "webadmin@oceancolor.gsfc.nasa.gov"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "webadmin@oceancolor.gsfc.nasa.gov";
                     if (!String2.isSomething2(creator_name))  creator_name  = tInstitution;
-                    if (!String2.isSomething2(creator_url))   creator_url   = "https://oceancolor.gsfc.nasa.gov/cms/"; 
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://oceancolor.gsfc.nasa.gov/cms/";
                 } else {
                     if (!String2.isSomething2(creator_email)) creator_email = "support-podaac@earthdata.nasa.gov"; //was podaac@podaac.jpl.nasa.gov
                     if (!String2.isSomething2(creator_name))  creator_name  = "NASA JPL PODAAC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA JPL";
-                    if (!String2.isSomething2(creator_url))   creator_url   = "https://podaac.jpl.nasa.gov/"; 
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://podaac.jpl.nasa.gov/";
                 }
             //geoport WHOI  (Rich Signell is a good contact; unfortunately, many datasets are from other sources)
-            } else if (tPublicSourceUrl.startsWith("http://geoport.whoi.edu/thredds/")) {
-                if (!String2.isSomething2(creator_email)) creator_email = "rsignell@usgs.gov"; 
+            } else if (tPublicSourceUrl.indexOf("://geoport.whoi.edu/thredds/") >= 0) {
+                if (!String2.isSomething2(creator_email)) creator_email = "rsignell@usgs.gov";
                 if (!String2.isSomething2(creator_name))  creator_name  = "USGS, WHCMSC Sediment Transport Group";
                 if (!String2.isSomething2(tInstitution))  tInstitution  = "USGS, WHCMSC Sediment Transport Group";
-                if (!String2.isSomething2(creator_url))   creator_url   = "https://woodshole.er.usgs.gov/"; 
+                if (!String2.isSomething2(creator_url))   creator_url   = "https://woodshole.er.usgs.gov/";
             }
         }
-        
+
         //institution (again)
         name = "institution";
         if (!String2.isSomething2(tInstitution)) {
@@ -5708,70 +5745,70 @@ public abstract class EDD {
         tInstitution = String2.replaceAll(tInstitution, "NOA ESRL", "NOAA ESRL");
 
         //use common abbreviations in tInstitution
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Dataset provided by ",
             "");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "NOAA CoastWatch, West Coast Node",
             "NOAA CoastWatch WCN");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Fleet Numerical Meteorology and Oceanography Center, Monterey, CA, USA",
             "FNMOC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Fleet Numerical Meteorology and Oceanography Center",
             "FNMOC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Earth System Research Laboratory",
             "ESRL");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Goddard Space Flight Center",
             "GSFC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "National Climatic Data Center",
             "NCDC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "US-Department of Commerce",
             "US DOC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "National Oceanic and Atmospheric Administration",
             "NOAA");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Oceanic and Atmospheric Research",
             "OAR");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Pacific Marine Environmental Laboratory",
             "PMEL");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "US DOC/NOAA/ OAR/PMEL/ NOAA Center for Tsunami Research",
             "NOAA OAR PMEL Center for Tsunami Research");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "DOC/NOAA/NESDIS/NGDC > National Geophysical Data Center",
             "NOAA NGDC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "National Geophysical Data Center",
             "NGDC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "National Oceanographic Data Center",
             "NGDC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "NOAA, U.S. Department of Commerce",
             "NOAA");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "DOC/NOAA/NESDIS/OSDPD > Office of Satellite Data Processing and Distribution",
             "NOAA OSPO"); //new name
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "USDOC/NOAA/NESDIS CoastWatch",
             "NOAA CoastWatch");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "National Data Buoy Center",
             "NDBC");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "National Weather Service",
             "NWS");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Scripps Institution of Oceanography",
             "Scripps");
-        tInstitution = String2.replaceAllIgnoreCase(tInstitution, 
+        tInstitution = String2.replaceAllIgnoreCase(tInstitution,
             "Woods Hole Oceanographic Institution",
             "WHOI");
         if (String2.indexOf(
@@ -5807,6 +5844,8 @@ public abstract class EDD {
             newValue.append(tInstitution); //the remainder
             tInstitution = newValue.toString().trim();
         }
+        if (tInstitution.equals("STAR"))
+            tInstitution = "NOAA NESDIS STAR";
         if (debugMode) String2.log(">> 4 tInstitution=" + tInstitution);
 
         //creator_name again
@@ -5836,10 +5875,10 @@ public abstract class EDD {
         //standard_name_vocabulary
         name = "standard_name_vocabulary";
         value = getAddOrSourceAtt(addAtts, sourceAtts, name, null);
-        if (!String2.isSomething2(value) || 
+        if (!String2.isSomething2(value) ||
             //this isn't very sophisticated:
-            //ensure it is the new ACDD-1.3 style "CF Standard Name Table v55"
-            !value.matches("CF Standard Name Table v[0-9]+")) 
+            //ensure it is the new ACDD-1.3 style "CF Standard Name Table v70"
+            !value.matches("CF Standard Name Table v[0-9]+"))
             addAtts.add(name, FileNameUtility.getStandardNameVocabulary());
 
         //improve summary?
@@ -5847,10 +5886,10 @@ public abstract class EDD {
 
             value = String2.isSomething2(tInstitution)? tInstitution + " data " : "Data ";
             if (sourceUrlIsHyraxFile || sourceUrlIsHyraxCatalog ||
-                sourceUrlIsThreddsCatalog)  
+                sourceUrlIsThreddsCatalog)
                  value += "from " + infoUrl;
             else if (tPublicSourceUrl.startsWith("http"))
-                 value += "from " + tPublicSourceUrl + ".das ."; 
+                 value += "from " + tPublicSourceUrl + ".das .";
             else value += "from a local source.";
             if (String2.isSomething2(suffixForTitle) &&
                 !String2.looselyContains(value, suffixForTitle) &&
@@ -5862,7 +5901,7 @@ public abstract class EDD {
         //title
         name = "title";
         {
-            String sTitle = removeExtensionsFromTitle(sourceAtts.getString(name)); 
+            String sTitle = removeExtensionsFromTitle(sourceAtts.getString(name));
             String aTitle = removeExtensionsFromTitle(   addAtts.getString(name)); //from THREDDS catalog is complicated
             if        (!String2.isSomething2(sTitle)) { value = aTitle;
             } else if (!String2.isSomething2(aTitle)) { value = sTitle;
@@ -5885,19 +5924,19 @@ public abstract class EDD {
             value = removeAddOrSourceAtt(addAtts, sourceAtts, "Title", value);
             if (String2.isSomething2(value)){
                 //fix problems
-                value = String2.replaceAll(value, 
+                value = String2.replaceAll(value,
                     "moles_concentration", "mole_concentration");
 
                 int po = value.indexOf(l3smi); //at jpl, often the entire Title
                 if (po >= 0) {
                     if (sourceUrlAsTitle.indexOf("L3") >= 0 &&
                         sourceUrlAsTitle.indexOf("SMI") >= 0)
-                        value = String2.replaceAll(value, l3smi, 
+                        value = String2.replaceAll(value, l3smi,
                             sourceUrlAsTitle);
-                    else value = String2.replaceAll(value, l3smi, 
+                    else value = String2.replaceAll(value, l3smi,
                             "L3 SMI, " + sourceUrlAsTitle);
 
-                    if (tSummary.indexOf(l3smi) < 0) 
+                    if (tSummary.indexOf(l3smi) < 0)
                         tSummary = l3smi + ". " + tSummary;
                 }
             }
@@ -5909,26 +5948,26 @@ public abstract class EDD {
             //use suffixForTitle?  (see add suffixForTitle below)
             //for fromThreddsCatalog, sourceTitle + suffixForTitle is good combo
             //String2.log(">> value.length=" + value.length() + " suffix.length=" + suffixForTitle.length());
-            if (!String2.isSomething2(value)) 
+            if (!String2.isSomething2(value))
                 value = suffixForTitle;
 
-            //get from summary-like metadata? 
+            //get from summary-like metadata?
             if (!String2.isSomething2(value) && String2.isSomething2(tSummary) &&
                 !tSummary.startsWith("WARNING")) {
                 value = tSummary;
-                if (String2.isSomething2(value) && value.length() > 160) 
+                if (String2.isSomething2(value) && value.length() > 160)
                     value = value.substring(0, 160) + " ...";
             }
             if (debugMode) String2.log(">> 3 title=" + value);
 
             //hyrax or thredds catalog?   use last two directory names
-            if (!String2.isSomething2(value) && 
+            if (!String2.isSomething2(value) &&
                 (sourceUrlIsHyraxCatalog || sourceUrlIsThreddsCatalog)) {
                 value = File2.getDirectory(tPublicSourceUrl);
                 int po = value.lastIndexOf("/");
                 if (po > 0) po = value.substring(0, po).lastIndexOf("/");
-                value = po > 0 && po < value.length() - 1? 
-                    value.substring(po + 1) : 
+                value = po > 0 && po < value.length() - 1?
+                    value.substring(po + 1) :
                     value;
                 value = String2.replaceAll(value, '/', ' ');
                 value = String2.whitespacesToSpace(String2.replaceAll(value, '_', ' '));
@@ -5938,13 +5977,13 @@ public abstract class EDD {
             //if nothing else, use last part of url or directory, e.g., 2010/KH20060101_ab
             //if dir, remove trailing slash
             if (!String2.isSomething2(value)) {
-                value = !tPublicSourceUrl.startsWith("http") && tPublicSourceUrl.endsWith("/")? 
-                    tPublicSourceUrl.substring(0, tPublicSourceUrl.length() - 1) : 
+                value = !tPublicSourceUrl.startsWith("http") && tPublicSourceUrl.endsWith("/")?
+                    tPublicSourceUrl.substring(0, tPublicSourceUrl.length() - 1) :
                     tPublicSourceUrl;
                 int po = value.lastIndexOf("/");
                 if (po > 0) po = value.substring(0, po).lastIndexOf("/");
-                value = po > 0 && po < value.length() - 1? 
-                    value.substring(po + 1) : 
+                value = po > 0 && po < value.length() - 1?
+                    value.substring(po + 1) :
                     value;
                 if (value.startsWith("dodsC/"))
                     value = value.substring(6);
@@ -5970,7 +6009,7 @@ public abstract class EDD {
                     value = String2.periodSpaceConcat("ETOPO Global Topography and Bathymetry.", value);
                 } else if (value.indexOf("MSG SST") >= 0 &&
                            !String2.looselyContains(value, "Meteosat Second Generation")) {
-                    value = String2.replaceAll(value, "MSG SST", 
+                    value = String2.replaceAll(value, "MSG SST",
                             "Meteosat Second Generation (MSG) SST");
                 }
             }
@@ -5992,10 +6031,10 @@ public abstract class EDD {
 
             //shorten the title?
             //preserve original title (add oTitle to summary below if it changes)
-            String oTitle = removeExtensionsFromTitle(sourceAtts.getString("title")); 
+            String oTitle = removeExtensionsFromTitle(sourceAtts.getString("title"));
             if (!String2.isSomething2(oTitle))
                 oTitle = value;
-            if (String2.isSomething2(oTitle)) 
+            if (String2.isSomething2(oTitle))
                  oTitle = String2.replaceAllIgnoreCase(String2.whitespacesToSpace(oTitle), " , ", ", ");
             else oTitle = "";
 
@@ -6004,7 +6043,7 @@ public abstract class EDD {
             if (value.matches("GFDL CM.{3}, 20C3M \\(run .\\) climate of the 20th Century " +
                     "experiment \\(20C3M\\) output for IPCC AR. and US CCSP") &&
                 String2.isSomething2(sourceUrlAsTitle)) {
-                value = sourceUrlAsTitle; 
+                value = sourceUrlAsTitle;
                 value = String2.replaceAll(value, "ipcc ar", "IPCC AR");
             }
             //sourceUrl=https://data1.gfdl.noaa.gov/thredds/dodsC/CM2.1U_CDFef_v1.0_r6land
@@ -6044,13 +6083,13 @@ public abstract class EDD {
                 "GFDL SI fully coupled data assimilation");
             value = String2.replaceAllIgnoreCase(value,
                 "GISS Surface Temperature Analysis (GISTEMP)",
-                "GISTEMP");            
+                "GISTEMP");
             value = String2.replaceAllIgnoreCase(value,
                 "GODAS: Global Ocean Data Assimilation System",
                 "GODAS");
             value = String2.replaceAllIgnoreCase(value,
                 "Global Ocean Data Assimilation System",
-                "GODAS");             
+                "GODAS");
             value = String2.replaceAllIgnoreCase(value,
                 "HYbrid Coordinate Ocean Model (HYCOM): Global",
                 "HYCOM, Global");
@@ -6093,8 +6132,8 @@ public abstract class EDD {
             value = String2.replaceAllIgnoreCase(value,
                 "ROMS ESPRESSO Real-Time Operational IS4DVAR Forecast System Version 2 (NEW)",
                 "ROMS ESPRESSO IS4DVAR Forecast, v2");
-            value = String2.replaceAllIgnoreCase(value, 
-                "sea surface temperature", "SST");           
+            value = String2.replaceAllIgnoreCase(value,
+                "sea surface temperature", "SST");
             value = String2.whitespacesToSpace(value);
             value = String2.replaceAllIgnoreCase(value, " , ", ", ");
             value = String2.replaceAllIgnoreCase(value, " - ", ", ");
@@ -6104,7 +6143,7 @@ public abstract class EDD {
                 "");
             */
             if (debugMode) String2.log(">> 6 title=" + value);
-            
+
             //add oTitle to summary if it was shortened
             if (String2.isSomething2(oTitle)) {
                 if (String2.isSomething2(tSummary)) {
@@ -6126,7 +6165,7 @@ public abstract class EDD {
             //add suffixForTitle?  (it was considered as a sole source of title above)
             //for fromThreddsCatalog, sourceTitle + suffixForTitle is good combo
             //String2.log(">> value.length=" + value.length() + " suffix.length=" + suffixForTitle.length());
-            if (String2.isSomething2(suffixForTitle) && 
+            if (String2.isSomething2(suffixForTitle) &&
                 !String2.looselyContains(value, suffixForTitle) &&
                 value.length() + suffixForTitleP.length() <= EDStatic.TITLE_DOT_LENGTH)
                 value += suffixForTitleP;
@@ -6158,8 +6197,8 @@ public abstract class EDD {
         if (tPublicSourceUrl.indexOf("TRMM") >= 0 &&
             String2.isSomething2(value) &&
             !String2.looselyContains(value, "trmm") &&
-            !String2.looselyContains(value, "tropical rainfall")) 
-            value = "Tropical Rainfall, " + value;    
+            !String2.looselyContains(value, "tropical rainfall"))
+            value = "Tropical Rainfall, " + value;
         String tTitle = value;
         if (debugMode) String2.log(">> 7 title=" + value);
 
@@ -6170,9 +6209,9 @@ public abstract class EDD {
             StringArray acronymSA  = (StringArray)(tTable.getColumn(0));
             StringArray fullNameSA = (StringArray)(tTable.getColumn(1));
             int n = acronymSA.size();
-            for (int i = 0; i < acronymSA.size(); i++) 
+            for (int i = 0; i < acronymSA.size(); i++)
                 tSummary = expandInSummary(tSummary, suggestedKeywords,
-                    acronymSA.get(i), fullNameSA.get(i)); 
+                    acronymSA.get(i), fullNameSA.get(i));
         } else {
             tSummary = ""; // not ??? (for periodSpaceConcat)
         }
@@ -6187,7 +6226,7 @@ public abstract class EDD {
         if (tSummary.indexOf("CRUTEM") >= 0 &&  //e.g., CRUTEM3
             !String2.looselyContains(tSummary, "Climatic Research Unit")) {
             chopUpAndAdd(s = "Climatic Research Unit CRUTEM", suggestedKeywords);
-            tSummary = String2.replaceAll(tSummary, "CRUTEM", s); 
+            tSummary = String2.replaceAll(tSummary, "CRUTEM", s);
         }
         if (tPublicSourceUrl.indexOf("/dem/") >= 0 &&
             tSummary.toLowerCase().indexOf("elevation") < 0) {
@@ -6206,14 +6245,14 @@ public abstract class EDD {
         //almost last thing
         //improve creator_email, creator_name, tInstitution, creator_url
         if (String2.isSomething2(creator_name)) {
-            if (creator_name.equals("RSIGNELL")) 
+            if (creator_name.equals("RSIGNELL"))
                  creator_name = "Rich Signell";
-            else if (creator_name.equals("Esrl Psd Data")) 
+            else if (creator_name.equals("Esrl Psd Data"))
                 creator_name = "NOAA ESRL PSD";
-            else if (creator_name.equals("PODAAC")) 
+            else if (creator_name.equals("PODAAC"))
                 creator_name = "PODAAC NASA JPL";
             //shorten acronyms
-            creator_name = String2.replaceAll(creator_name, 
+            creator_name = String2.replaceAll(creator_name,
                 "National Geophysical Data Center (NGDC)", "NGDC");
         }
 
@@ -6248,130 +6287,130 @@ public abstract class EDD {
                 //  so any/all of the 4 strings could be changed.
 
                 //more specific items at top (less specific items are further below)
-                if (lc.indexOf(" erd ") >= 0 || 
+                if (lc.indexOf(" erd ") >= 0 ||
                     lc.indexOf("pfeg") >= 0 || lc.indexOf("pfel") >= 0) {
                     if (!String2.isSomething2(creator_email)) creator_email = "erd.data@noaa.gov";
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NMFS SWFSC ERD"; 
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NMFS SWFSC ERD";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NMFS SWFSC ERD";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.pfeg.noaa.gov";
                     break;
-                } 
+                }
                 if (lc.indexOf("fnmoc") >= 0 || lc.indexOf("naval oceanographic office") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "CSO.navo.fct@navy.mil";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL) NAVOCEANO"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "CSO.navo.fct@navy.mil";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Naval Research Lab (NRL) NAVOCEANO";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Naval Research Lab (NRL) NAVOCEANO";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.usno.navy.mil/NAVO";
                     break;
-                } 
+                }
                 if (lc.indexOf("bluelink") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "Tracey.pitman@csiro.au";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Bluelink"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "Tracey.pitman@csiro.au";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Bluelink";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Bluelink";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://wp.csiro.au/bluelink/";
                     break;
-                } 
+                }
                 if (lc.indexOf("soda") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "chepurin@umd.edu";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "SODA, UMD"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "chepurin@umd.edu";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "SODA, UMD";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "SODA, UMD";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.atmos.umd.edu/~ocean/";
                     break;
                 }
                 if (lc.indexOf("trmm") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "Harold.F.Pierce@nasa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "TRMM"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "Harold.F.Pierce@nasa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "TRMM";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA, JAXA";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://trmm.gsfc.nasa.gov/";
                     break;
-                } 
+                }
                 if (lc.indexOf("hycom") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "forum@hycom.org";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "HYCOM"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "forum@hycom.org";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "HYCOM";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "HYCOM";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://hycom.org/";
                     break;
-                } 
+                }
                 if (lc.indexOf("rtofs") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "avichal.mehra@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCEP"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "avichal.mehra@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCEP";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NCEP";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://polar.ncep.noaa.gov/global/";
                     break;
                 }
                 if (lc.indexOf("obpg") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "webadmin@oceancolor.gsfc.nasa.gov"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "webadmin@oceancolor.gsfc.nasa.gov";
                     if (!String2.isSomething2(creator_name))  creator_name  = "NASA/GSFC OBPG";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA/GSFC OBPG";
-                    if (!String2.isSomething2(creator_url))   creator_url   = "https://oceancolor.gsfc.nasa.gov/cms/"; 
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://oceancolor.gsfc.nasa.gov/cms/";
                     break;
                 }
                 if (lc.indexOf("hadcrut") >= 0) { //before crutem
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Hadley Centre (UK Met Office), Climatic Research Unit (University of East Anglia)"; 
-                    if (!String2.isSomething2(tInstitution))  tInstitution  = "Hadley Centre (UK Met Office), Climatic Research Unit (University of East Anglia)";                                   
-                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cru.uea.ac.uk/cru/data/temperature/";                   
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Hadley Centre (UK Met Office), Climatic Research Unit (University of East Anglia)";
+                    if (!String2.isSomething2(tInstitution))  tInstitution  = "Hadley Centre (UK Met Office), Climatic Research Unit (University of East Anglia)";
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cru.uea.ac.uk/cru/data/temperature/";
                     break;
                 }
                 if (lc.indexOf("crutem") >= 0) { //after hadcrut
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Climatic Research Unit (University of East Anglia)"; 
-                    if (!String2.isSomething2(tInstitution))  tInstitution  = "Climatic Research Unit (University of East Anglia)";                                   
-                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cru.uea.ac.uk/cru/data/temperature/";                   
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Climatic Research Unit (University of East Anglia)";
+                    if (!String2.isSomething2(tInstitution))  tInstitution  = "Climatic Research Unit (University of East Anglia)";
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cru.uea.ac.uk/cru/data/temperature/";
                     break;
                 }
                 if (lc.indexOf("@dmi.dk") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Center for Ocean and Ice, Danish Meteorological Institute"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Center for Ocean and Ice, Danish Meteorological Institute";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Center for Ocean and Ice, Danish Meteorological Institute";
                     if (!String2.isSomething2(creator_url))   creator_url   = "http://ocean.dmi.dk/";
                     break;
-                } 
+                }
                 if (lc.indexOf("cmc") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Canadian Meteorological Centre"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Canadian Meteorological Centre";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Canadian Meteorological Centre";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ec.gc.ca/scitech/default.asp?lang=En&n=61B33C26-1#cmc";
                     break;
                 }
                 if (lc.indexOf("meteo.fr") >= 0 || lc.indexOf("meteofrance") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Meteo France"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Meteo France";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Meteo France";
-                    if (!String2.isSomething2(creator_url))   creator_url   = "http://www.meteofrance.com";
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.meteofrance.com";
                     break;
                 }
                 if (lc.indexOf("ifremer") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Ifremer"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Ifremer";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Ifremer";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://wwz.ifremer.fr/";
                     break;
                 }
                 if (lc.indexOf("meteosat") >= 0 || lc.indexOf("msg") >= 0) { //meteosat second generation
-                    if (!String2.isSomething2(creator_email)) creator_email = "ops@eumetsat.int";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "EUMETSAT"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "ops@eumetsat.int";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "EUMETSAT";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "EUMETSAT";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.eumetsat.int/website/home/Satellites/CurrentSatellites/Meteosat/index.html";
                     break;
                 }
                 if (lc.indexOf("esrl") >= 0 && lc.indexOf("psd") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "esrl.psd.data@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ESRL PSD"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "esrl.psd.data@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ESRL PSD";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA ESRL PSD";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.esrl.noaa.gov/psd/";
                     break;
                 }
                 if (lc.indexOf("aoml") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "aoml.webmaster@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA AOMLESRL"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "aoml.webmaster@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA AOMLESRL";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA AOML";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.aoml.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("glerl") >= 0 || //before coastwatch below
                     lc.indexOf("great lakes environmental research laboratory") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "cw.glerl@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA CoastWatch Great Lakes Node"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "cw.glerl@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA CoastWatch Great Lakes Node";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA CoastWatch Great Lakes Node";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://coastwatch.glerl.noaa.gov/";
                     break;
@@ -6379,270 +6418,270 @@ public abstract class EDD {
                 if (lc.indexOf("noaa") >= 0 && lc.indexOf("coastwatch") >= 0) {
                     if (lc.indexOf("noaa coastwatch wcn") >= 0) {
                         if (!String2.isSomething2(creator_email)) creator_email = "erd.data@noaa.gov";
-                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NMFS SWFSC ERD"; 
+                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NMFS SWFSC ERD";
                         if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA CoastWatch WCN, NOAA NMFS SWFSC ERD";
                         if (!String2.isSomething2(creator_url))   creator_url   = "https://www.pfeg.noaa.gov";
                         break;
                     } else if (lc.indexOf("pfeg") >= 0 || lc.indexOf("pfel") >= 0) {
                         if (!String2.isSomething2(creator_email)) creator_email = "erd.data@noaa.gov";
-                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NMFS SWFSC ERD"; 
+                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NMFS SWFSC ERD";
                         if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NMFS SWFSC ERD";
                         if (!String2.isSomething2(creator_url))   creator_url   = "https://www.pfeg.noaa.gov";
                         break;
                     } else { //coastwatch
-                        if (!String2.isSomething2(creator_email)) creator_email = "coastwatch.info@noaa.gov";                   
-                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA CoastWatch"; 
+                        if (!String2.isSomething2(creator_email)) creator_email = "coastwatch.info@noaa.gov";
+                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA CoastWatch";
                         if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA CoastWatch";
                         if (!String2.isSomething2(creator_url))   creator_url   = "https://coastwatch.noaa.gov/";
                         break;
                     }
                 }
                 if (lc.indexOf("esrl") >= 0) {
-                    //catch psd that would be caught in later iteration 
-                    if (tPublicSourceUrl.indexOf("/psd/") >= 0) { 
-                        if (!String2.isSomething2(creator_email)) creator_email = "esrl.psd.data@noaa.gov";                   
-                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ESRL PSD"; 
+                    //catch psd that would be caught in later iteration
+                    if (tPublicSourceUrl.indexOf("/psd/") >= 0) {
+                        if (!String2.isSomething2(creator_email)) creator_email = "esrl.psd.data@noaa.gov";
+                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ESRL PSD";
                         if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA ESRL PSD";
                         if (!String2.isSomething2(creator_url))   creator_url   = "https://www.esrl.noaa.gov/psd/";
                         break;
                     } else {
-                        if (!String2.isSomething2(creator_email)) creator_email = "webmaster.esrl@noaa.gov";                   
-                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ESRL"; 
+                        if (!String2.isSomething2(creator_email)) creator_email = "webmaster.esrl@noaa.gov";
+                        if (!String2.isSomething2(creator_name))  creator_name  = "NOAA ESRL";
                         if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA ESRL";
                         if (!String2.isSomething2(creator_url))   creator_url   = "https://www.esrl.noaa.gov/";
                         break;
                     }
                 }
                 if (lc.indexOf("gfdl") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "GFDL.Climate.Model.Info@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA GFDL"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "GFDL.Climate.Model.Info@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA GFDL";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA GFDL";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.gfdl.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf(".oco.noaa") >= 0) { //oco are common letters, so be more specific
-                    if (!String2.isSomething2(creator_email)) creator_email = "climate.observation@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA OCO"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "climate.observation@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA OCO";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA OCO";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://cpo.noaa.gov/Meet-the-Divisions/Ocean-Observing-and-Monitoring/OCO";
                     break;
                 }
                 if (lc.indexOf("ncddc") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "ncddcwebmaster@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCDDC"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "ncddcwebmaster@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCDDC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NCDDC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ncddc.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("ncep") >= 0 ||
                     lc.indexOf("national centers for environmental prediction") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCEP"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCEP";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NCEP";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ncep.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("noaa") >= 0 &&
                     (lc.indexOf("osdpd") >= 0 || lc.indexOf("ospo") >= 0)) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "SSDWebmaster@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA OSPO"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "SSDWebmaster@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA OSPO";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA OSPO";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ospo.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("noaa") >= 0 && lc.indexOf("pmel") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "pmel.info@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA PMEL"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "pmel.info@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA PMEL";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA PMEL";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.pmel.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("ndbc") >= 0 ||
                     lc.indexOf("national data buoy center") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "webmaster.ndbc@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NDBC"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "webmaster.ndbc@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NDBC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NDBC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ndbc.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("cmar") >= 0 && lc.indexOf("csiro") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "Enquiries@csiro.au";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "CSIRO CMAR"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "Enquiries@csiro.au";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "CSIRO CMAR";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "CSIRO CMAR";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.cmar.csiro.au/";
                     break;
                 }
                 if (lc.indexOf("glos") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA GLOS"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA GLOS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA GLOS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://glos.us/";
                     break;
                 }
                 if (lc.indexOf("pacioos") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "jimp@hawaii.edu";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA PacIOOS"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "jimp@hawaii.edu";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA PacIOOS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA PacIOOS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.pacioos.org";
                     break;
                 }
                 if (lc.indexOf("neracoos") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "ebridger@gmri.org";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NERACOOS"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "ebridger@gmri.org";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NERACOOS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NERACOOS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "http://www.neracoos.org/";
                     break;
                 }
                 if (lc.indexOf("nanoos") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NANOOS"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NANOOS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NANOOS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "http://www.nanoos.org/";
                     break;
                 }
                 if (lc.indexOf("secoora") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "vembu@secoora.org";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "SECOORA"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "vembu@secoora.org";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "SECOORA";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "SECOORA";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://secoora.org/";
                     break;
                 }
                 if (lc.indexOf("caricoos") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "caricoos@gmail.com";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "CariCOOS"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "caricoos@gmail.com";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "CariCOOS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "CariCOOS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.caricoos.org/";
                     break;
                 }
 
 
-                //medium specific  
+                //medium specific
                 if (lc.indexOf("ioos") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "data.ioos@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "IOOS"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "data.ioos@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "IOOS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "IOOS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://ioos.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("nsidc") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "nsidc@nsidc.org";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NSIDC"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "nsidc@nsidc.org";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NSIDC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NSIDC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://nsidc.org/";
                     break;
                 }
-                if (lc.indexOf("hadley") >= 0) { 
-                    if (!String2.isSomething2(creator_email)) creator_email = "john.kennedy@metoffice.gov.uk";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Met Office Hadley Centre"; 
-                    if (!String2.isSomething2(tInstitution))  tInstitution  = "Met Office Hadley Centre";                                   
-                    if (!String2.isSomething2(creator_url))   creator_url   = "http://hadobs.metoffice.com/";                   
+                if (lc.indexOf("hadley") >= 0) {
+                    if (!String2.isSomething2(creator_email)) creator_email = "john.kennedy@metoffice.gov.uk";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Met Office Hadley Centre";
+                    if (!String2.isSomething2(tInstitution))  tInstitution  = "Met Office Hadley Centre";
+                    if (!String2.isSomething2(creator_url))   creator_url   = "http://hadobs.metoffice.com/";
                     break;
                 }
                 if (lc.indexOf("podaac") >= 0) {
                     if (!String2.isSomething2(creator_email)) creator_email = "support-podaac@earthdata.nasa.gov"; //was podaac@podaac.jpl.nasa.gov
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA JPL PODAAC"; 
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA JPL PODAAC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA JPL PODAAC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://podaac.jpl.nasa.gov/";
                     break;
                 }
                 if (lc.indexOf("scripps") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Scripps"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Scripps";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Scripps";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://scripps.ucsd.edu/";
                     break;
                 }
                 if (lc.indexOf("bco-dmo") >= 0 || lc.indexOf("bcodmo") >= 0) { //before whoi
-                    if (!String2.isSomething2(creator_email)) creator_email = "info@bco-dmo.org";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "BCO-DMO"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "info@bco-dmo.org";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "BCO-DMO";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "BCO-DMO";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.bco-dmo.org/";
                     break;
                 }
                 if (lc.indexOf(".udel") >= 0 || lc.indexOf("univ. delaware") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "University of Delaware"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "University of Delaware";
                                                      tInstitution  = "University of Delaware";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.udel.edu/";
                     break;
                 }
                 if (lc.indexOf("duke") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Duke University"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Duke University";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Duke University";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://nicholas.duke.edu/";
                     break;
                 }
                 if (lc.indexOf("ncdc") >= 0 ||
                     lc.indexOf("national climatic data center") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "ncdc.webmaster@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCDC"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "ncdc.webmaster@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NCDC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NCDC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ncdc.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("nodc") >= 0 ||
                     lc.indexOf("national oceanographic data center") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "NODC.Webmaster@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NODC"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "NODC.Webmaster@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NODC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NODC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nodc.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("ngdc") >= 0 ||
                     lc.indexOf("national geophysical data center") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "ngdc.info@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NGDC"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "ngdc.info@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NGDC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NGDC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.ngdc.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("nws") >= 0 ||
                     lc.indexOf("national weather service") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NWS"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NWS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NWS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.weather.gov/";
                     break;
                 }
                 if (lc.indexOf("jpl") >= 0) { //after podaac, before nasa
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA JPL"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA JPL";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA JPL";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.jpl.nasa.gov/";
                     break;
                 }
                 if (lc.indexOf("ncar") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NCAR"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NCAR";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NCAR";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://ncar.ucar.edu/";
                     break;
                 }
                 if (lc.indexOf("gsfc") >= 0) { //before nasa
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA GSFC"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA GSFC";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA GSFC";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nasa.gov/centers/goddard/home/index.html";
                     break;
                 }
                 if (lc.indexOf("rsmas") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "University of Miami, RSMAS"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "University of Miami, RSMAS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "University of Miami, RSMAS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.rsmas.miami.edu/";
                     break;
                 }
                 if (lc.indexOf(".dal.ca") >= 0 || lc.indexOf("dalhousie") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Dalhousie University"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Dalhousie University";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Dalhousie University";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.dal.ca/";
                     break;
                 }
                 if (lc.indexOf("whoi") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "WHOI"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "WHOI";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "WHOI";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.whoi.edu/";
                     break;
@@ -6650,84 +6689,84 @@ public abstract class EDD {
 
                 //less specific
                 if (lc.indexOf("csiro") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "Enquiries@csiro.au";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "CSIRO"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "Enquiries@csiro.au";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "CSIRO";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "CSIRO";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.csiro.au/";
                     break;
                 }
-                if (lc.indexOf(".abom") >= 0 || lc.indexOf("@abom") >= 0 || 
-                    lc.indexOf("/abom") >= 0 || lc.indexOf(" abom") >= 0 || 
+                if (lc.indexOf(".abom") >= 0 || lc.indexOf("@abom") >= 0 ||
+                    lc.indexOf("/abom") >= 0 || lc.indexOf(" abom") >= 0 ||
                     lc.indexOf(".bom.gov.au") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Australian Bureau of Meteorology"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Australian Bureau of Meteorology";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Australian Bureau of Meteorology";
                     if (!String2.isSomething2(creator_url))   creator_url   = "http://www.bom.gov.au/";
                     break;
                 }
                 if (lc.indexOf("nasa") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NASA";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NASA";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nasa.gov/";
                     break;
                 }
                 if (lc.indexOf("nesdis") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "NESDIS.Data.Access@noaa.gov";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NESDIS"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "NESDIS.Data.Access@noaa.gov";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA NESDIS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA NESDIS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.nesdis.noaa.gov/";
                     break;
                 }
                 if (lc.indexOf("usgs") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "USGS"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "USGS";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "USGS";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.usgs.gov/";
                     break;
                 }
                 if (lc.indexOf("rutgers") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Institute of Marine and Coastal Science, Rutgers"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Institute of Marine and Coastal Science, Rutgers";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Institute of Marine and Coastal Science, Rutgers";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://marine.rutgers.edu/main/";
                     break;
                 }
                 if (lc.indexOf("eumetsat") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "ops@eumetsat.int";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "EUMETSAT"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "ops@eumetsat.int";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "EUMETSAT";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "EUMETSAT";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.eumetsat.int/website/home/index.html";
                     break;
                 }
-                if (lc.indexOf("metoffice") >= 0) { 
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "UK Met Office"; 
-                    if (!String2.isSomething2(tInstitution))  tInstitution  = "UK Met Office";                                   
-                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.metoffice.gov.uk/research";                   
+                if (lc.indexOf("metoffice") >= 0) {
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "UK Met Office";
+                    if (!String2.isSomething2(tInstitution))  tInstitution  = "UK Met Office";
+                    if (!String2.isSomething2(creator_url))   creator_url   = "https://www.metoffice.gov.uk/research";
                     break;
                 }
                 if (lc.indexOf("jma") >= 0) {
-                    if (!String2.isSomething2(creator_email)) creator_email = "metsat@kishou.go.jp";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "Japan Meteorological Agency"; 
+                    if (!String2.isSomething2(creator_email)) creator_email = "metsat@kishou.go.jp";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "Japan Meteorological Agency";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "Japan Meteorological Agency";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.jma.go.jp/jma/indexe.html";
                     break;
                 }
                 if (lc.indexOf("jaxa") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "JAXA"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "JAXA";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "JAXA";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://global.jaxa.jp/";
                     break;
                 }
 
                 //less specific, and only check at last level:
-                if (i < midLevel) 
+                if (i < midLevel)
                     continue;
                 if (lc.indexOf("noaa") >= 0) {
-                    //if (!String2.isSomething2(creator_email)) creator_email = "";                   
-                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA"; 
+                    //if (!String2.isSomething2(creator_email)) creator_email = "";
+                    if (!String2.isSomething2(creator_name))  creator_name  = "NOAA";
                     if (!String2.isSomething2(tInstitution))  tInstitution  = "NOAA";
                     if (!String2.isSomething2(creator_url))   creator_url   = "https://www.noaa.gov/";
                     break;
@@ -6738,23 +6777,23 @@ public abstract class EDD {
         //creator_type    (not required, but useful ACDD and for ISO 19115 and FGDC)
         //creator_name may be known from above
         name = "creator_type";
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, name,                           null);        
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, name,                           null);
         //clean up
         String creator_type = String2.validateAcddContactType(value);
         if (creator_name.equals("NOAA NMFS SWFSC ERD"))
             creator_type = "institution";
-        if (!String2.isSomething2(creator_type) && String2.isSomething2(creator_name)) 
+        if (!String2.isSomething2(creator_type) && String2.isSomething2(creator_name))
             creator_type = String2.guessAcddContactType(creator_name);
         if (!Test.equal(value, creator_type))
             addAtts.set(name, creator_type);
 
         //publisher_type    (not required, but useful ACDD and for ISO 19115 and FGDC)
-        String publisher_name = getAddOrSourceAtt(addAtts, sourceAtts, "publisher_name",  null);        
+        String publisher_name = getAddOrSourceAtt(addAtts, sourceAtts, "publisher_name",  null);
         name = "publisher_type";
-        value =    getAddOrSourceAtt(addAtts, sourceAtts, name,                           null);        
+        value =    getAddOrSourceAtt(addAtts, sourceAtts, name,                           null);
         //clean up
         String publisher_type = String2.validateAcddContactType(value);
-        if (!String2.isSomething2(publisher_type) && String2.isSomething2(publisher_name)) 
+        if (!String2.isSomething2(publisher_type) && String2.isSomething2(publisher_name))
             publisher_type = String2.guessAcddContactType(publisher_name);
         if (!Test.equal(value, publisher_type))
             addAtts.set(name, publisher_type);
@@ -6762,7 +6801,7 @@ public abstract class EDD {
         //keywords (after title)
         name = "keywords";
         value =    getAddOrSourceAtt(addAtts, sourceAtts, name,       null);
-        if (String2.isSomething2(value) && value.indexOf(',') < 0 && value.indexOf('>') < 0) 
+        if (String2.isSomething2(value) && value.indexOf(',') < 0 && value.indexOf('>') < 0)
             //MEASURES has space-separated "keyword"s
             value = String2.toCSSVString(String2.split(value, ' '));
 
@@ -6786,7 +6825,7 @@ public abstract class EDD {
 
             //add words from institution;     definitely split at '/', e.g., NOAA/NODC
             //odd to make lowerCase but good to sort in with single words, not GCMD keywords
-            chopUpAndAdd(String2.replaceAll(tInstitution, '/', ' '), suggestedKeywords);  
+            chopUpAndAdd(String2.replaceAll(tInstitution, '/', ' '), suggestedKeywords);
 
             //removed... interesting idea, but too aggressive. keywords should be for dataset, not distribution
             //catch server type from publicSourceUrl
@@ -6797,59 +6836,59 @@ public abstract class EDD {
 
             //add words and popular phrases from new title and original_title
             //'/' difficult; most likely word/word (not e.g., mg/ml) so split it
-            String tt = sourceAtts.getString("title"); 
+            String tt = sourceAtts.getString("title");
             tt = (tTitle + (String2.isSomething2(tt) && !tt.equals(tTitle)? " " + tt : "")).toLowerCase();
-            chopUpAndAdd(String2.replaceAll(tt, '/', ' '), suggestedKeywords);             
+            chopUpAndAdd(String2.replaceAll(tt, '/', ' '), suggestedKeywords);
 
             //add some phrases from title and alternate forms
             if (tt.indexOf(              "best time series") >= 0)
                 suggestedKeywords.add(   "best time series");
-            if (tt.indexOf(              "east coast") >= 0) 
+            if (tt.indexOf(              "east coast") >= 0)
                 suggestedKeywords.add(   "east coast");
-            if (tt.indexOf(              "great lakes") >= 0) 
+            if (tt.indexOf(              "great lakes") >= 0)
                 suggestedKeywords.add(   "great lakes");
-            if (tt.indexOf(              "gulf of mexico") >= 0) 
+            if (tt.indexOf(              "gulf of mexico") >= 0)
                 suggestedKeywords.add(   "gulf of mexico");
             if (tt.indexOf(              "hf radar") >= 0 ||
-                tt.indexOf(              "hfradar")  >= 0) 
+                tt.indexOf(              "hfradar")  >= 0)
                 suggestedKeywords.add(   "hf radar");
             if (tt.indexOf(              "hf radio") >= 0 ||
-                tt.indexOf(              "hfradio") >= 0) 
+                tt.indexOf(              "hfradio") >= 0)
                 suggestedKeywords.add(   "hf radio");
-            if (tt.indexOf(              "navy coastal ocean model") >= 0) 
+            if (tt.indexOf(              "navy coastal ocean model") >= 0)
                 suggestedKeywords.add(   "ncom");  //expanded further below
             int npo = tt.indexOf("near");  //may be "near-real-time" or "near real time"
             if (npo >= 0 &&
                 tt.indexOf("real", npo + 4) == npo + 5 &&
-                tt.indexOf("time", npo + 4) == npo + 10) 
+                tt.indexOf("time", npo + 4) == npo + 10)
                 suggestedKeywords.add(   "near real time");
-            if (tt.indexOf(              "new york") >= 0) 
+            if (tt.indexOf(              "new york") >= 0)
                 suggestedKeywords.add(   "new york");
-            if (tt.indexOf(              "north america") >= 0) 
+            if (tt.indexOf(              "north america") >= 0)
                 suggestedKeywords.add(   "north america");
             if (!suggestedKeywords.contains("near real time") &&
                 (tt.indexOf("real-time") >= 0 ||         //real-time converted to "real time" below
-                 tt.indexOf("real time") >= 0)) 
-                suggestedKeywords.add(   "real time");  
+                 tt.indexOf("real time") >= 0))
+                suggestedKeywords.add(   "real time");
             if (tt.indexOf(              "regional ocean model") >= 0)
                 suggestedKeywords.add(   "regional ocean model");
             if (tt.indexOf(              "science quality") >= 0)
                 suggestedKeywords.add(   "science quality");
-            if (tt.indexOf(              "south america") >= 0) 
+            if (tt.indexOf(              "south america") >= 0)
                 suggestedKeywords.add(   "south america");
             if (tt.indexOf(              "time series") >= 0)
                 suggestedKeywords.add(   "time series");
-            if (tt.indexOf(              "west coast") >= 0) 
+            if (tt.indexOf(              "west coast") >= 0)
                 suggestedKeywords.add(   "west coast");
 
             cleanSuggestedKeywords(suggestedKeywords);
-            
+
             //build new keywords String
             StringBuilder sb = new StringBuilder("");
-            String keywordSar[] = (String[])suggestedKeywords.toArray(new String[0]); 
+            String keywordSar[] = (String[])suggestedKeywords.toArray(new String[0]);
             //they are consistently capitalized, so will sort very nicely:
             //  single words then gcmd
-            Arrays.sort(keywordSar, String2.STRING_COMPARATOR_IGNORE_CASE); 
+            Arrays.sort(keywordSar, String2.STRING_COMPARATOR_IGNORE_CASE);
             for (int w = 0; w < keywordSar.length; w++) {
 
                 //don't save numbers
@@ -6867,7 +6906,7 @@ public abstract class EDD {
 
                 if (kw.length() > 2) { //lose lots of junk and a few greek letters
                     sb.append(kw);
-                    sb.append(", "); 
+                    sb.append(", ");
                 } else if (String2.indexOf(KEEP_SHORT_KEYWORDS, kw) >= 0) {
                     sb.append(kw);
                     sb.append(", ");
@@ -6875,7 +6914,7 @@ public abstract class EDD {
                     sb.append(kw.toUpperCase());
                     sb.append(", ");
                 }
-                    
+
             }
             //remove last 2 char separator (", " or ",\n")
             if (sb.length() >= 2)
@@ -6927,16 +6966,16 @@ public abstract class EDD {
         tInstitution = String2.replaceAll(tInstitution, "THREDDS Server Catalog : ", "");
         tSummary     = String2.replaceAll(tSummary,     "THREDDS Server Catalog : ", "");
         tTitle       = String2.replaceAll(tTitle,       "THREDDS Server Catalog : ", "");
-        addAtts.set("infoUrl", 
-            String2.isSomething2(infoUrl)? infoUrl : "???"); //hopefully never        
-        addAtts.set("institution", 
+        addAtts.set("infoUrl",
+            String2.isSomething2(infoUrl)? infoUrl : "???"); //hopefully never
+        addAtts.set("institution",
             String2.isSomething2(tInstitution)? tInstitution : "???"); //hopefully never
-        addAtts.set("summary", 
+        addAtts.set("summary",
             String2.isSomething2(tSummary)? tSummary : "???"); //hopefully never
-        addAtts.set("title", 
+        addAtts.set("title",
             String2.isSomething2(tTitle)? tTitle : "???"); //hopefully never
-        if (debugMode) String2.log(">> final tInstitution=" + tInstitution + 
-            "\n>> final tSummary=" + tSummary); 
+        if (debugMode) String2.log(">> final tInstitution=" + tInstitution +
+            "\n>> final tSummary=" + tSummary);
 
         //updateUrls() in every attribute
         EDStatic.updateUrls(sourceAtts, addAtts);
@@ -6944,7 +6983,7 @@ public abstract class EDD {
         addAtts.remove("suffixForTitle");
 
         //clean
-        addAtts.trimAndMakeValidUnicode();       
+        addAtts.trimAndMakeValidUnicode();
         //String2.pressEnterToContinue(
         //    "\n>> keywords=" + addAtts.getString("keywords"));
         //    "\n>> tSummary=" + String2.annotatedString(tSummary) + "\n" +
@@ -6970,9 +7009,9 @@ public abstract class EDD {
         String exts[] = {".7z",
             ".bz",  ".bz2", ".cdf",  ".cdp",  ".dods", "_dods", //_dods exists
             ".grb", ".grd", ".grib", ".gtar", ".gz",   ".gzip",
-            ".jar", ".jnl", ".lha",  ".lzh",  ".lzma", ".lzx", 
+            ".jar", ".jnl", ".lha",  ".lzh",  ".lzma", ".lzx",
             ".mat", ".nc",  ".ncd",  ".ncml", ".new",
-            ".py",  ".pyc", ".rar",  ".tar",  ".war",  
+            ".py",  ".pyc", ".rar",  ".tar",  ".war",
             ".xml", ".zip", ".z",    ".Z"};
         while (true) {
             int which = String2.whichSuffix(exts, tTitle, 0);
@@ -6986,27 +7025,27 @@ public abstract class EDD {
 
 
     /**
-     * This is used by generateDatasetsXml methods to improve the  
+     * This is used by generateDatasetsXml methods to improve the
      * variable's attributes as much as possible based on source information.
      *
      * @param sourceGlobalAtts the source's global attributes (may be null)
      * @param sourceAtts the source's variable attributes
      * @param addAtts some atts that should be in addAtts (may be null if none).
      *   If not null, this is the Attributes that will be modified.
-     * @param tSourceName   
+     * @param tSourceName
      * @param tryToAddStandardName If the var doesn't have standard_name,
      *   try to add it.
      * @param tryToAddColorBarMinMax If the var doesn't have colorBarMin and Max,
      *   try to add them.
-     * @param tryToFindLLAT   This tries to identify longitude, latitude, altitude/depth, 
-     *    and time variables.  It is usually true for grid dataset axis variables, and 
+     * @param tryToFindLLAT   This tries to identify longitude, latitude, altitude/depth,
+     *    and time variables.  It is usually true for grid dataset axis variables, and
      *    true for table dataset all variables
      * @return tAddAdds for the variable
      * @throws Exception if trouble
      */
     public static Attributes makeReadyToUseAddVariableAttributesForDatasetsXml(
         Attributes sourceGlobalAtts, Attributes sourceAtts, Attributes addAtts,
-        String tSourceName, 
+        String tSourceName,
         boolean tryToAddStandardName,
         boolean tryToAddColorBarMinMax, boolean tryToFindLLAT) throws Exception {
 
@@ -7019,7 +7058,7 @@ public abstract class EDD {
             int slashPo1 = tSourceName.indexOf('/');
             if (slashPo1 != slashPo) {
                 tSourceName = tSourceName.substring(slashPo + 1);
-                
+
                 //and it probably has unnecessary prefix:
                 int colonPo = tSourceName.lastIndexOf(':');
                 if (colonPo >= 0 && colonPo < tSourceName.length() - 1) { //not the last char
@@ -7042,8 +7081,8 @@ public abstract class EDD {
             //not getAddOrSourceAtt since want pa
             PrimitiveArray  pa = addAtts.get(sourceNames[i]);
             if (pa == null) pa = sourceAtts.get(sourceNames[i]);
-            if (pa == null || pa.elementClass() != String.class) 
-                continue; 
+            if (pa == null || pa.elementType() != PAType.STRING)
+                continue;
             value = pa.getString(0);
             if (!String2.isSomething2(value)) { //e.g., "none"
                 //String2.pressEnterToContinue(">> set sourceName=" + tSourceName + ": " + sourceNames[i] + "=" + value + " to \"null\"");
@@ -7054,48 +7093,48 @@ public abstract class EDD {
         //fix common att name mistakes, mostly capitalization.
         String gfrom[] = {    //PUT LEAST DESIREABLE TO THE RIGHT
             "ADD_OFFSET",   "AddOffset",    "addOffset",
-            "AXIS",         "Axis", 
+            "AXIS",         "Axis",
             "CALENDAR",     "Calendar",
             "CellMethods",  "cellMethods",
-            "CF_ROLE",      "CF_role",      "CF_Role", 
+            "CF_ROLE",      "CF_role",      "CF_Role",
             "COMMENT",      "Comment",
-            "FILLVALUE",    "FillValue",    "fillValue",  "FILL_VALUE", "fill_value", 
-            "FLAG_MASKS",   "FlagMasks",    "flagMasks",   
+            "FILLVALUE",    "FillValue",    "fillValue",  "FILL_VALUE", "fill_value",
+            "FLAG_MASKS",   "FlagMasks",    "flagMasks",
             "FLAG_MEANINGS","FlagMeanings", "flagMeanings",
-            "FLAG_VALUES",  "FlagValues",   "flagValues", 
-            "GRID_MAPPING", "GridMapping",  "gridMapping", 
+            "FLAG_VALUES",  "FlagValues",   "flagValues",
+            //"GRID_MAPPING", "GridMapping",  "gridMapping", //now grid_mapping and variants are removed below
             "LONGNAME",     "LONG_NAME",    "LongName",   "longName",   "longname", "long_nime",
-            "MISSING_VALUE","MissingValue", "missingValue", 
-            "POSITIVE",     "Positive", 
-            "REFERENCES",   "References",   "REFERENCE",  "Reference", "reference",
-            "SCALE_FACTOR", "ScaleFactor",  "scaleFactor",  
+            "MISSING_VALUE","MissingValue", "missingValue",
+            "POSITIVE",     "Positive",
+            "ref",          "REFERENCES",   "References",   "REFERENCE",  "Reference", "reference",
+            "SCALE_FACTOR", "ScaleFactor",  "scaleFactor",
             "SOURCE",       "Source",
             "STANDARD_NAME","StandardName", "standardName",
-            "UNITS",        "Units",        "UNIT",       "Unit",       "uom", 
-            "VALID_MAX",    "ValidMax",     "validMax",     
+            "UNITS",        "Units",        "UNIT",       "Unit",       "uom",
+            "VALID_MAX",    "ValidMax",     "validMax",
             "VALID_MIN",    "ValidMin",     "validMin",
             "VALID_RANGE",  "ValidRange",   "validRange"};
         String gto[]   = { //if not already specified
             "add_offset",   "add_offset",   "add_offset",
-            "axis",         "axis", 
+            "axis",         "axis",
             "calendar",     "calendar",
-            "cell_methods", "cell_methods", 
+            "cell_methods", "cell_methods",
             "cf_role",      "cf_role",      "cf_role",
             "comment",      "comment",
-            "_FillValue",   "_FillValue",   "_FillValue","_FillValue",  "_FillValue", 
+            "_FillValue",   "_FillValue",   "_FillValue","_FillValue",  "_FillValue",
             "flag_masks",   "flag_masks",   "flag_masks",
-            "flag_meanings","flag_meanings","flag_meanings", 
-            "flag_values",  "flag_values",  "flag_values", 
-            "grid_mapping", "grid_mapping", "grid_mapping",  
-            "long_name",    "long_name",    "long_name",  "long_name",  "long_name", "long_name",  
-            "missing_value","missing_value","missing_value", 
-            "positive",     "positive", 
-            "references",   "references",   "references", "references", "references", 
+            "flag_meanings","flag_meanings","flag_meanings",
+            "flag_values",  "flag_values",  "flag_values",
+            //"grid_mapping", "grid_mapping", "grid_mapping",
+            "long_name",    "long_name",    "long_name",  "long_name",  "long_name", "long_name",
+            "missing_value","missing_value","missing_value",
+            "positive",     "positive",
+            "references",   "references",   "references",   "references", "references", "references",
             "scale_factor", "scale_factor", "scale_factor",
             "source",       "source",
             "standard_name","standard_name","standard_name",
             "units",        "units",        "units",      "units",      "units",
-            "valid_max",    "valid_max",    "valid_max",   
+            "valid_max",    "valid_max",    "valid_max",
             "valid_min",    "valid_min",    "valid_min",
             "valid_range",  "valid_range",  "valid_range"};
         Test.ensureEqual(gfrom.length, gto.length, "length of gfrom vs gto");
@@ -7127,56 +7166,58 @@ public abstract class EDD {
         }
 
         //remove some attributes if they have specific values
-        if ("no".equals(sourceAtts.getString("modulo"))) 
+        if ("no".equals(sourceAtts.getString("modulo")))
             addAtts.add("modulo", "null");
-       
+
         //convert all fgdc_X and fgdc:X metadata to X (if not already set)
         // and fix any bad characters in sourceAtt names.
         //e.g. https://www.ngdc.noaa.gov/thredds/dodsC/ustec/tec/200609030400_tec.nc.das uses '_'
-        //http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/cf-conventions.html#_naming_conventions
+        //https://cfconventions.org/Data/cf-conventions/cf-conventions-1.8/cf-conventions.html#_naming_conventions
         //  says "Variable, dimension and attribute names should begin with a letter
         //  and be composed of letters, digits, and underscores."
-        //Technically, starting with _ is not allowed, but it is widely done: 
+        //Technically, starting with _ is not allowed, but it is widely done:
         //  e.g., _CoordinateAxes, _CoordSysBuilder
         String removePrefixes[] = {"fgdc_", "fgdc:", "HDF5_", "HDF5."}; //e.g., HDF5_chunksize
         String toRemove[] = {  //lowercase here. Removal is case-insensitive.
-            "bounds", 
+            "bounds",
             "_chunksize", "_chunksizes", "chunksize", "chunksizes", //plural is from netcdf-java 4.6.4+
             "_coordinateaxes", "coordinates", "coordintates",//sic //coordinate info often wrong or with sourceNames
-            "data_bins", "data_center", 
+            "data_bins", "data_center",
             "data_maximum", "data_minimum", //they were converted to data_max data_min above
             "dataset", "dataset_index",
-            "easternmost_longitude", 
+            "easternmost_longitude",
             "end", "end_day", "end_millisec", "end_orbit", "end_time", "end_year",
-            "ferret_datatype", 
+            "ferret_datatype",
             "grads_dim",   //these were changed above
-            "grads_mapping", "grads_min", "grads_size", "grads_step", 
-            "gridtype", 
-            "infile_datatype", 
-            "input_files", "input_parameters", "institution", 
-            "l2_flag_names", 
+            "grads_mapping", "grads_min", "grads_size", "grads_step",
+            "grid_mapping", "gridmapping", //now grid_mapping and variants are removed because var they point to is removed
+            "gridtype",
+            "infile_datatype",
+            "input_files", "input_parameters", "institution",
+            "l2_flag_names",
             "latitude_step", "latitude_units", "length", "longitude_step", "longitude_units",
             "maximum", "minimum",  //see above
+            "metadata_retrieved_from",
             "mission_characteristics",
             "northernmost_latitude", "number_of_columns", "number_of_lines",
-            "numberofobservations", 
-            "orig_file_axname", "original_units", 
+            "numberofobservations",
+            "orig_file_axname", "original_units",
             "palette_info_variable",
-            "percentcoverage", 
+            "percentcoverage",
             "period_end_day", "period_end_year", "period_start_day", "period_start_year",
             "pointwidth",
             "processing_control", "processing_time", "processing_version",
-            //"product_name", "product_type", 
-            "resolution", 
+            //"product_name", "product_type",
+            "resolution",
             //Scaling_Equation, Scaling, Slope, and Intercept taken care of below...
-            //"software_name", "software_version", 
+            //"software_name", "software_version",
             "southernmost_latitude",
             "start", "start_day", "start_millisec", "start_orbit", "start_time", "start_year",
             "station_latitude", "station_longitude", "station_name",
-            "suggested_image_scaling_applied", 
+            "suggested_image_scaling_applied",
             //"suggested_image_scaling_maximum", "suggested_image_scaling_minimum", convert to colorbarmax|min?
             "suggested_image_scaling_type",
-            "sw_point_latitude", "sw_point_longitude", 
+            "sw_point_latitude", "sw_point_longitude",
             "westernmost_longitude"};
         for (int i = 0; i < sourceNames.length; i++) {
             String sn = sourceNames[i];
@@ -7197,7 +7238,7 @@ public abstract class EDD {
                     addAtts.set(sn, "null");     //  neutralize bad att name
                     if (reallyVerbose)
                         String2.log("  badSourceAttName=\"" + sn + "\" converted to \"" + safeSN + "\".");
-                    addAtts.setIfNotAlreadySet(safeSN, sourceAtts.get(sn)); 
+                    addAtts.setIfNotAlreadySet(safeSN, sourceAtts.get(sn));
                 }
             }
         }
@@ -7219,7 +7260,7 @@ public abstract class EDD {
         String tLongName     = oLongName;
         //standard_name is the only case-sensitive CF attribute name (see Sec 3.3)
         //All are all lower case.
-        String tStandardName = oStandardName.toLowerCase(); 
+        String tStandardName = oStandardName.toLowerCase();
         String tUnits        = oUnits;
 
         //look for units in other places
@@ -7227,7 +7268,7 @@ public abstract class EDD {
             //rtofs grads
             //sea_water_practical_salinity units = "1" in CF std names 27; I'm sticking with PSU.
             String from[] = {"degc",     "psu",  "m/s",   "m", "Presumed Salinity Units"};
-            String to[]   = {"degree_C", "PSU",  "m s-1", "m", "PSU"}; 
+            String to[]   = {"degree_C", "PSU",  "m s-1", "m", "PSU"};
             for (int i = 0; i < from.length; i++) {
                 if (oLongName.endsWith(" (" + from[i] + ")")) {  //e.g. " (degc)"
                     tUnits = to[i];
@@ -7247,11 +7288,8 @@ public abstract class EDD {
         if (tSourceName.equals("l3m_qual") && tLongName.equals("l3m_qual")) {
             //special case for some podaac datasets
             String gParam = sourceGlobalAtts.getString("Parameter");
-            String gUnits = sourceGlobalAtts.getString("Units");
             if (String2.isSomething2(gParam))
                 tLongName = gParam + " Quality";
-            if (String2.isSomething2(gUnits) && !String2.isSomething2(tUnits))
-                tUnits = gUnits;
         }
 
 
@@ -7267,11 +7305,11 @@ public abstract class EDD {
                 tUnitsLC.equals("alphanumeric")? "" :
                 tUnitsLC.equals("animal")?  "count" :
                 tUnitsLC.equals("c")? "degree_C" :
-                tUnitsLC.equals("cardinal")? "count" : 
+                tUnitsLC.equals("cardinal")? "count" :
                 tUnitsLC.equals("centimeters")? "centimeters" : //case
                 tUnitsLC.equals("cm")? "cm" :  //case
                 tUnitsLC.equals("count")? "count" :  //case
-                tUnitsLC.equals("counts")? "count" : 
+                tUnitsLC.equals("counts")? "count" :
                 tUnitsLC.equals("crabs")?   "count" :
                 tUnitsLC.equals("crabs per square meter")?   "count/m^2" :
                 tUnitsLC.equals("celsius")? "degree_C" :
@@ -7279,7 +7317,7 @@ public abstract class EDD {
                 tUnitsLC.equals("cm/yr")? "cm/yr" :
                 tUnitsLC.equals("day + 24 hour + minutes")? "ddHHmm" : //??
                 tUnitsLC.equals("days")? "days" :
-                tUnitsLC.startsWith("deg-")? "deg_" + tUnits.substring(4) : //some podaac datasets have this                    
+                tUnitsLC.startsWith("deg-")? "deg_" + tUnits.substring(4) : //some podaac datasets have this
                 tUnitsLC.equals("decimal degrees") ||
                 tUnitsLC.equals("decmal degrees") || //decmal
                 tUnitsLC.equals("degrees") ||
@@ -7292,8 +7330,8 @@ public abstract class EDD {
                 tUnitsLC.equals("decimal degrees north")? "degrees_north" :
                 tUnitsLC.equals("decimal degrees east")? "degrees_east" :
                 tUnitsLC.equals("decimal degrees west")? "degrees_east" :  //???!!!
-                tUnitsLC.equals("decimal minutes")? "minutes" : 
-                tUnitsLC.equals("decimal number")? "1" : 
+                tUnitsLC.equals("decimal minutes")? "minutes" :
+                tUnitsLC.equals("decimal number")? "1" :
                 tUnitsLC.equals("degc")? "degree_C" :
                 tUnitsLC.equals("degree c")? "degree_C" :
                 tUnitsLC.equals("degree celcius")? "degree_C" :  //c
@@ -7322,22 +7360,22 @@ public abstract class EDD {
                 tUnitsLC.equals("hour:minute")? "HH:mm" :
                 tUnitsLC.equals("hours")? "hours" :
                 tUnitsLC.equals("inches")? "inches" :
-                tUnitsLC.equals("integer")? "count" : 
+                tUnitsLC.equals("integer")? "count" :
                 tUnitsLC.equals("julian date")? "day_of_year" :  //???
-                tUnitsLC.equals("kg")? "kg" : 
+                tUnitsLC.equals("kg")? "kg" :
                 tUnitsLC.equals("khz")? "kHz" :
-                tUnitsLC.equals("kilograms")? "kilograms" : 
-                tUnitsLC.equals("kilometer")? "kilometer" : 
-                tUnitsLC.equals("kilometers")? "kilometers" : 
-                tUnitsLC.equals("km")? "km" : 
-                tUnitsLC.equals("knots")? "knots" : 
-                tUnitsLC.equals("latitude")? "degrees_north" : 
-                tUnitsLC.equals("lbs")? "pounds" : 
-                tUnitsLC.equals("longitude")? "degrees_east" : 
+                tUnitsLC.equals("kilograms")? "kilograms" :
+                tUnitsLC.equals("kilometer")? "kilometer" :
+                tUnitsLC.equals("kilometers")? "kilometers" :
+                tUnitsLC.equals("km")? "km" :
+                tUnitsLC.equals("knots")? "knots" :
+                tUnitsLC.equals("latitude")? "degrees_north" :
+                tUnitsLC.equals("lbs")? "pounds" :
+                tUnitsLC.equals("longitude")? "degrees_east" :
                 //tUnits.equals("mEq/L")? "" :  ???
                 tUnitsLC.equals("meter")? "meter" :  //case
                 tUnitsLC.equals("meters")? "meters" :  //case
-                tUnitsLC.equals("metric tons")? "metric_tons" : 
+                tUnitsLC.equals("metric tons")? "metric_tons" :
                 tUnitsLC.equals("mg/lit")? "mg/liter" :
                 tUnitsLC.equals("mg o2/min")? "mg O2/min" :   //???
                 //tUnits.equals("mi")? "" :  mL???
@@ -7351,26 +7389,26 @@ public abstract class EDD {
                 tUnitsLC.equals("milliliter per liter")? "milliliter per liter" : //case
                 tUnitsLC.equals("millimeter")? "millimeter" : //case
                 tUnitsLC.equals("millimeters")? "millimeters" :  //case
-                tUnitsLC.equals("millimeters (mm)")? "millimeters" :  
+                tUnitsLC.equals("millimeters (mm)")? "millimeters" :
                 tUnitsLC.equals("millisiemens per centimeter")? "milliSiemens per centimeter" : //case
                 tUnitsLC.equals("minutes")? "minutes" :  //case
-                tUnitsLC.equals("moles per killogram")? "moles per kilogram" :  
+                tUnitsLC.equals("moles per killogram")? "moles per kilogram" :
                 tUnitsLC.equals("month number")? "month" :  //???
-                tUnitsLC.equals("month/day/year")? "M/d/yyyy" :  
-                tUnitsLC.equals("na")? "" :  
-                tUnitsLC.equals("n/a")? "" :  
-                tUnitsLC.equals("none")? "" :  
-                tUnitsLC.equals("number")? "count" : 
+                tUnitsLC.equals("month/day/year")? "M/d/yyyy" :
+                tUnitsLC.equals("na")? "" :
+                tUnitsLC.equals("n/a")? "" :
+                tUnitsLC.equals("none")? "" :
+                tUnitsLC.equals("number")? "count" :
                 //tUnitsLC.equals("parts per thousand")? "" :   //???
-                tUnitsLC.equals("parts per thousand (ppt)")? "parts per thousand" : 
-                tUnitsLC.equals("percentage")? "percent" :  
+                tUnitsLC.equals("parts per thousand (ppt)")? "parts per thousand" :
+                tUnitsLC.equals("percentage")? "percent" :
                 tUnitsLC.equals("ph (free scale)")? "pH (free scale)" :  //???
-                tUnitsLC.equals("ph (unit)")? "pH" :  
+                tUnitsLC.equals("ph (unit)")? "pH" :
                 tUnitsLC.equals("ph units, free scale)")? "pH (free scale)" :  //???
                 //tUnitsLC.equals("ppt")? "" :  //???
-                tUnitsLC.equals("practical salinity units")? "PSU" :  
-                tUnitsLC.equals("practical salinity units (concentration)")? "PSU" :  
-                tUnitsLC.equals("psu")? "PSU" :  
+                tUnitsLC.equals("practical salinity units")? "PSU" :
+                tUnitsLC.equals("practical salinity units (concentration)")? "PSU" :
+                tUnitsLC.equals("psu")? "PSU" :
                 tUnitsLC.equals("probability")? "probability" :  //???
                 tUnitsLC.equals("ratio")? "1" :
                 tUnitsLC.equals("ratio numeric")? "1" :
@@ -7386,37 +7424,38 @@ public abstract class EDD {
                 tUnitsLC.equals("time")? "" :  //??  HHmm?
                 tUnitsLC.equals("ug/l as n")? "µg/L as N" :
                 tUnitsLC.equals("umole")? "µmole" :
-                tUnits.equals(  "um")? "µm" :  
+                tUnits.equals(  "um")? "µm" :
                 tUnits.equals(  "uM")? "µmole/liter" :  //not meters
                 tUnitsLC.equals("umol/kg")? "µmole/kg" :
                 tUnitsLC.equals("unitless")? "" :
                 tUnitsLC.equals("volts")? "volts" :
                 tUnitsLC.equals("whole number")? "count" :
                 tUnitsLC.equals("year")? "year" :  //case
-                tUnitsLC.equals("year (yyyy)")? "yyyy" : 
+                tUnitsLC.equals("year (yyyy)")? "yyyy" :
                 tUnitsLC.equals("years")? "years" :  //case
-                tUnitsLC.equals("years old")? "years" :  
-                tUnitsLC.equals("yr")? "years" :  
-                tUnitsLC.equals("yrs")? "years" :  
-                tUnitsLC.equals("yyyy-mm-ddthh:mm:ss.ssz")? 
+                tUnitsLC.equals("years old")? "years" :
+                tUnitsLC.equals("yr")? "years" :
+                tUnitsLC.equals("yrs")? "years" :
+                tUnitsLC.equals("yyyy-mm-ddthh:mm:ss.ssz")?
                                 "yyyy-MM-dd'T'HH:mm:ss.SSZ" :
                 tUnitsLC.equals("0=no comment, 1=positive, 2=negative, 3=neutural")? //neutural
                                 "0=no comment, 1=positive, 2=negative, 3=neutral" :
-                tUnitsLC.equals("0=unknown/unknown")? "" : 
-                tUnitsLC.equals("1/minute")? "count/minute" : 
+                tUnitsLC.equals("0=unknown/unknown")? "" :
+                tUnitsLC.equals("1/minute")? "count/minute" :
                 tUnitsLC.equals("4")? "" :
                 tUnits;
 
             if (tUnits.indexOf(" since -4713") > 0)
-                tUnits = String2.replaceAll(tUnits, " since -4713", " since -4712"); //seaDataNet 4713 BC -> ERDDAP astronomical year -4712 
+                tUnits = String2.replaceAll(tUnits, " since -4713", " since -4712"); //seaDataNet 4713 BC -> ERDDAP astronomical year -4712
 
-            if (tUnitsLC.indexOf("%y") >= 0) //e.g., a date format
+            if (tUnitsLC.indexOf("%y") >= 0)
+                //convert a pseudo-date format into Java format (more below)
                 tUnits = String2.replaceAll(tUnits, "%", "");
             else if (tUnits.indexOf("%") >= 0)
                 tUnits = String2.replaceAll(tUnits, "%", "percent");
 
-            if (tUnitsLC.indexOf("yy") >= 0)  //after %y %yy above
-                tUnits = Calendar2.convertToJavaDateTimeFormat(tUnits);
+            //if this might be a date/time units string, try to clean it up
+            tUnits = Calendar2.convertToJavaDateTimeFormat(tUnits);
 
             if (Calendar2.isNumericTimeUnits(tUnits)) {
                 try {
@@ -7432,7 +7471,7 @@ public abstract class EDD {
         String tUnitsLC = tUnits.toLowerCase();
 
         //time_precision
-        String tTimePre = getAddOrSourceAtt(addAtts, sourceAtts, "time_precision",  null);        
+        String tTimePre = getAddOrSourceAtt(addAtts, sourceAtts, "time_precision",  null);
         if (Calendar2.isStringTimeUnits(tUnitsLC) &&
             tUnits.indexOf("M") >= 0 &&
             !String2.isSomething(tTimePre)) {
@@ -7451,7 +7490,7 @@ public abstract class EDD {
                 tTimePre = "1970-01-01T00:00:00.0Z";
             else if (tUnits.indexOf(".SSS") < 0)
                 tTimePre = "1970-01-01T00:00:00.00Z";
-            else 
+            else
                 tTimePre = "1970-01-01T00:00:00.000Z";
             //String2.log(">> tUnits=" + tUnits + " timePre=" + tTimePre);
             addAtts.add("time_precision", tTimePre);
@@ -7459,7 +7498,7 @@ public abstract class EDD {
 
         //tLongName cleanup
         if (String2.isSomething(tLongName))
-            tLongName = String2.replaceAll(tLongName, 
+            tLongName = String2.replaceAll(tLongName,
                 "moles_concentration", "mole_concentration");
         if (tLongName.length() > 0 && tLongName.equals(tLongName.toLowerCase()) &&
             tLongName.indexOf(' ') == -1 && tLongName.indexOf('_') > 0) {
@@ -7496,13 +7535,13 @@ public abstract class EDD {
                 pa.getDouble(0) != 0)
                 addAtts.add(   "add_offset", pa);
 
-            if (sourceAtts.get("Intercept")        != null) 
+            if (sourceAtts.get("Intercept")        != null)
                    addAtts.add("Intercept",          "null");
-            if (sourceAtts.get("Scaling")          != null) 
+            if (sourceAtts.get("Scaling")          != null)
                    addAtts.add("Scaling",            "null");
-            if (sourceAtts.get("Scaling_Equation") != null) 
+            if (sourceAtts.get("Scaling_Equation") != null)
                    addAtts.add("Scaling_Equation",   "null");
-            if (sourceAtts.get("Slope")            != null) 
+            if (sourceAtts.get("Slope")            != null)
                    addAtts.add("Slope",              "null");
         }
 
@@ -7512,7 +7551,7 @@ public abstract class EDD {
             scaleFactorPA = sourceAtts.get(        "scale_factor");
         PrimitiveArray addOffsetPA = addAtts.get(  "add_offset");
         if (addOffsetPA == null)
-            addOffsetPA = sourceAtts.get(          "add_offset");        
+            addOffsetPA = sourceAtts.get(          "add_offset");
 
         double tScaleFactor = scaleFactorPA == null? 1 : scaleFactorPA.getDouble(0);
         double tAddOffset   = addOffsetPA   == null? 0 : addOffsetPA.getDouble(0);
@@ -7533,7 +7572,7 @@ public abstract class EDD {
             scaleFactorPA = null;
             addOffsetPA = null;
 
-        } else { 
+        } else {
             //scale_factor or add_offset are strings?! convert to float
             //e.g., see fromThreddsCatalog test #56
             if (scaleFactorPA instanceof StringArray) {
@@ -7546,29 +7585,34 @@ public abstract class EDD {
             }
         }
 
+        //isUnsigned
+        //String           uss =    addAtts.getString("_Unsigned");
+        //if (uss == null) uss = sourceAtts.getString("_Unsigned");
+        //boolean isUnsigned = "true".equals(uss);
+
         //unpack actual_range if packed (using scaleFactorPA and addOffsetPA)
-        PrimitiveArray    arPa = addAtts.get(   "actual_range");        
-        if (arPa == null) arPa = sourceAtts.get("actual_range");        
-        if (arPa != null && arPa.elementClass() != String.class) {
-            Class arPaClass = arPa.elementClass();
+        PrimitiveArray    arPa = addAtts.get(   "actual_range");
+        if (arPa == null) arPa = sourceAtts.get("actual_range");
+        if (arPa != null && arPa.elementType() != PAType.STRING) {
+            PAType arPaPAType = arPa.elementType();
             PrimitiveArray saPa = scaleFactorPA != null? scaleFactorPA : addOffsetPA;
             if (saPa != null) {
-                Class saPaClass = saPa.elementClass();
-                if (arPaClass != saPaClass && saPaClass != String.class) {
-                    //their classes are numeric but different
-                    arPa = PrimitiveArray.factory(saPaClass, arPa);
+                PAType saPaPAType = saPa.elementType();
+                if (arPaPAType != saPaPAType && saPaPAType != PAType.STRING) {
+                    //their PATypes are numeric but different
+                    arPa = PrimitiveArray.factory(saPaPAType, arPa);
                     if (arPa.isIntegerType() && saPa.isFloatingPointType()) //covers most cases
                         arPa.scaleAddOffset(tScaleFactor, tAddOffset);
                     addAtts.set("actual_range", arPa);
                 }
             }
-        }        
+        }
 
         //git rid of redundant original_name, some podaac datasets have this
-        if (String2.isSomething2(oStandardName) && 
+        if (String2.isSomething2(oStandardName) &&
             oStandardName.equals(sourceAtts.getString("original_name")))
             addAtts.add("original_name", "null");
-        
+
         //Fill instead of _FillValue
         PrimitiveArray Fill = sourceAtts.get("Fill");
         if (Fill != null && !(Fill instanceof StringArray)) {
@@ -7577,13 +7621,13 @@ public abstract class EDD {
                 sourceAtts.get("missing_value") == null) {
                 //use the value
                 addAtts.add("_FillValue", Fill);
-            } 
+            }
             //get rid of "Fill"
             addAtts.add("Fill", "null");
         }
 
         //isMeters
-        String testUnits = tUnits.toLowerCase(); 
+        String testUnits = tUnits.toLowerCase();
         testUnits = String2.replaceAll(testUnits, ' ', '|');
         testUnits = String2.replaceAll(testUnits, '_', '|');
         testUnits = String2.replaceAll(testUnits, '-', '|');
@@ -7593,7 +7637,7 @@ public abstract class EDD {
         boolean isMeters = String2.indexOf(EDV.METERS_VARIANTS, tUnits) >= 0; // case sensitive
 
         //convert feet to meters
-        boolean isFeet = 
+        boolean isFeet =
             testUnits.equals("foot")               ||
             testUnits.equals("feet")               ||
             testUnits.equals("ft")                 ||
@@ -7604,7 +7648,7 @@ public abstract class EDD {
             if (scaleFactorPA == null)
                  scaleFactorPA = new FloatArray(new float[]{(float)tScaleFactor}); //feet usually int, so convert to float
             else scaleFactorPA.setDouble(0, tScaleFactor);
-            addAtts.set("scale_factor", scaleFactorPA); 
+            addAtts.set("scale_factor", scaleFactorPA);
             tUnits = "m";
             tUnitsLC = "m";
             testUnits = "m";
@@ -7612,16 +7656,16 @@ public abstract class EDD {
             isFeet = false;
         }
 
-        //do LLAT vars already exist? 
+        //do LLAT vars already exist?
         String tDestName = suggestDestinationName(tSourceName, sourceAtts, addAtts,
             tUnits, oPositive, Math2.doubleToFloatNaN(tScaleFactor), tryToFindLLAT);
         if (tDestName.equals(EDV.LON_NAME)) {
-            tLongName = String2.isSomething2(tLongName) && 
+            tLongName = String2.isSomething2(tLongName) &&
                !tLongName.toLowerCase().equals(EDV.LON_NAME)? tLongName : "Longitude";
             tStandardName = EDV.LON_NAME;
             tUnits = EDV.LON_UNITS;
         } else if (tDestName.equals(EDV.LAT_NAME)) {
-            tLongName = String2.isSomething2(tLongName) && 
+            tLongName = String2.isSomething2(tLongName) &&
                !tLongName.toLowerCase().equals(EDV.LAT_NAME)? tLongName : "Latitude";
             tStandardName = EDV.LAT_NAME;
             tUnits = EDV.LAT_UNITS;
@@ -7636,8 +7680,8 @@ public abstract class EDD {
             tStandardName = EDV.TIME_NAME;
         }
 
-        //if Sea Data Net P01 exists, generate P02 and standard_name (if none already)
-        //sdn_parameter_urn = "SDN:P01::PSLTZZ01"
+        //if Sea Data Net SeaDataNet P01 exists, generate P02 and standard_name (if none already)
+        //sdn_parameter_urn = "SDN:P01::PSLTZZ01"  (BODC-related)
         String p01 = addAtts.getString("sdn_parameter_urn");
         String p02 = addAtts.getString("sdn_P02_urn");
         if (p01 == null)
@@ -7648,7 +7692,7 @@ public abstract class EDD {
             p01 = p01.substring(9);
             p02 = sparqlP01toP02(p01);
             if (p02 != null) {
-                addAtts.set("sdn_P02_urn", "SDN:P02::" + p02);         
+                addAtts.set("sdn_P02_urn", "SDN:P02::" + p02);
                 //FUTURE: set sdn_P02_label
             }
 
@@ -7659,34 +7703,34 @@ public abstract class EDD {
         if (tUnitsLC.equals("yyyy.(fractional part of year)")) {
             addAtts.add("originalUnits", "YYYY.(fractional part of year)");
             tUnits = "1";
-        } else if (tUnitsLC.equals("celsius/degree")) 
+        } else if (tUnitsLC.equals("celsius/degree"))
             tUnits = "degree_C";
-        else if (tUnitsLC.equals("kelvins")) 
+        else if (tUnitsLC.equals("kelvins"))
             tUnits = "degree_K";
-        else if (tUnitsLC.equals("°k")) 
+        else if (tUnitsLC.equals("°k"))
             tUnits = "degree_K";
-        else if (tUnits.equals("u M") || tUnits.equals("uM")) 
+        else if (tUnits.equals("u M") || tUnits.equals("uM"))
             tUnits = "umoles L-1";
         else if (tUnits.equals("degree C") ||
-                 tUnits.equals("celsius degree")) 
+                 tUnits.equals("celsius degree"))
             tUnits = "degree_C";
         else if (tUnits.equals("decibar=10000 pascals"))
             tUnits = "decibar";
 
         int umpo = tUnits.indexOf("(uM)");
-        if (umpo >= 0) 
+        if (umpo >= 0)
             tUnits = tUnits.substring(0, umpo) + "(umoles L-1)" + tUnits.substring(umpo + 4);
-        if (tUnitsLC.startsWith("degrees celsius")) 
+        if (tUnitsLC.startsWith("degrees celsius"))
             tUnits = "degree_C" + tUnits.substring(15);
 
         //moles (more distinctive than looking for g for grams)
-        boolean moleUnits = tUnits.indexOf("mol") >= 0 || 
+        boolean moleUnits = tUnits.indexOf("mol") >= 0 ||
             //M is used for Molar (moles/liter).  UDUNITS doesn't define it, but some datasets use it
             //M is the metric abbreviation prefix for Mega
-            tUnits.indexOf("M") >= 0;   
+            tUnits.indexOf("M") >= 0;
 
         //gUnits is less useful, but its absence is useful     g may be from many terms
-        boolean gUnits = tUnits.indexOf("g") >= 0; 
+        boolean gUnits = tUnits.indexOf("g") >= 0;
 
         tUnitsLC = tUnits.toLowerCase();
         String ttLongName = tLongName.toLowerCase();
@@ -7696,25 +7740,25 @@ public abstract class EDD {
         if (String2.isSomething2(tStandardName)) {
 
             //fix some common invalid standard_names in WOA 2005 and elsewhere
-            if (     tStandardName.equals("chlorophyll") ||   //avoids mol vs. g 
-                     tStandardName.equals("mass_concentration_chlorophyll_concentration_in_sea_water")) 
+            if (     tStandardName.equals("chlorophyll") ||   //avoids mol vs. g
+                     tStandardName.equals("mass_concentration_chlorophyll_concentration_in_sea_water"))
                      tStandardName      = "concentration_of_chlorophyll_in_sea_water";
             else if (tStandardName.equals("nitrate"))       //no g option
                      tStandardName      = "mole_concentration_of_nitrate_in_sea_water";
             else if (tStandardName.equals("nitrite"))       //no g option
                      tStandardName      = "mole_concentration_of_nitrite_in_sea_water";
-            else if (tStandardName.equals("dissolved_oxygen"))      
+            else if (tStandardName.equals("dissolved_oxygen"))
                      tStandardName      = moleUnits?
                                           "mole_concentration_of_dissolved_molecular_oxygen_in_sea_water" :
                                           "mass_concentration_of_oxygen_in_sea_water";
             else if (tStandardName.equals("apparent_oxygen_saturation") ||
-                     tStandardName.equals("percentage_oxygen_saturation"))      
+                     tStandardName.equals("percentage_oxygen_saturation"))
                      tStandardName      = "fractional_saturation_of_oxygen_in_sea_water";
-            else if (tStandardName.equals("phosphate"))      
+            else if (tStandardName.equals("phosphate"))
                      tStandardName      = moleUnits?
                                           "mole_concentration_of_phosphate_in_sea_water" :
                                           "mass_concentration_of_phosphate_in_sea_water";
-            else if (tStandardName.equals("salinity"))       
+            else if (tStandardName.equals("salinity"))
                  //many of these from nodc are wrong. they are statistical measures
                      tStandardName      = (ttLongName.indexOf("statistic") >= 0 ||
                                            ttLongName.indexOf("the number of") >= 0)? "" :
@@ -7722,18 +7766,18 @@ public abstract class EDD {
             else if (tStandardName.equals("silicate"))
                      tStandardName      = moleUnits?
                                           "mole_concentration_of_silicate_in_sea_water" :
-                                          "mass_concentration_of_silicate_in_sea_water";    
+                                          "mass_concentration_of_silicate_in_sea_water";
             else if (tStandardName.equals("temperature"))  //dealt with specially below
                      tStandardName      = "";  //perhaps sea_water_temperature, perhaps air or land
             else if (tStandardName.equals("mask1") ||
                      tStandardName.equals("mask2") ||
                      tStandardName.equals("not defined") ||
                      tStandardName.equals("num") ||
-                     tStandardName.equals("qual"))  
-                     tStandardName      = "";  
+                     tStandardName.equals("qual"))
+                     tStandardName      = "";
 
             //and other common incorrect names
-            else if (tStandardName.equals("best_sea_surface_temperature")) 
+            else if (tStandardName.equals("best_sea_surface_temperature"))
                      tStandardName      = "sea_surface_temperature";
             else if (tStandardName.equals("eastward_sea_water_velocit")) //missing y
                      tStandardName      = "eastward_sea_water_velocity";
@@ -7743,22 +7787,22 @@ public abstract class EDD {
                      tStandardName      = "eastward_sea_water_velocity";
             else if (tStandardName.equals("grid_northward_sea_water_velocity"))
                      tStandardName      = "northward_sea_water_velocity";
-            else if (tStandardName.equals("ice_thickness"))       
+            else if (tStandardName.equals("ice_thickness"))
                      tStandardName      = "sea_ice_thickness";
             else if (tStandardName.equals("ice_u_veloctiy") || //sic
                      tStandardName.equals("grid_eastward_sea_ice_velocity"))
                      tStandardName      = "sea_ice_x_velocity";
-            else if (tStandardName.equals("ice_v_veloctiy") || //sic       
+            else if (tStandardName.equals("ice_v_veloctiy") || //sic
                      tStandardName.equals("grid_northward_sea_ice_velocity"))
                      tStandardName      = "sea_ice_y_velocity";
             else if (tStandardName.equals("net_surface_heat_flux") ||
-                     tStandardName.equals("surface_heat_flux"))       
+                     tStandardName.equals("surface_heat_flux"))
                      tStandardName      = "surface_downward_heat_flux_in_air";
-            else if (tStandardName.equals("wave_direction_to"))       
+            else if (tStandardName.equals("wave_direction_to"))
                      tStandardName      = "sea_surface_wave_to_direction";
-            else if (tStandardName.equals("wave_height"))       
+            else if (tStandardName.equals("wave_height"))
                      tStandardName      = "sea_surface_wave_significant_height";
-            else if (tStandardName.equals("wave_period"))       
+            else if (tStandardName.equals("wave_period"))
                      tStandardName      = "sea_surface_swell_wave_period";
         }
         //String2.log("tStandard_name=" + tStandardName);
@@ -7768,14 +7812,14 @@ public abstract class EDD {
         int asl = ttLongName.indexOf(" at sigma level ");
         if (asl > 0)
             ttLongName = ttLongName.substring(0, asl);
-        String lc = "|" + lcSourceName + "|" + ttLongName + "|"; 
-        lc = String2.replaceAll(lc, ' ', '|'); 
-        lc = String2.replaceAll(lc, '_', '|'); 
-        lc = String2.replaceAll(lc, '-', '|'); 
-        lc = String2.replaceAll(lc, '=', '|'); 
-        lc = String2.replaceAll(lc, ',', '|'); 
-        lc = String2.replaceAll(lc, '/', '|'); 
-        String lcu = lc + 
+        String lc = "|" + lcSourceName + "|" + ttLongName + "|";
+        lc = String2.replaceAll(lc, ' ', '|');
+        lc = String2.replaceAll(lc, '_', '|');
+        lc = String2.replaceAll(lc, '-', '|');
+        lc = String2.replaceAll(lc, '=', '|');
+        lc = String2.replaceAll(lc, ',', '|');
+        lc = String2.replaceAll(lc, '/', '|');
+        String lcu = lc +
             tStandardName.toLowerCase() + "|" +
             tUnitsLC                    + "|";
         lcu = String2.replaceAll(lcu, ' ', '|');
@@ -7784,12 +7828,12 @@ public abstract class EDD {
         lcu = String2.replaceAll(lcu, '=', '|');
         lcu = String2.replaceAll(lcu, ',', '|');
         lcu = String2.replaceAll(lcu, '/', '|');
-        if (reallyVerbose && 
+        if (reallyVerbose &&
             "|longitude|latitude|altitude|depth|time|".indexOf("|" + tStandardName + "|") < 0)
             String2.log("  sourceName=" + tSourceName + " lcu=" + lcu);
 
         //isDegreesC
-        boolean isDegreesC = 
+        boolean isDegreesC =
             testUnits.equals("°c")                  ||
             testUnits.equals("celsius")             ||
             testUnits.equals("degree|centigrade")   ||
@@ -7808,7 +7852,7 @@ public abstract class EDD {
             testUnits.endsWith("(degc");               //special for UAF
 
         //isDegreesF
-        boolean isDegreesF = 
+        boolean isDegreesF =
             testUnits.equals("°f")                  ||
             testUnits.equals("fahrenheit")          ||
             testUnits.equals("degree|fahrenheit")   ||
@@ -7823,7 +7867,7 @@ public abstract class EDD {
             testUnits.equals("[degf]"); //ucum
 
         //isDegreesK
-        boolean isDegreesK = 
+        boolean isDegreesK =
             testUnits.equals("kelvin")              ||
             testUnits.equals("degree|kelvin")       ||
             testUnits.equals("degrees|kelvin")      ||
@@ -7847,13 +7891,13 @@ public abstract class EDD {
                 if ("|g/g|kg/kg|g kg-1|g/kg|".indexOf("|" + tUnits + "|") >= 0) {
                     tStandardName = "sea_water_absolute_salinity";  //canonical is g/kg
                 } else {
-                    tStandardName = "sea_water_practical_salinity"; 
+                    tStandardName = "sea_water_practical_salinity";
                     //Possibly changing units is very aggressive. I know.
                     //1 is CF canonical, but datasets have 1e-3, 1, psu, ...
                     //It is better to be aggressive and defy CF than have misleading/
                     //  bizarre units based on previous versions of CF standard names.
                     if (tUnitsLC.indexOf("pss") < 0)
-                        tUnits = "PSU"; 
+                        tUnits = "PSU";
                 }
             } else if (tStandardName.equals("i-directed_wind_stress")) {
                 tStandardName = "surface_downward_eastward_stress";
@@ -7861,7 +7905,7 @@ public abstract class EDD {
                 tStandardName = "surface_downward_northward_stress";
             }
 
-            tStandardName = String2.replaceAll(tStandardName, 
+            tStandardName = String2.replaceAll(tStandardName,
                 "moles_concentration", "mole_concentration");
 
         } else {
@@ -7886,11 +7930,11 @@ public abstract class EDD {
                "surface_carbon_dioxide_mole_flux".equals(sourceAtts.getString("comment")))
                 tStandardName = sourceAtts.getString("comment");
 
-            if (String2.isSomething2(tStandardName)) 
+            if (String2.isSomething2(tStandardName))
                 //standard_name is the only case-sensitive CF attribute name (see Sec 3.3)
                 //All are all lower case.
-                tStandardName = tStandardName.toLowerCase(); 
-            else 
+                tStandardName = tStandardName.toLowerCase();
+            else
                 tStandardName = "";  //do after checking sourceAtts
             //"|" allows search for whole word
 
@@ -7898,7 +7942,7 @@ public abstract class EDD {
             String tHistory = sourceAtts.getString("history"); //yes, for each variable
             boolean coads = String2.isSomething2(tHistory) && tHistory.indexOf("coads") >= 0;
 
-            //from lcSourceName or lcLongName?  
+            //from lcSourceName or lcLongName?
             //  (some abbreviations are NDBC names from NdbcMetStation lists)
             //  (some abbreviations are from ICOADS)
             //!!!??? these are CF standard names, but not all datasets will be using CF standard names
@@ -7909,27 +7953,27 @@ public abstract class EDD {
                 tUnits.indexOf("Number of observations") >= 0 ||
                 tUnits.indexOf("Radius influence grid points") >= 0 ||
                 tUnits.indexOf("Standard deviation of data") >= 0 ||
-                tUnits.indexOf("Standard error of the mean") >= 0) {  
-                //special case: don't assign stdName for WOA 2001 datasets 
-                //with crucial info in units 
+                tUnits.indexOf("Standard error of the mean") >= 0) {
+                //special case: don't assign stdName for WOA 2001 datasets
+                //with crucial info in units
 
             } else if (!tryToAddStandardName ||
                        String2.isSomething2(tStandardName)) {
 
             //*** All 'else' below try to add a new standard_name
             //catch sigma-theta before catch sigma
-            } else if (lc.indexOf("sigma") >= 0 && 
-                     lc.indexOf("theta") >= 0)      tStandardName = "sea_water_sigma_theta"; 
+            } else if (lc.indexOf("sigma") >= 0 &&
+                     lc.indexOf("theta") >= 0)      tStandardName = "sea_water_sigma_theta";
 
             //see similar CATCH STATISTICS below
             else if (
                      (lcu.indexOf("|n|") >= 0 && lcu.indexOf("degrees|n|") < 0) ||
-                      (lcu.indexOf("count") >= 0 && lcu.indexOf("county") < 0) || 
-                     lcu.indexOf("stddev")       >= 0 || 
-                     lcu.indexOf("|sd|")         >= 0 || 
+                      (lcu.indexOf("count") >= 0 && lcu.indexOf("county") < 0) ||
+                     lcu.indexOf("stddev")       >= 0 ||
+                     lcu.indexOf("|sd|")         >= 0 ||
                      lcu.indexOf("|s.d.|")       >= 0 ||
-                     lcu.indexOf("|sses|")       >= 0 || 
-                     lcu.indexOf("|bias|")       >= 0 || 
+                     lcu.indexOf("|sses|")       >= 0 ||
+                     lcu.indexOf("|bias|")       >= 0 ||
                      lcu.indexOf("sigma")        >= 0 ||
                      lcu.indexOf("deviation")    >= 0 ||
                      lcu.indexOf("variance")     >= 0 ||
@@ -7943,13 +7987,13 @@ public abstract class EDD {
                      lcu.indexOf("rms") >= 0) {}
 
             //see similar CATCH QUALITY above and below        catch before others
-            else if (lcu.indexOf("qc")           >= 0 || 
+            else if (lcu.indexOf("qc")           >= 0 ||
                      (lcu.indexOf("qa") >= 0 && lcu.indexOf("qaa") < 0 &&
                         String2.indexOf(new String[]{"QAcurl", "QAdivw", "QAemod", "QAtaux",
                             "QAtauy", "QAtmod", "QAuekm", "QAumod", "QAux10", "QAuy10",
-                            "QAvekm", "QAwekm"}, tSourceName) < 0) || 
-                     (lcu.indexOf("quality") >= 0 && lcu.indexOf("science|quality") < 0) || 
-                     lcu.indexOf("flag")         >= 0) {} 
+                            "QAvekm", "QAwekm"}, tSourceName) < 0) ||
+                     (lcu.indexOf("quality") >= 0 && lcu.indexOf("science|quality") < 0) ||
+                     lcu.indexOf("flag")         >= 0) {}
 
             //coads special cases
             else if ((coads && lc.indexOf("|sflx|") >= 0) ||
@@ -7965,20 +8009,20 @@ public abstract class EDD {
                       lc.indexOf("|flux|")     >= 0))
                                                     tStandardName = "surface_downward_latent_heat_flux";
 
-            //oceanographic and meteorological                     
-            else if (((lc.indexOf("|air") >= 0 && 
+            //oceanographic and meteorological
+            else if (((lc.indexOf("|air") >= 0 &&
                        lc.indexOf("|temp") >= 0) ||
                       lc.indexOf("|atmp") >= 0) &&
                      lc.indexOf("diff") < 0 &&
                      hasTemperatureUnits)           tStandardName = lc.indexOf("anom") >= 0? //anomaly
                                                                      "air_temperature_anomaly" :
                                                                      lc.indexOf("rate") >= 0? "" :
-                                                                     lc.indexOf("potential") >= 0? 
+                                                                     lc.indexOf("potential") >= 0?
                                                                      "air_potential_temperature" :
-                                                                     "air_temperature"; 
-            else if (((lc.indexOf("|air")  >= 0 || lc.indexOf("|atmo") >= 0 || 
+                                                                     "air_temperature";
+            else if (((lc.indexOf("|air")  >= 0 || lc.indexOf("|atmo") >= 0 ||
                        lc.indexOf("cloud") >= 0 || lc.indexOf("surface") >= 0 ||
-                       lc.indexOf("tropopause") >= 0) && 
+                       lc.indexOf("tropopause") >= 0) &&
                       lc.indexOf("|press") >= 0) ||
                      //lc.indexOf("|bar|") >= 0 ||
                      lc.indexOf("|slp|") >= 0 ||
@@ -7989,10 +8033,10 @@ public abstract class EDD {
                                                                     (lc.indexOf("|slp|") >= 0 ||
                                                                      lc.indexOf("surface") >= 0)?
                                                                     "surface_air_pressure" :
-                                                                    "air_pressure"; 
+                                                                    "air_pressure";
             else if (lc.indexOf("albedo") >= 0 &&
-                     (lcu.equals("percent") || lcu.equals("%") || lcu.equals("1")))  
-                                                    tStandardName = 
+                     (lcu.equals("percent") || lcu.equals("%") || lcu.equals("1")))
+                                                    tStandardName =
                                                         lc.indexOf("cloud")     >= 0? "cloud_albedo" :
                                                         lc.indexOf("planetary") >= 0? "planetary_albedo" :
                                                         lc.indexOf("ice")       >= 0? "sea_ice_albedo" :
@@ -8004,45 +8048,45 @@ public abstract class EDD {
                       lcu.indexOf("|bottom|depth|") >= 0) &&
                      isMeters)
                                                     tStandardName = "sea_floor_depth";
-            else if ((lc.indexOf("|land") >= 0 && lc.indexOf("mask|") >= 0)) 
+            else if ((lc.indexOf("|land") >= 0 && lc.indexOf("mask|") >= 0))
                                                     tStandardName = "land_binary_mask";
             else if (lcu.indexOf("|cloud|area|fraction|") >= 0 ||
                      (lc.indexOf("cloud") >= 0 && lc.indexOf("fraction") >= 0) ||
                      (lc.indexOf("cloud") >= 0 && lc.indexOf("cover") >= 0) ||
-                     lc.indexOf("|cldc|") >= 0)     tStandardName = "cloud_area_fraction"; 
-            else if (lcSourceName.equals("depth"))   tStandardName = "depth"; 
+                     lc.indexOf("|cldc|") >= 0)     tStandardName = "cloud_area_fraction";
+            else if (lcSourceName.equals("depth"))   tStandardName = "depth";
             else if (lcu.indexOf("|liquid|water|content|of|surface|snow|") >= 0 ||
-                     (lc.indexOf("|water|") >= 0 && 
-                      lc.indexOf("|equiv") >= 0 && 
-                      lc.indexOf("|snow|") >= 0 && 
-                      lc.indexOf("|surface|") >= 0))  tStandardName = "liquid_water_content_of_surface_snow"; 
-            else if (((lc.indexOf("dew") >= 0 && 
+                     (lc.indexOf("|water|") >= 0 &&
+                      lc.indexOf("|equiv") >= 0 &&
+                      lc.indexOf("|snow|") >= 0 &&
+                      lc.indexOf("|surface|") >= 0))  tStandardName = "liquid_water_content_of_surface_snow";
+            else if (((lc.indexOf("dew") >= 0 &&
                        lc.indexOf("point") >= 0) ||
                       lcu.indexOf("|dew|point|temperature|") >= 0 ||
                       lc.indexOf("|dewp") >= 0) &&
                      hasTemperatureUnits)      tStandardName = lc.indexOf("rate") >= 0? "" :
-                                                        "dew_point_temperature"; 
+                                                        "dew_point_temperature";
 
             else if (lcu.indexOf("|lwe|water|evaporation|rate|") >= 0 ||
-                     (lc.indexOf("|evapo") >= 0 && 
+                     (lc.indexOf("|evapo") >= 0 &&
                       lc.indexOf("|rate|") >= 0))   tStandardName = "lwe_water_evaporation_rate";
             else if (lcu.indexOf("|rainfall|rate|") >= 0 ||
-                     (lc.indexOf("|rain") >= 0 && 
-                      lc.indexOf("fall") >= 0 && 
+                     (lc.indexOf("|rain") >= 0 &&
+                      lc.indexOf("fall") >= 0 &&
                       lc.indexOf("|rate|") >= 0))   tStandardName = "rainfall_rate";
 
-            else if ((lc.indexOf("surface") >= 0 || lc.indexOf("net") >= 0) && 
+            else if ((lc.indexOf("surface") >= 0 || lc.indexOf("net") >= 0) &&
                      lc.indexOf("|heat|flux|") >= 0) {
                 if (lc.indexOf("upward") >= 0) {
-                    tStandardName = 
-                        lc.indexOf("latent") >= 0?   "surface_upward_latent_heat_flux" : 
+                    tStandardName =
+                        lc.indexOf("latent") >= 0?   "surface_upward_latent_heat_flux" :
                         lc.indexOf("sensible") >= 0? "surface_upward_sensible_heat_flux" :
-                                                     "surface_upward_heat_flux_in_air";                     
+                                                     "surface_upward_heat_flux_in_air";
                 } else {
-                    tStandardName = 
-                        lc.indexOf("latent") >= 0?   "surface_downward_latent_heat_flux" : 
+                    tStandardName =
+                        lc.indexOf("latent") >= 0?   "surface_downward_latent_heat_flux" :
                         lc.indexOf("sensible") >= 0? "surface_downward_sensible_heat_flux" :
-                                                     "surface_downward_heat_flux_in_air";                     
+                                                     "surface_downward_heat_flux_in_air";
                 }}
             else if (lc.indexOf("momentum|flux") >= 0) {
                 if (lc.indexOf("eastward") >= 0 ||
@@ -8053,13 +8097,13 @@ public abstract class EDD {
                 } else {
                     tStandardName = "downward_northward_momentum_flux_in_air";
                 }}
-            else if ((lc.indexOf("surface") >= 0 || lc.indexOf("net") >= 0) && 
-                     lc.indexOf("|longwave|flux|") >= 0) 
+            else if ((lc.indexOf("surface") >= 0 || lc.indexOf("net") >= 0) &&
+                     lc.indexOf("|longwave|flux|") >= 0)
                                                     tStandardName = lc.indexOf("upward") >= 0?
                                                         "surface_net_upward_longwave_flux" :
                                                         "surface_net_downward_longwave_flux";
-            else if ((lc.indexOf("surface") >= 0 || lc.indexOf("net") >= 0) && 
-                     lc.indexOf("|shortwave|flux|") >= 0) 
+            else if ((lc.indexOf("surface") >= 0 || lc.indexOf("net") >= 0) &&
+                     lc.indexOf("|shortwave|flux|") >= 0)
                                                     tStandardName = lc.indexOf("upward") >= 0?
                                                         "surface_net_upward_shortwave_flux" :
                                                         "surface_net_downward_shortwave_flux";
@@ -8074,7 +8118,7 @@ public abstract class EDD {
                      lc.indexOf("|dpd|") >= 0 ||
                      lc.indexOf("|apd|") >= 0)      tStandardName = lc.indexOf("wind") >= 0?
                                                                     "sea_surface_wind_wave_period" :
-                                                                    "sea_surface_swell_wave_period";                                                  
+                                                                    "sea_surface_swell_wave_period";
             else if ((lc.indexOf("wave") >= 0 && lc.indexOf("dir") >= 0 &&
                       lc.indexOf("ucmp") < 0  && lc.indexOf("vcmp") < 0 && lc.indexOf("spectral") < 0) ||
                      lc.indexOf("|mwd|") >= 0)      tStandardName = lc.indexOf("swell") >= 0?
@@ -8083,11 +8127,11 @@ public abstract class EDD {
                                                                     "sea_surface_wind_wave_to_direction" :
                                                                     lc.indexOf("from") >= 0?
                                                                     "sea_surface_wave_from_direction" : //only 'from' option
-                                                                    "sea_surface_wave_to_direction";            
-            else if ((lc.indexOf("water") >= 0 && 
-                      lc.indexOf("density") >= 0))  tStandardName = "sea_water_density"; 
-            else if (lc.indexOf("conduct") >= 0)    tStandardName = "sea_water_electrical_conductivity"; 
-            else if ((lc.indexOf("salinity") >= 0 || 
+                                                                    "sea_surface_wave_to_direction";
+            else if ((lc.indexOf("water") >= 0 &&
+                      lc.indexOf("density") >= 0))  tStandardName = "sea_water_density";
+            else if (lc.indexOf("conduct") >= 0)    tStandardName = "sea_water_electrical_conductivity";
+            else if ((lc.indexOf("salinity") >= 0 ||
                       lc.indexOf("sss") >= 0 || //OSMC sea surface salinity
                       lc.indexOf("zsal") >= 0 || //OSMC salinity (at depths?)
                       lc.indexOf("salt") >= 0) &&
@@ -8098,15 +8142,15 @@ public abstract class EDD {
                     lc.indexOf("flx") >= 0 ||
                     lc.indexOf("flux") >= 0 ||
                     lc.indexOf("transport") >= 0) {
-                    if (lc.indexOf("|x|") >= 0 || 
-                        lc.indexOf("|u|") >= 0 || 
+                    if (lc.indexOf("|x|") >= 0 ||
+                        lc.indexOf("|u|") >= 0 ||
                         lc.indexOf("east") >= 0) {
-                        tStandardName = "ocean_salt_x_transport"; 
+                        tStandardName = "ocean_salt_x_transport";
                     } else if (
-                        lc.indexOf("|y|") >= 0 ||  
-                        lc.indexOf("|v|") >= 0 ||  
+                        lc.indexOf("|y|") >= 0 ||
+                        lc.indexOf("|v|") >= 0 ||
                         lc.indexOf("north") >= 0) {
-                        tStandardName = "ocean_salt_y_transport"; 
+                        tStandardName = "ocean_salt_y_transport";
                     } else if (
                         lc.indexOf("river") >= 0) {
                         tStandardName = "salt_flux_into_sea_water_from_rivers";
@@ -8115,15 +8159,15 @@ public abstract class EDD {
                     }
                 } else {
                     if ("|g kg-1|g/kg|".indexOf("|" + tUnits + "|") >= 0) {
-                        tStandardName = "sea_water_absolute_salinity"; 
+                        tStandardName = "sea_water_absolute_salinity";
                     } else {
-                        tStandardName = "sea_water_practical_salinity"; 
+                        tStandardName = "sea_water_practical_salinity";
                         if (tUnitsLC.indexOf("pss") < 0)
                             tUnits = "PSU"; //1 is CF canonical, but datasets have 1e-3, 1, psu, ...
                             //better to defy CF than have misleading bizarre units.
                     }
                 }}
-            else if (((lc.indexOf("water") >= 0 && 
+            else if (((lc.indexOf("water") >= 0 &&
                        lc.indexOf("temp") >= 0) ||
                      lc.indexOf("|wtmp|") >= 0 ||
                      lc.indexOf("|ztmp|") >= 0) && //OSMC temperature (at depths?)
@@ -8131,7 +8175,7 @@ public abstract class EDD {
                      hasTemperatureUnits)     tStandardName = lc.indexOf("anom") >= 0? //anomaly
                                                                     "surface_temperature_anomaly" : //no sea_water_temperature_anomaly
                                                                     lc.indexOf("rate") >= 0? "" :
-                                                                    lc.indexOf("potential") >= 0? 
+                                                                    lc.indexOf("potential") >= 0?
                                                                     "sea_water_potential_temperature" :
                                                                     "sea_water_temperature"; //sea vs river???
             else if ((lc.indexOf("sst") >= 0 ||
@@ -8144,11 +8188,11 @@ public abstract class EDD {
                                                                     lc.indexOf("land") >= 0?
                                                                     "surface_temperature" :
                                                                     "sea_surface_temperature";
-            else if (lc.indexOf("wet") >= 0 && 
+            else if (lc.indexOf("wet") >= 0 &&
                      lc.indexOf("bulb") >= 0 &&
-                     hasTemperatureUnits)           tStandardName = "wet_bulb_temperature"; 
+                     hasTemperatureUnits)           tStandardName = "wet_bulb_temperature";
             else if (lc.indexOf("wind") < 0 &&
-                     ((lc.indexOf("current") >= 0 && 
+                     ((lc.indexOf("current") >= 0 &&
                        lc.indexOf("east") >= 0) ||
                       lc.indexOf("|eastward|sea|water|velocity|") >= 0 ||
                       lc.indexOf("current|u") >= 0 ||
@@ -8160,7 +8204,7 @@ public abstract class EDD {
                       lc.indexOf("wateru") >= 0 ||
                       lc.indexOf("water|x") >= 0))    tStandardName = "eastward_sea_water_velocity";
             else if (lc.indexOf("wind") < 0 &&
-                     ((lc.indexOf("current") >= 0 && 
+                     ((lc.indexOf("current") >= 0 &&
                        lc.indexOf("north") >= 0) ||
                       lc.indexOf("|northward|sea|water|velocity|") >= 0 ||
                       lc.indexOf("current|v|") >= 0 || //beware current_velocity
@@ -8172,52 +8216,52 @@ public abstract class EDD {
                       lc.indexOf("waterv|") >= 0 ||
                       lc.indexOf("water|y") >= 0))    tStandardName = "northward_sea_water_velocity";
             else if ((lc.indexOf("surface") >= 0 && lc.indexOf("roughness") >= 0 &&
-                      isMeters))                    tStandardName = "surface_roughness_length"; 
+                      isMeters))                    tStandardName = "surface_roughness_length";
 
-            else if (lcSourceName.equals("par")) 
+            else if (lcSourceName.equals("par"))
                     tStandardName = "downwelling_photosynthetic_photon_radiance_in_sea_water";
-            
+
             else if (lcSourceName.equals("ph"))
                     tStandardName = "sea_water_ph_reported_on_total_scale";
 
-            else if (((lc.indexOf("rel") >= 0 && 
+            else if (((lc.indexOf("rel") >= 0 &&
                        lc.indexOf("hum") >= 0) ||
                       lc.indexOf("humidity") >= 0 ||
                       lc.indexOf("|rhum|") >= 0 ||
                       lc.indexOf("|rh|") >= 0) &&
                      (tUnitsLC.equals("percent") ||
                       tUnitsLC.equals("%")))         tStandardName = lc.indexOf("rate") >= 0? "" :
-                                                        "relative_humidity"; 
-            else if ((lc.indexOf("spec") >= 0 && 
+                                                        "relative_humidity";
+            else if ((lc.indexOf("spec") >= 0 &&
                       lc.indexOf("hum") >= 0) ||
-                     lc.indexOf("|shum|") >= 0)     tStandardName = "specific_humidity"; 
-            else if (lcu.indexOf("|soil|") >= 0 && 
+                     lc.indexOf("|shum|") >= 0)     tStandardName = "specific_humidity";
+            else if (lcu.indexOf("|soil|") >= 0 &&
                      lcu.indexOf("|moisture|") >= 0)tStandardName = "soil_moisture_content";
-            else if ((lc.indexOf("geopotential") >= 0 && 
-                      lc.indexOf("height") >= 0))   tStandardName = "geopotential_height"; 
-            else if ((lc.indexOf("surface") >= 0 && 
+            else if ((lc.indexOf("geopotential") >= 0 &&
+                      lc.indexOf("height") >= 0))   tStandardName = "geopotential_height";
+            else if ((lc.indexOf("surface") >= 0 &&
                       lc.indexOf("height") >= 0) ||  //sea_surface_height
                      lc.indexOf("ssh") >= 0 ||       //there are more specific, e.g. above geoid
                      lc.indexOf("surf|el") >= 0 ||       //there are more specific, e.g. above geoid
-                     (lc.indexOf("|tide|") >= 0 && 
+                     (lc.indexOf("|tide|") >= 0 &&
                          lc.indexOf("current") < 0 &&
                          lc.indexOf("angle") < 0 &&
                          lc.indexOf("period") < 0))
                                                     tStandardName = lc.indexOf("anom") >= 0? //anomaly
                                                                     "sea_surface_elevation_anomaly" :
-                                                                    "sea_surface_height"; 
+                                                                    "sea_surface_height";
             else if (lcu.indexOf("|direction|of|sea|water|velocity|") >= 0 ||
-                     (lc.indexOf("tidal") >= 0 && 
+                     (lc.indexOf("tidal") >= 0 &&
                       lc.indexOf("angle") >= 0))    tStandardName = "direction_of_sea_water_velocity";
             else if (lcSourceName.equals("omega"))  tStandardName = "omega";
-            else if ((lc.indexOf("|precip") >= 0 && 
+            else if ((lc.indexOf("|precip") >= 0 &&
                       lc.indexOf("|rate|") >= 0))   tStandardName = "lwe_precipitation_rate";
             else if (lcu.indexOf("|water|content|of|atmosphere|layer|") >= 0 ||
-                     (lc.indexOf("|precipitable|") >= 0 && 
-                      lc.indexOf("|atmosphere|") >= 0 && 
+                     (lc.indexOf("|precipitable|") >= 0 &&
+                      lc.indexOf("|atmosphere|") >= 0 &&
                       lc.indexOf("|water|") >= 0))  tStandardName = "water_content_of_atmosphere_layer";
             else if (lcu.indexOf("|surface|downward|eastward|stress|") >= 0 ||
-                     (lc.indexOf("stress") >= 0 && 
+                     (lc.indexOf("stress") >= 0 &&
                       lc.indexOf("x") >= 0 &&
                       lc.indexOf("max") < 0) ||
                      lc.indexOf("|upstr|") >= 0 || //coads
@@ -8226,7 +8270,7 @@ public abstract class EDD {
                      lc.indexOf("|taux|") >= 0 ||
                      lc.indexOf("|tau|x|") >= 0)    tStandardName = "surface_downward_eastward_stress";
             else if (lcu.indexOf("|surface|downward|northward|stress|") >= 0 ||
-                     (lc.indexOf("stress") >= 0 && 
+                     (lc.indexOf("stress") >= 0 &&
                       lc.indexOf("y") >= 0) ||
                      lc.indexOf("|vpstr|") >= 0 || //coads
                      lc.indexOf("|tauv|") >= 0 ||
@@ -8234,26 +8278,26 @@ public abstract class EDD {
                      lc.indexOf("|tauy|") >= 0 ||
                      lc.indexOf("|tau|y|") >= 0)    tStandardName = "surface_downward_northward_stress";
             else if (lcu.indexOf("|tendency|of|air|pressure|") >= 0 ||
-                     lc.indexOf("|ptdy|") >= 0)     tStandardName = "tendency_of_air_pressure"; 
-            else if (lc.indexOf("visibility") >= 0 || 
-                     lc.indexOf("|vis|") >= 0)      {} //not "visibility_in_air" because sometimes used in water 
-            else if ((lc.indexOf("east") >= 0 && 
+                     lc.indexOf("|ptdy|") >= 0)     tStandardName = "tendency_of_air_pressure";
+            else if (lc.indexOf("visibility") >= 0 ||
+                     lc.indexOf("|vis|") >= 0)      {} //not "visibility_in_air" because sometimes used in water
+            else if ((lc.indexOf("east") >= 0 &&
                       lc.indexOf("wind") >= 0) ||
-                     lc.indexOf("|u-wind|") >= 0 || 
-                     lc.indexOf("|wind|u|") >= 0 || 
-                     lc.indexOf("|wspu|") >= 0 || 
-                     lc.indexOf("|uwnd|") >= 0 ||                      
-                     lc.indexOf("u wind") >= 0 ||                      
+                     lc.indexOf("|u-wind|") >= 0 ||
+                     lc.indexOf("|wind|u|") >= 0 ||
+                     lc.indexOf("|wspu|") >= 0 ||
+                     lc.indexOf("|uwnd|") >= 0 ||
+                     lc.indexOf("u wind") >= 0 ||
                      lc.indexOf("|xwnd|") >= 0)     tStandardName = "eastward_wind";
-            else if ((lc.indexOf("north") >= 0 && 
+            else if ((lc.indexOf("north") >= 0 &&
                       lc.indexOf("wind") >= 0) ||
-                     lc.indexOf("|v-wind|") >= 0 || 
-                     lc.indexOf("|wind|v|") >= 0 || 
+                     lc.indexOf("|v-wind|") >= 0 ||
+                     lc.indexOf("|wind|v|") >= 0 ||
                      lc.indexOf("|wspv|") >= 0 ||
-                     lc.indexOf("|vwnd|") >= 0 ||                       
-                     lc.indexOf("v wind") >= 0 ||                      
+                     lc.indexOf("|vwnd|") >= 0 ||
+                     lc.indexOf("v wind") >= 0 ||
                      lc.indexOf("|ywnd|") >= 0)     tStandardName = "northward_wind";
-            else if ((lc.indexOf("wind") >= 0 && 
+            else if ((lc.indexOf("wind") >= 0 &&
                       lc.indexOf("dir") >= 0) ||
                      lc.indexOf("|wd|") >= 0)       tStandardName = "wind_from_direction";
             else if (lc.indexOf("gust") >= 0 ||
@@ -8262,7 +8306,7 @@ public abstract class EDD {
                 else if (lc.indexOf("time") >=0)     {}
                 else                                 tStandardName = "wind_speed_of_gust";
                 }
-            else if ((lc.indexOf("wind") >= 0 && 
+            else if ((lc.indexOf("wind") >= 0 &&
                       lc.indexOf("speed") >= 0) ||   //not wspd3, which should have a stdName but doesn't
                      lc.indexOf("|wspd|") >= 0)      {
                          if (lc.indexOf("sq") < 0)
@@ -8273,24 +8317,24 @@ public abstract class EDD {
             else if (lc.indexOf("ammoni") >= 0 ||
                      lc.indexOf("|nh4|") >= 0)      tStandardName = "mole_concentration_of_ammonium_in_sea_water";
             else if (lcu.indexOf("|zooplankton|expressed|as|carbon|in|sea|water|") >= 0 ||
-                     lc.indexOf("|zooplankton|carbon|content|") >= 0) //no mass option      
+                     lc.indexOf("|zooplankton|carbon|content|") >= 0) //no mass option
                                                     tStandardName = "mole_concentration_of_zooplankton_expressed_as_carbon_in_sea_water";
-            else if (lc.indexOf("chlorophyll") >= 0 ||       
-                     lc.indexOf("chl|a|")      >= 0 ||               
+            else if (lc.indexOf("chlorophyll") >= 0 ||
+                     lc.indexOf("chl|a|")      >= 0 ||
                      lc.indexOf("chlor|a|")    >= 0 ||
                      lc.indexOf("|chlora|")    >= 0 ||
-                     lc.indexOf("|chlormean|") >= 0 ||              //avoids mol vs. g 
+                     lc.indexOf("|chlormean|") >= 0 ||              //avoids mol vs. g
                      lc.indexOf("|chla|") >= 0)     tStandardName = lc.indexOf("anom") >= 0? "": //anomaly
-                                                                    lc.indexOf("index") >= 0? "": 
+                                                                    lc.indexOf("index") >= 0? "":
                                                                     "concentration_of_chlorophyll_in_sea_water";
-            //else if ((lc.indexOf("no2") >= 0 && 
+            //else if ((lc.indexOf("no2") >= 0 &&
             //          lc.indexOf("no3") >= 0) ||                     //catch NO2 NO3 together before separately
             //         lc.indexOf("nitrogen") >= 0)   tStandardName = ??? there is no plain nitrogen, nox or noy in_sea_water
             else if (lc.indexOf("nitrate") >= 0 ||                  //no g option
                      lc.indexOf("|no3|") >= 0)      tStandardName = "mole_concentration_of_nitrate_in_sea_water";
             else if (lc.indexOf("nitrite") >= 0 ||                   //no g option
                      lc.indexOf("|no2|") >= 0)      tStandardName = "mole_concentration_of_nitrite_in_sea_water";
-            else if (lc.indexOf("|dissolved|oxygen|") >= 0)      
+            else if (lc.indexOf("|dissolved|oxygen|") >= 0)
                                                     tStandardName = moleUnits?
                                                         "mole_concentration_of_dissolved_molecular_oxygen_in_sea_water" :
                                                         gUnits?
@@ -8298,9 +8342,9 @@ public abstract class EDD {
                                                         "volume_fraction_of_oxygen_in_sea_water";
 
             else if (lcu.indexOf("|fractional|saturation|of|oxygen|in|sea|water|") >= 0 ||
-                     (lc.indexOf("|apparent|") >= 0 || 
+                     (lc.indexOf("|apparent|") >= 0 ||
                       lc.indexOf("|percent|") >= 0 || lc.indexOf('%') >= 0) &&
-                     lc.indexOf("|oxygen|saturation|") >= 0)      
+                     lc.indexOf("|oxygen|saturation|") >= 0)
                                                     tStandardName = "fractional_saturation_of_oxygen_in_sea_water";
             else if (lc.indexOf("phosphate") >= 0 ||
                      lc.indexOf("|po4|") >= 0)      tStandardName = moleUnits?
@@ -8317,7 +8361,7 @@ public abstract class EDD {
                 tStandardName = "null";
 
             //update lcu
-            lcu = lc + 
+            lcu = lc +
                 tStandardName.toLowerCase() + "|" +
                 tUnitsLC                    + "|";
             lcu = String2.replaceAll(lcu, ' ', '|');
@@ -8329,15 +8373,15 @@ public abstract class EDD {
 
         }
 
-        if (reallyVerbose && 
+        if (reallyVerbose &&
             "|longitude|latitude|altitude|depth|time|".indexOf("|" + tStandardName + "|") < 0)
             String2.log("    tStandardName=" + tStandardName);
 
         //mean and average aren't included since they don't change the meaning
-        String statisticsWords[] = {"|count|", "stddev", "stderr", "deviation", 
+        String statisticsWords[] = {"|count|", "stddev", "stderr", "deviation",
             "|nbounds|", "|bounds|", "|sd|", "|s.d.|", "variance", "bias",
             "confidence", "precision", "error", "number", //"number of observations"
-            "radius|influence|grid|points", 
+            "radius|influence|grid|points",
             "|sigfigs|", "standard|deviation", "standard|error",
             "|nobs", "|bias", "rms"};
 
@@ -8348,8 +8392,8 @@ public abstract class EDD {
         //    (These are not crucial. If it's wrong, it isn't terrible.)
         if (tryToAddColorBarMinMax &&
             Double.isNaN(sourceAtts.getDouble("colorBarMinimum")) &&
-            Double.isNaN(sourceAtts.getDouble("colorBarMaximum"))) { 
-           
+            Double.isNaN(sourceAtts.getDouble("colorBarMaximum"))) {
+
             //String2.log("***tryToAddColorBarMinMax for " + tSourceName);
             double tMin = Double.NaN;
             double tMax = Double.NaN;
@@ -8361,16 +8405,16 @@ public abstract class EDD {
 
             if (sourceAtts.get("flag_masks") != null) {  //before flag_values, e.g., 1b, 2b, 4b, 8b
                 PrimitiveArray pa = sourceAtts.get("flag_masks");
-                if (pa.elementClass() == String.class) {
+                if (pa.elementType() == PAType.STRING) {
                     //ssv or csv stored as string?
                     String s = String2.replaceAll(pa.getString(0), "b", "");
                     int nCommas = String2.countAll(s, ",");
                     pa = nCommas > 0?
                         PrimitiveArray.csvFactory(
-                            nCommas > 31? long.class :
-                            nCommas > 15? int.class : short.class, 
+                            nCommas > 31? PAType.LONG :
+                            nCommas > 15? PAType.INT : PAType.SHORT,
                             s) :
-                        PrimitiveArray.factory(int.class, 
+                        PrimitiveArray.factory(PAType.INT,
                             StringArray.wordsAndQuotedPhrases(s));
                 }
                 double d = pa.getDouble(pa.size() - 1);
@@ -8383,16 +8427,16 @@ public abstract class EDD {
 
             else if (sourceAtts.get("flag_values") != null) {  //e.g., 1b, 2b, 4b, 8b, 12b
                 PrimitiveArray pa = sourceAtts.get("flag_values");
-                if (pa.elementClass() == String.class) {
+                if (pa.elementType() == PAType.STRING) {
                     //ssv or csv stored as string?
                     String s = String2.replaceAll(pa.getString(0), "b", "");
                     int nCommas = String2.countAll(s, ",");
                     pa = nCommas > 0?
                         PrimitiveArray.csvFactory(
-                            nCommas > 31? long.class :
-                            nCommas > 15? int.class : short.class, 
+                            nCommas > 31? PAType.LONG :
+                            nCommas > 15? PAType.INT : PAType.SHORT,
                             s) :
-                        PrimitiveArray.factory(int.class, 
+                        PrimitiveArray.factory(PAType.INT,
                             StringArray.wordsAndQuotedPhrases(s));
                 }
                 double d = pa.getDouble(pa.size() - 1);
@@ -8405,7 +8449,7 @@ public abstract class EDD {
 
             else if (testUnits.indexOf("interpolation|error|fields") >= 0 ||
                 tUnitsLC.indexOf("difference") >= 0) {
-                if (testUnits.indexOf("fraction") >= 0 || 
+                if (testUnits.indexOf("fraction") >= 0 ||
                     (testUnits.indexOf("1") >= 0 && testUnits.indexOf("-1") < 0)) {
                     tMin = -0.1;  tMax = 0.1;
                 } else if ((testUnits.indexOf("psu") >= 0 && testUnits.indexOf("psue") < 0) || //pseudo
@@ -8421,15 +8465,15 @@ public abstract class EDD {
             else if (lcu.indexOf("|dt|analysis|") >= 0)     {
                     tMin = -5;    tMax = 5;}
 
-            else if (lcu.indexOf("number")       >= 0 || 
-                     lcu.indexOf("|count|")      >= 0 || 
-                     lcu.indexOf("|nobs|")       >= 0 || 
+            else if (lcu.indexOf("number")       >= 0 ||
+                     lcu.indexOf("|count|")      >= 0 ||
+                     lcu.indexOf("|nobs|")       >= 0 ||
                      lcu.indexOf("radius|influence|grid|points") >= 0)     {
                     tMin = 0;    tMax = 100;}
 
             else if (String2.whichWord(lcu, statisticsWords) >= 0) {
-                
-                if (testUnits.indexOf("fraction") >= 0 || 
+
+                if (testUnits.indexOf("fraction") >= 0 ||
                     (testUnits.indexOf("1") >= 0 && testUnits.indexOf("-1") < 0)) {
                     tMin = 0;    tMax = 0.1;
                 } else if ((testUnits.indexOf("psu") >= 0 && testUnits.indexOf("psue") < 0) || //pseudo
@@ -8446,36 +8490,36 @@ public abstract class EDD {
                         tUnits = "degree_C";
                     }
                 } else if (lcu.indexOf("rmsd") >= 0) {
-                    tMin = 0;    tMax = .002; 
+                    tMin = 0;    tMax = .002;
                 } else if (lcu.indexOf("rms") >= 0) {
-                    tMin = 0;    tMax = .1; 
+                    tMin = 0;    tMax = .1;
                 } else if (lcu.indexOf("sigfigs") >= 0) {
-                    tMin = 0;    tMax = 10; 
+                    tMin = 0;    tMax = 10;
                 } else if (lcu.indexOf("bias") >= 0) {
-                    tMin = -0.1; tMax = .1; 
+                    tMin = -0.1; tMax = .1;
                 } else { //e.g., count
-                    tMin = 0;    tMax = 50; 
+                    tMin = 0;    tMax = 50;
                 }}
 
 
             //see similar CATCH STATISTICS above and below     catch before others
             //here just catch n and count and make a crude guess at 0 to 100
 
-            else if (lcu.indexOf("|mask|on|") >= 0 && 
+            else if (lcu.indexOf("|mask|on|") >= 0 &&
                      lcu.indexOf("points|") >= 0)                          {tMin = 0;    tMax = 1.5;}
 
             else if (lcu.indexOf("mask") >= 0 && sourceAtts.get("actual_range") == null)
                                                                            {tMin = 0;    tMax = 150;}
 
-            else if (lcu.indexOf("processing|param") >= 0)                 {tMin = 0;    tMax = 10;}                    
+            else if (lcu.indexOf("processing|param") >= 0)                 {tMin = 0;    tMax = 10;}
 
             //see similar CATCH QUALITY above and below        catch before others
-            else if (lcu.indexOf("qc")           >= 0 || 
+            else if (lcu.indexOf("qc")           >= 0 ||
                      (lcu.indexOf("qa") >= 0 &&
                         String2.indexOf(new String[]{"QAcurl", "QAdivw", "QAemod", "QAtaux",
                             "QAtauy", "QAtmod", "QAuekm", "QAumod", "QAux10", "QAuy10",
-                            "QAvekm", "QAwekm"}, tSourceName) < 0) || 
-                    (lcu.indexOf("quality") >= 0 && lcu.indexOf("science|quality") < 0) || 
+                            "QAvekm", "QAwekm"}, tSourceName) < 0) ||
+                    (lcu.indexOf("quality") >= 0 && lcu.indexOf("science|quality") < 0) ||
                      lcu.indexOf("flag")         >= 0                   )  {tMin = 0;    tMax = 150;}
 
             //else if (tUnitsLC.indexOf("yyyy") >= 0                    )  {tMin = 1950; tMax = 2020;}  //special case ("fraction part of year")
@@ -8490,7 +8534,7 @@ public abstract class EDD {
                      tStandardName.endsWith("_fraction")) {
 
                 //String2.log("*** FRACTION: scale_factor=" + sourceAtts.getDouble("scale_factor"));
-                if (sourceAtts.getDouble("valid_max") == 100 && 
+                if (sourceAtts.getDouble("valid_max") == 100 &&
                     sourceAtts.getFloat("scale_factor") != 0.01f) {
                     //'percent' caught above, but some "fraction" are expressed as percent
                     tMin = 0;    tMax = 100;
@@ -8499,18 +8543,18 @@ public abstract class EDD {
                     if (tUnits.equals("-")) {
                         tUnits = "1";
                         tUnitsLC = "1";
-                    }                        
+                    }
                 }
               }
 
-            //catch 0 - 360   
+            //catch 0 - 360
             else if (tStandardName.endsWith("_direction"                ) ||
                      tStandardName.startsWith("direction_of_"           ) ||
                      tUnits.equals("degrees_true"                       )) {tMin = 0;    tMax = 360;}
 
             //catch z in Coastal Relief Model
-            else if (lcSourceName.equals("z") && 
-                    isMeters && 
+            else if (lcSourceName.equals("z") &&
+                    isMeters &&
                     "up".equals(sourceAtts.getString("positive"))) {
                 tMin = -8000; tMax = 8000;
                 addAtts.add("colorBarPalette", "Topography");
@@ -8538,7 +8582,7 @@ public abstract class EDD {
                     tMin = -3000; tMax = 3000;
                 } else {
                     tMin = -30;   tMax = 30;
-                }}                
+                }}
             else if (tStandardName.equals("air_temperature"             ) ||
                      tStandardName.equals("air_potential_temperature"   )) {
                 if (isDegreesK) {
@@ -8560,7 +8604,7 @@ public abstract class EDD {
                      tStandardName.equals("atmosphere_cloud_liquid_water_content)"))
                                                                            {tMin = 0;    tMax = 0.5;}
 
-            else if (lcu.indexOf("bottom") >= 0 && 
+            else if (lcu.indexOf("bottom") >= 0 &&
                      lcu.indexOf("roughness") >= 0)                        {tMin = 0;    tMax = 0.1;}
             else if (tStandardName.equals("concentration_of_chlorophyll_in_sea_water") ||
                      tStandardName.equals("chlorophyll_concentration_in_sea_water") ||
@@ -8570,12 +8614,12 @@ public abstract class EDD {
             else if (lcSourceName.equals("chloranomaly"                 )) {tMin = -5;   tMax = 5;}
             else if (tStandardName.equals("dew_point_temperature"       )) {
                 if (isDegreesK) {
-                    tMin = 273; tMax = 313;                  
+                    tMin = 273; tMax = 313;
                 } else if (isDegreesF) {
-                    tMin = 14;  tMax = 104;                  
+                    tMin = 14;  tMax = 104;
                 } else {
                     tMin = 0;   tMax = 40;
-                }}                  
+                }}
             else if (lcu.indexOf("dilution|of|precision") >= 0          )  {tMin = 0;    tMax = 1;}
             else if (lcu.indexOf("evaporation") >= 0                    )  {tMin = -1e-4;tMax = 1e-4;}
             else if (lcu.indexOf("|u-flux|") >= 0 ||
@@ -8584,55 +8628,55 @@ public abstract class EDD {
             else if (tStandardName.equals("geopotential_height")          ){tMin = -50;  tMax = 1000;}
             else if (lcSourceName.indexOf("graphics") >= 0              )  {tMin = 0;    tMax = 20;}
             else if (lcSourceName.indexOf("k490") >= 0                  )  {tMin = 0;    tMax = 0.5;}
-            else if (tStandardName.equals("lagrangian_tendency_of_air_pressure")) 
+            else if (tStandardName.equals("lagrangian_tendency_of_air_pressure"))
                                                                            {tMin = -0.02;tMax = 0.02;}
             else if (lcSourceName.indexOf("|lifted|index|") >= 0        )  {tMin = -10;  tMax = 50;}
             else if (tStandardName.equals("ocean_mixed_layer_thickness") ||
                      tStandardName.equals("mixed_layer_depth")           ) {tMin = 0;    tMax = 100;}
-            else if (tStandardName.equals("mole_concentration_of_ammonium_in_sea_water")) 
+            else if (tStandardName.equals("mole_concentration_of_ammonium_in_sea_water"))
                                                                            {tMin = 0;    tMax = 5;}
-            else if (tStandardName.equals("mole_concentration_of_nitrate_in_sea_water")) 
+            else if (tStandardName.equals("mole_concentration_of_nitrate_in_sea_water"))
                                                                            {tMin = 0;    tMax = 50;}
-            else if (tStandardName.equals("mole_concentration_of_nitrite_in_sea_water")) 
+            else if (tStandardName.equals("mole_concentration_of_nitrite_in_sea_water"))
                                                                            {tMin = 0;    tMax = 1;}
-            else if (tStandardName.equals("mole_concentration_of_phosphate_in_sea_water")) 
+            else if (tStandardName.equals("mole_concentration_of_phosphate_in_sea_water"))
                                                                            {tMin = 0;    tMax = 4;}
-            else if (tStandardName.equals("mole_concentration_of_silicate_in_sea_water")) 
+            else if (tStandardName.equals("mole_concentration_of_silicate_in_sea_water"))
                                                                            {tMin = 0;    tMax = 50;}
-            else if (tStandardName.equals("mole_concentration_of_zooplankton_expressed_as_carbon_in_sea_water")) 
+            else if (tStandardName.equals("mole_concentration_of_zooplankton_expressed_as_carbon_in_sea_water"))
                                                                            {tMin = 0;    tMax = 100;}
-            else if (tStandardName.equals("mole_fraction_of_o3_in_air")) 
-                                                                           {tMin = 0;    tMax = 30;}            
+            else if (tStandardName.equals("mole_fraction_of_o3_in_air"))
+                                                                           {tMin = 0;    tMax = 30;}
             else if (tStandardName.equals("downward_eastward_momentum_flux_in_air") ||
                      tStandardName.equals("downward_northward_momentum_flux_in_air"))
                                                                            {tMin = -1;   tMax = 1;}
             else if (lcu.indexOf("momentum|component") >= 0)               {tMin = -0.3; tMax = 0.3;}
             else if (lcu.indexOf("momentum|stress") >= 0)                  {tMin = -0.1; tMax = 0.1;}
 
-            else if (tStandardName.equals("net_primary_productivity_of_carbon")) 
+            else if (tStandardName.equals("net_primary_productivity_of_carbon"))
                                                                            {tMin = 0;    tMax = 2000;}
-            else if (tStandardName.equals("eastward_ocean_heat_transport")) 
+            else if (tStandardName.equals("eastward_ocean_heat_transport"))
                                                                            {tMin = -1e-4;tMax = 1e-4;}
-            else if (tStandardName.equals("northward_ocean_heat_transport")) 
+            else if (tStandardName.equals("northward_ocean_heat_transport"))
                                                                            {tMin = -1e-4;tMax = 1e-4;}
 
-            else if (tStandardName.equals("ocean_meridional_overturning_streamfunction")) 
-                                                                           {tMin = 0;    tMax = 40;}            
+            else if (tStandardName.equals("ocean_meridional_overturning_streamfunction"))
+                                                                           {tMin = 0;    tMax = 40;}
             else if (tStandardName.equals("ocean_salt_x_transport") ||
                      tStandardName.equals("ocean_salt_y_transport") ||
                      lcu.indexOf("|salt|flux|") >= 0 ||
                      lcu.indexOf("|salinity|flux|") >= 0)                  {tMin = -2e-6;tMax = 2e-6;}
             else if (tUnitsLC.equals("okta")                             ) {tMin = 0;    tMax = 9;}
             else if (tStandardName.equals("omega"))                        {tMin = -0.1; tMax = 0.1;}
-            else if (lcu.indexOf("apparent|oxygen|utilization") >= 0    )  {tMin = -1;   tMax = 1;}                    
+            else if (lcu.indexOf("apparent|oxygen|utilization") >= 0    )  {tMin = -1;   tMax = 1;}
             else if (tStandardName.equals("volume_fraction_of_oxygen_in_sea_water")
-                                                                        )  {tMin = 0;    tMax = 10;}                    
-            else if (tStandardName.indexOf("oxygen_in_sea_water") >= 0)    {tMin = 0;    tMax = 500;}                      
+                                                                        )  {tMin = 0;    tMax = 10;}
+            else if (tStandardName.indexOf("oxygen_in_sea_water") >= 0)    {tMin = 0;    tMax = 500;}
             else if (tStandardName.indexOf("water_flux_into_ocean") >= 0)  {tMin = 0;    tMax = 1e-4;}
             else if (tStandardName.equals("downwelling_photosynthetic_photon_radiance_in_sea_water") ||
                      lcSourceName.equals("par")) {
                 if (tUnitsLC.equals("volt") || tUnitsLC.equals("volts"))   {tMin = 0;    tMax = 3;}
-                else                  /* microEinsteins m^-2 s-1 */        {tMin = 0;    tMax = 70;}} 
+                else                  /* microEinsteins m^-2 s-1 */        {tMin = 0;    tMax = 70;}}
             else if (tStandardName.equals("sea_water_ph_reported_on_total_scale") ||
                      lcSourceName.equals("ph"))                            {tMin = 7;    tMax = 9;}
             else if (tStandardName.indexOf("precipitation") >= 0 ||
@@ -8645,17 +8689,17 @@ public abstract class EDD {
                     tMin = 0;    tMax = 1e-4;
                 } else {
                     tMin = 0;    tMax = 1;
-                }}                    
-            else if (tStandardName.equals("relative_humidity"           )) {tMin = 20;   tMax = 100;}                    
+                }}
+            else if (tStandardName.equals("relative_humidity"           )) {tMin = 20;   tMax = 100;}
             else if (lcSourceName.indexOf("667") >= 0                   )  {
                 if (lcSourceName.indexOf("anom") >= 0) {
                     tMin = -0.01; tMax = 0.01;
                 } else {
                     tMin = -25000.055;tMax = -25000.035;
                 }}
-            else if (lcu.indexOf("ripple") >= 0 && 
+            else if (lcu.indexOf("ripple") >= 0 &&
                      lcu.indexOf("length") >= 0)                           {tMin = 0;    tMax = 0.2;}
-            else if (lcu.indexOf("ripple") >= 0 && 
+            else if (lcu.indexOf("ripple") >= 0 &&
                      lcu.indexOf("height") >= 0)                           {tMin = 0;    tMax = 0.02;}
             else if (tStandardName.equals("sea_floor_depth") ||
                      tStandardName.equals("sea_floor_depth_below_geoid") ||
@@ -8665,12 +8709,12 @@ public abstract class EDD {
                      tStandardName.equals("depth")) {
                 tMin = -8000;    tMax = 8000;
                 addAtts.add("colorBarPalette", "TopographyDepth"); //safer than OceanDepth (just blue)
-                }                
-            else if (tStandardName.equals("sea_ice_thickness"           )) {tMin = 0;   tMax = 2.5;}                    
+                }
+            else if (tStandardName.equals("sea_ice_thickness"           )) {tMin = 0;   tMax = 2.5;}
             else if (tStandardName.equals("eastward_sea_ice_velocity")  ||
-                     tStandardName.equals("northward_sea_ice_velocity") || 
-                     tStandardName.equals("sea_ice_x_velocity")         ||         
-                     tStandardName.equals("sea_ice_y_velocity"          )) {tMin = -0.1;tMax = 0.1;}                    
+                     tStandardName.equals("northward_sea_ice_velocity") ||
+                     tStandardName.equals("sea_ice_x_velocity")         ||
+                     tStandardName.equals("sea_ice_y_velocity"          )) {tMin = -0.1;tMax = 0.1;}
             else if (tStandardName.startsWith("sea_surface_height_above_") ||
                      tStandardName.equals("sea_surface_height") ||
                      tStandardName.equals("sea_surface_elevation") ||
@@ -8688,14 +8732,14 @@ public abstract class EDD {
                 PrimitiveArray ao = addAtts.get("add_offset"); //need to know the new data type
                 if (ao == null || ao instanceof StringArray)  //e.g., "null"
                     ao = sourceAtts.get("add_offset");
-                if (isDegreesK && ao != null && 
-                    (ao.elementClass() == float.class || ao.elementClass() == double.class)) {
+                if (isDegreesK && ao != null &&
+                    (ao.elementType() == PAType.FLOAT || ao.elementType() == PAType.DOUBLE)) {
                     isDegreesK = false;
                     isDegreesC = true;
                     tUnits = "degree_C";
                     ao = (PrimitiveArray)(ao.clone()); //if from sourceAtts, don't change sourceAtts value
                     ao.scaleAddOffset(1.0, Math2.kelvinToC);
-                    tAddOffset = ao.getDouble(0); 
+                    tAddOffset = ao.getDouble(0);
                     addAtts.set("add_offset", ao);
                 }
 
@@ -8705,7 +8749,7 @@ public abstract class EDD {
                     tMin = 32;  tMax = 89;
                 } else { //degree_C
                     tMin = 0;   tMax = 32;
-                }}                  
+                }}
             else if (tStandardName.equals("sea_water_density"           ) ||
                      tStandardName.equals("sea_water_potential_density" )) {tMin = 20;   tMax = 28;}
             else if (tStandardName.equals("sea_water_electrical_conductivity"
@@ -8725,7 +8769,7 @@ public abstract class EDD {
                      //lc.indexOf(   "salinity") >= 0     || //!but river/bay salinity close to 0
                      tUnitsLC.equals("psu") ||
                      tUnitsLC.equals("pss78")  || tUnitsLC.equals("ipss78") ||
-                     tUnitsLC.equals("pss-78") || tUnitsLC.equals("ipss-78") || 
+                     tUnitsLC.equals("pss-78") || tUnitsLC.equals("ipss-78") ||
                      tUnitsLC.equals("pss")    || tUnitsLC.equals("ipss")) {
                  if (tUnitsLC.equals("kg/kg") || tUnitsLC.equals("g/g")) { //rare
                      tMin = 0.032;   tMax = 0.037;
@@ -8737,11 +8781,11 @@ public abstract class EDD {
                      tStandardName.indexOf("sea_water_y_velocity") >= 0 ||
                      tStandardName.indexOf("sea_water_velocity") > 0)      {tMin = -0.5; tMax = 0.5;}
             else if (tStandardName.indexOf("sea_water_z_velocity") >= 0 )  {tMin = -1e-7;tMax = 1e-7;}
-            else if (lcu.indexOf("sediment") >= 0 && 
+            else if (lcu.indexOf("sediment") >= 0 &&
                      lcu.indexOf("size") >= 0)                             {tMin = 0;    tMax = 0.01;}
-            else if (lcu.indexOf("sediment") >= 0 && 
+            else if (lcu.indexOf("sediment") >= 0 &&
                      lcu.indexOf("density") >= 0)                          {tMin = 0;    tMax = 4000;}
-            else if (lcu.indexOf("sediment") >= 0 && 
+            else if (lcu.indexOf("sediment") >= 0 &&
                      lcu.indexOf("velocity") >= 0)                         {tMin = 0;    tMax = 0.1;}
 
             else if (tStandardName.equals("soil_moisture_content"       )) {tMin = 0;    tMax = 5;}
@@ -8773,28 +8817,28 @@ public abstract class EDD {
                     PrimitiveArray ao = addAtts.get("add_offset"); //need to know the new data type
                     if (ao == null || ao instanceof StringArray)  //e.g., "null"
                         ao = sourceAtts.get("add_offset");
-                    if (isDegreesK && ao != null && 
-                        (ao.elementClass() == float.class || ao.elementClass() == double.class)) {
+                    if (isDegreesK && ao != null &&
+                        (ao.elementType() == PAType.FLOAT || ao.elementType() == PAType.DOUBLE)) {
                         isDegreesK = false;
                         isDegreesC = true;
                         tUnits = "degree_C";
                         ao = (PrimitiveArray)(ao.clone()); //if from sourceAtts, don't change sourceAtts value
                         ao.scaleAddOffset(1.0, Math2.kelvinToC);
-                        tAddOffset = ao.getDouble(0); 
+                        tAddOffset = ao.getDouble(0);
                         addAtts.set("add_offset", ao);
                     }
 
                     if (isDegreesK) {
                         tMin = 263;  tMax = 313;
                     } else if (isDegreesF) {
-                        tMin = 14;   tMax = 104;                                                                             
+                        tMin = 14;   tMax = 104;
                     } else {
                         tMin = -10;  tMax = 40;
                     }
-                }}                  
-            else if ((lcu.indexOf("suspended") >= 0 || lcu.indexOf("flux") >= 0) && 
+                }}
+            else if ((lcu.indexOf("suspended") >= 0 || lcu.indexOf("flux") >= 0) &&
                      gUnits &&
-                     (lcu.indexOf("sand") >= 0 || lcu.indexOf("sediment") >= 0)) 
+                     (lcu.indexOf("sand") >= 0 || lcu.indexOf("sediment") >= 0))
                                                                            {tMin = 0;    tMax = 1;}
             else if (tStandardName.indexOf("tendency_") >= 0) {
                 if (tStandardName.indexOf("air_pressure")         >= 0){
@@ -8806,7 +8850,7 @@ public abstract class EDD {
                 else                                                     {tMin = -5;   tMax = 5;}
 
             }
-            else if (lc.indexOf("tidal") >= 0 && 
+            else if (lc.indexOf("tidal") >= 0 &&
                      lc.indexOf("current") >= 0 &&
                      tUnits.equals("meters second-1"))                     {tMin = 0;    tMax = 0.5;}
             else if (tStandardName.equals("frozen_water_volume_transport_into_ocean_from_rivers")          ){
@@ -8824,7 +8868,7 @@ public abstract class EDD {
             else if (tStandardName.equals("wind_speed"                  )) {tMin = 0;    tMax = 15;}
             else if (tStandardName.equals("wind_speed_of_gust"          )) {tMin = 0;    tMax = 30;}
             else if (tStandardName.equals("visibility_in_air"           )) {tMin = 0;    tMax = 100;}
-            else if (tStandardName.equals("volume_fraction_of_water_in_soil")) 
+            else if (tStandardName.equals("volume_fraction_of_water_in_soil"))
                                                                            {tMin = 0;    tMax = 200;}
             else if (lc.indexOf("|ice|concentration|") >= 0)               {tMin = 0;    tMax = 1.5;}
 
@@ -8849,20 +8893,20 @@ public abstract class EDD {
                     PrimitiveArray ao = addAtts.get("add_offset"); //need to know the new data type
                     if (ao == null || ao instanceof StringArray)  //e.g., "null"
                         ao = sourceAtts.get("add_offset");
-                    if (isDegreesK && ao != null && 
-                        (ao.elementClass() == float.class || ao.elementClass() == double.class)) {
+                    if (isDegreesK && ao != null &&
+                        (ao.elementType() == PAType.FLOAT || ao.elementType() == PAType.DOUBLE)) {
                         isDegreesK = false;
                         isDegreesC = true;
                         tUnits = "degree_C";
                         ao = (PrimitiveArray)(ao.clone()); //if from sourceAtts, don't change sourceAtts value
                         ao.scaleAddOffset(1.0, Math2.kelvinToC);
-                        tAddOffset = ao.getDouble(0); 
+                        tAddOffset = ao.getDouble(0);
                         addAtts.set("add_offset", ao);
                     }
                     if (isDegreesK) {
                         tMin = 263;  tMax = 313;
                     } else { //newly isDegreesC
-                        tMin = -10;  tMax = 40; 
+                        tMin = -10;  tMax = 40;
                     }
                 }}
             else if (lcu.indexOf("anom") >= 0 ||
@@ -8875,7 +8919,7 @@ public abstract class EDD {
                       lcu.indexOf("|radiation|") >= 0 ||
                       lcu.indexOf("|shortwave|") >= 0 ||
                       lcu.indexOf("|longwave|")  >= 0 ||
-                      lcu.indexOf("|solar|")     >= 0) && 
+                      lcu.indexOf("|solar|")     >= 0) &&
                      (lcu.indexOf("|flux|")  >= 0 ||
                       lcu.indexOf("|fluxd|") >= 0)                      )  {tMin = -500; tMax = 500;}
             else if (lcu.indexOf("|w/m^2|") >= 0                        )  {tMin = -500; tMax = 500;}
@@ -8886,11 +8930,11 @@ public abstract class EDD {
                      lcu.indexOf("|zenith|angle|") >= 0                 )  {tMin = -90;  tMax = 90;}
             else if (tUnits.equals("radians")                           )  {tMin = -3.2; tMax = 3.2;}
             else if (tUnits.startsWith("kg")) {
-                if (tUnits.endsWith("s-1")) {tMin = 0;  tMax = 1;   } 
+                if (tUnits.endsWith("s-1")) {tMin = 0;  tMax = 1;   }
                 else                        {tMin = 0;  tMax = 200; }
-            }    
-             
-            if (reallyVerbose && 
+            }
+
+            if (reallyVerbose &&
                 "|longitude|latitude|altitude|depth|time|".indexOf("|" + tStandardName + "|") < 0)
                 String2.log("    assigned tMin=" + tMin + " tMax=" + tMax);
 
@@ -8904,12 +8948,12 @@ public abstract class EDD {
                 if (pa != null && pa.size() == 2) {
                     tMin = pa.getDouble(0);
                     tMax = pa.getDouble(1);
-                } 
-                if (Double.isNaN(tMin)) tMin = addAtts.getRawDouble("valid_min"); //often too wide
+                }
+                if (Double.isNaN(tMin)) tMin = addAtts.getRawDouble("valid_min"); //often too wide   //better: getUnsignedDouble?
                 if (Double.isNaN(tMax)) tMax = addAtts.getRawDouble("valid_max");
                 if (Double.isNaN(tMin)) tMin = sourceAtts.getRawDouble("valid_min"); //often too wide
                 if (Double.isNaN(tMax)) tMax = sourceAtts.getRawDouble("valid_max");
-                //String2.log(">> tSourceName=" + tSourceName + " valid_min=" + tMin + " valid_max=" + tMax); 
+                //String2.log(">> tSourceName=" + tSourceName + " valid_min=" + tMin + " valid_max=" + tMax);
                 if (!Double.isNaN(tMin) && !Double.isNaN(tMax)) {
                     //all of these need scale_factor and add_offset applied
                     tMin = tMin * tScaleFactor + tAddOffset;
@@ -8928,16 +8972,16 @@ public abstract class EDD {
                     tMax = d2[1];
                 }
             }
-                      
 
-            //???better something than nothing (so WMS service is available)? 
+
+            //???better something than nothing (so WMS service is available)?
             //most scientific measurements choose units so numbers are easy, e.g., +/-1000
             //NO! poorly chosen values will just annoy people
             //  and Make A Graph auto-determines range if none specified
-            if (Double.isNaN(tMin) && Double.isNaN(tMax) && 
+            if (Double.isNaN(tMin) && Double.isNaN(tMax) &&
                 String2.isSomething2(tStandardName) &&
-                !tStandardName.equals("longitude") && !tStandardName.equals("latitude") && 
-                !tStandardName.equals("depth")     && !tStandardName.equals("altitude") && 
+                !tStandardName.equals("longitude") && !tStandardName.equals("latitude") &&
+                !tStandardName.equals("depth")     && !tStandardName.equals("altitude") &&
                 !tStandardName.equals("time"))
                 if (verbose) String2.log("Note: no colorBarMin/Max for standard_name=" + tStandardName);
 
@@ -8945,7 +8989,7 @@ public abstract class EDD {
             //assign if known
             if (!Double.isNaN(tMin)) addAtts.add("colorBarMinimum", tMin);
             if (!Double.isNaN(tMax)) addAtts.add("colorBarMaximum", tMax);
-            if (colorBarScale != null) 
+            if (colorBarScale != null)
                 addAtts.add("colorBarScale", colorBarScale);
         }
 
@@ -8977,7 +9021,7 @@ public abstract class EDD {
         if (!String2.isSomething(tScale))
             tScale = sourceAtts.getString("colorBarScale");
         //String2.log(">> " + tSourceName + " min=" + tMin + " scale=" + tScale);
-        if (!Double.isNaN(tMin) && tMin <= 0 && 
+        if (!Double.isNaN(tMin) && tMin <= 0 &&
             "Log".equals(tScale))
             addAtts.set("colorBarScale", "null");
 
@@ -8997,8 +9041,8 @@ public abstract class EDD {
         //deal with scale_factor (e.g., 0.1) and in tUnits  (e.g., "* 10")
         if (String2.isSomething2(tUnits) && tScaleFactor != 0) {
             int inverse = Math2.roundToInt(1 / tScaleFactor);
-            tUnits = String2.replaceAll(tUnits, "*"  + inverse, "");  //e.g., *10  
-            tUnits = String2.replaceAll(tUnits, "* " + inverse, "");  //e.g., * 10  
+            tUnits = String2.replaceAll(tUnits, "*"  + inverse, "");  //e.g., *10
+            tUnits = String2.replaceAll(tUnits, "* " + inverse, "");  //e.g., * 10
             tUnits = String2.replaceAll(tUnits, "x"  + inverse, "");
             tUnits = String2.replaceAll(tUnits, "x " + inverse, "");
             tUnits = String2.replaceAll(tUnits, "X"  + inverse, "");
@@ -9017,7 +9061,7 @@ public abstract class EDD {
 
             //common mistake
             if (oIoosCat.equals("ocean_color"))
-                oIoosCat = "Ocean Color"; 
+                oIoosCat = "Ocean Color";
 
             //ensure valid / fix wrong case
             int ti = String2.caseInsensitiveIndexOf(EDV.IOOS_CATEGORIES, oIoosCat);
@@ -9025,11 +9069,11 @@ public abstract class EDD {
 
             //save it
             if (oIoosCat == null)
-                addAtts.add("ioos_category", "null"); 
-            else if (!ooIoosCat.equals(oIoosCat))            
-                addAtts.add("ioos_category", oIoosCat); 
+                addAtts.add("ioos_category", "null");
+            else if (!ooIoosCat.equals(oIoosCat))
+                addAtts.add("ioos_category", oIoosCat);
         }
-        if (EDStatic.variablesMustHaveIoosCategory && 
+        if (EDStatic.variablesMustHaveIoosCategory &&
             !String2.isSomething2(oIoosCat)) {
             //It is hard to be absolutely certain when assigning ioos_category.
             //Fortunately, this isn't crucial information and is used mostly for data discovery.
@@ -9045,11 +9089,11 @@ public abstract class EDD {
             asl = ttLongName.indexOf(" at sigma level ");
             if (asl > 0)
                 ttLongName = ttLongName.substring(0, asl);
-            lcu = "|" +  
+            lcu = "|" +
                 ttLongName                  + "|" +
                 tStandardName.toLowerCase() + "|" +
-                tUnitsLC                    + "|" + 
-                tSourceName.toLowerCase()   + "|"; 
+                tUnitsLC                    + "|" +
+                tSourceName.toLowerCase()   + "|";
             lcu = String2.replaceAll(lcu, '_', '|');
             lcu = String2.replaceAll(lcu, '-', '|');
             lcu = String2.replaceAll(lcu, '=', '|');
@@ -9059,7 +9103,7 @@ public abstract class EDD {
             //String2.log(">>ioos_category lcu=" + lcu);
 
             //CATCH Identifier before others
-            //see similar CATCH STATISTICS         
+            //see similar CATCH STATISTICS
             if (sourceAtts.getString("cf_role") != null ||
                 lcu.indexOf("|identifier|") >= 0 ||
                 lcu.indexOf("|id|") >= 0 ||
@@ -9069,45 +9113,45 @@ public abstract class EDD {
                 "stationid".equals(lcSourceName) ||
                 "trajectory".equals(lcSourceName) ||
                 "trajectoryid".equals(lcSourceName)) {
-                addAtts.add("ioos_category", "Identifier"); 
+                addAtts.add("ioos_category", "Identifier");
 
             } else if (lcu.indexOf("sigma")        >= 0 &&
                 lcu.indexOf("theta")        >= 0) {
-                addAtts.add("ioos_category", "Physical Oceanography"); 
+                addAtts.add("ioos_category", "Physical Oceanography");
 
             //CATCH Statistics before others
             } else if (String2.whichWord(lcu, statisticsWords) >= 0) {
-                //catch statistics first    including special cases from WOA 2001 
+                //catch statistics first    including special cases from WOA 2001
                 //See BELOW for additional statistics (last resort)
                 addAtts.add("ioos_category", "Statistics");
 
             } else if (lcu.indexOf("sigma")        >= 0) {
                 //ambiguous   statistics or pressure
-                addAtts.add("ioos_category", 
+                addAtts.add("ioos_category",
                     (lcu.indexOf("coordinate") >= 0 || lcu.indexOf("level") >= 0)?
                         "Location" :
-                        "Unknown"); 
+                        "Unknown");
 
             //CATCH Quality before others
             } else if (
                 //see similar CATCH QUALITY above        catch before others
-                lcu.indexOf("qc")           >= 0 || 
+                lcu.indexOf("qc")           >= 0 ||
                 (lcu.indexOf("qa") >= 0 &&
                  String2.indexOf(new String[]{"QAcurl", "QAdivw", "QAemod", "QAtaux",
                     "QAtauy", "QAtmod", "QAuekm", "QAumod", "QAux10", "QAuy10",
-                    "QAvekm", "QAwekm"}, tSourceName) < 0) || 
-                lcu.indexOf("reliability")  >= 0 || 
-                lcu.indexOf("uncertainty")  >= 0 || 
-                (lcu.indexOf("quality") >= 0 && lcu.indexOf("science|quality") < 0) || 
-                lcu.indexOf("flag")         >= 0) { 
+                    "QAvekm", "QAwekm"}, tSourceName) < 0) ||
+                lcu.indexOf("reliability")  >= 0 ||
+                lcu.indexOf("uncertainty")  >= 0 ||
+                (lcu.indexOf("quality") >= 0 && lcu.indexOf("science|quality") < 0) ||
+                lcu.indexOf("flag")         >= 0) {
                 addAtts.add("ioos_category", "Quality");
-    
+
             //CATCH definitely time before others
-            } else if (Calendar2.isTimeUnits(tUnitsLC)) { 
+            } else if (Calendar2.isTimeUnits(tUnitsLC)) {
                 addAtts.add("ioos_category", "Time");
 
             //CATCH definitely temperature before others
-            } else if (hasTemperatureUnits) {  
+            } else if (hasTemperatureUnits) {
                 addAtts.add("ioos_category", "Temperature");
 
             //CATCH definitely Location before others
@@ -9118,17 +9162,17 @@ public abstract class EDD {
                 tDestName.equals(EDV.DEPTH_NAME) ||
                 String2.indexOf(EDV.LON_UNITS_VARIANTS, tUnits) >= 0 ||
                 String2.indexOf(EDV.LAT_UNITS_VARIANTS, tUnits) >= 0) {
-                addAtts.add("ioos_category", "Location");            
+                addAtts.add("ioos_category", "Location");
 
             } else if (
                 lcu.indexOf("bathym")       >= 0 ||
                 lcu.indexOf("topo")         >= 0 ||
-                (tSourceName.equals("z") && isMeters && 
+                (tSourceName.equals("z") && isMeters &&
                     "up".equals(sourceAtts.getString("positive"))) ||
                 tSourceName.equals("land_binary_mask")) {
                 addAtts.add("ioos_category", "Bathymetry");
 
-            } else if (                
+            } else if (
                 lcu.indexOf("|algae")       >= 0 ||
                 lcu.indexOf("birth")        >= 0 ||
                 lcu.indexOf("chorion")      >= 0 ||
@@ -9136,15 +9180,15 @@ public abstract class EDD {
                 lcu.indexOf("disease")      >= 0 ||
                 lcu.indexOf("egg")          >= 0 ||
                 lcu.indexOf("food")         >= 0 ||
-                lcu.indexOf("larv")         >= 0 || 
+                lcu.indexOf("larv")         >= 0 ||
                 lcu.indexOf("myomere")      >= 0 ||
                 lcu.indexOf("|plant")       >= 0 ||
                 lcu.indexOf("|sex|")        >= 0 ||
                 lcu.indexOf("|spp|")        >= 0 ||
-                lcu.indexOf("stage")        >= 0 ||                
-                lcu.indexOf("transpir")     >= 0 ||                
-                lcu.indexOf("|veg")         >= 0 ||                
-                lcu.indexOf("yolk")         >= 0 
+                lcu.indexOf("stage")        >= 0 ||
+                lcu.indexOf("transpir")     >= 0 ||
+                lcu.indexOf("|veg")         >= 0 ||
+                lcu.indexOf("yolk")         >= 0
                 ) {
                 addAtts.add("ioos_category", "Biology");
 
@@ -9162,11 +9206,11 @@ public abstract class EDD {
 
             } else if (
                 (lcu.indexOf("carbon") >= 0 && lcu.indexOf("flux") >= 0) ||
-                lcu.indexOf("alkalinity")          >= 0 || 
-                lcu.indexOf("co2")          >= 0 || 
+                lcu.indexOf("alkalinity")          >= 0 ||
+                lcu.indexOf("co2")          >= 0 ||
                 lcu.indexOf("carbonate")    >= 0 ||
                 lcu.indexOf("co3")          >= 0 ||
-                lcu.indexOf("carbon|dioxide")>= 0) { 
+                lcu.indexOf("carbon|dioxide")>= 0) {
                 addAtts.add("ioos_category", "CO2");
 
             } else if (
@@ -9193,17 +9237,17 @@ public abstract class EDD {
                 addAtts.add("ioos_category", "Dissolved Nutrients");
 
             //Sea Level before Location and Currents so tide is caught correctly
-            } else if (lcu.indexOf("salinity") < 0 && 
-                       lcu.indexOf("wind") < 0 && 
+            } else if (lcu.indexOf("salinity") < 0 &&
+                       lcu.indexOf("wind") < 0 &&
                        lcu.indexOf("wave") < 0 && //don't catch e.g., sea surface swell wave height
                ((lcu.indexOf("geopotential") >= 0 && lcu.indexOf("height") >= 0) ||
                 lcu.indexOf("ssh")                   >= 0 ||
                 lcu.indexOf("surf|el")               >= 0 ||
                 lcu.indexOf("|sea|height|")          >= 0 ||
                 lcu.indexOf("|tide|")                >= 0 ||
-                (lcu.indexOf("water") >= 0 && lcu.indexOf("level") >= 0) || 
+                (lcu.indexOf("water") >= 0 && lcu.indexOf("level") >= 0) ||
                 (lcu.indexOf("|sea|") >= 0 && lcu.indexOf("surface") >= 0 &&
-                    (lcu.indexOf("elevation") >= 0 || lcu.indexOf("height") >= 0)))) { 
+                    (lcu.indexOf("elevation") >= 0 || lcu.indexOf("height") >= 0)))) {
                 addAtts.add("ioos_category", "Sea Level");
 
             //Currents: water or air, or things measuring them (tracer)
@@ -9223,16 +9267,16 @@ public abstract class EDD {
                  lcu.indexOf("tracer")             >= 0 ||
                  lcu.indexOf("current")            >= 0 ||
                  lcu.indexOf("water|dir")          >= 0 ||
-                 lcu.indexOf("direction")          >= 0 || 
-                 lcu.indexOf("speed")              >= 0 || 
-                 lcu.indexOf("spd")                >= 0 || 
+                 lcu.indexOf("direction")          >= 0 ||
+                 lcu.indexOf("speed")              >= 0 ||
+                 lcu.indexOf("spd")                >= 0 ||
                  lcu.indexOf("|vel")               >= 0 ||  //not "level"
-                 lcu.indexOf("velocity")           >= 0)) { 
+                 lcu.indexOf("velocity")           >= 0)) {
                 addAtts.add("ioos_category", "Currents");
 
             } else if (
                 lcu.indexOf("|o2|")         >= 0 || //no2 was caught above
-                lcu.indexOf("oxygen")       >= 0) { 
+                lcu.indexOf("oxygen")       >= 0) {
                 addAtts.add("ioos_category", "Dissolved O2");
 
             } else if (
@@ -9242,8 +9286,8 @@ public abstract class EDD {
                 addAtts.add("ioos_category", "Ecology");
 
             } else if (
-               ((lcu.indexOf("heat") >= 0 || 
-                 lcu.indexOf("temperature") >= 0) && 
+               ((lcu.indexOf("heat") >= 0 ||
+                 lcu.indexOf("temperature") >= 0) &&
                  (lcu.indexOf("transport") >= 0 || lcu.indexOf("flux") >= 0 || lcu.indexOf("flx") >= 0)) ||
                 lcu.indexOf("shortwave")      >= 0 ||  //"heat flux" not ideal; "radiant energy"?
                 lcu.indexOf("longwave")       >= 0 ||  //"heat flux" not ideal; "radiant energy"?
@@ -9268,7 +9312,7 @@ public abstract class EDD {
                 lcu.indexOf("station|id")   >= 0 ||
                 lcu.indexOf("stationid")    >= 0 ||
                 lcu.indexOf("|pi|")         >= 0 ||
-                lcu.indexOf("|project|")    >= 0) { 
+                lcu.indexOf("|project|")    >= 0) {
                 addAtts.add("ioos_category", "Identifier");
 
             //see Location below
@@ -9295,8 +9339,8 @@ public abstract class EDD {
 
             } else if (
                 lcu.indexOf("chlor")              >= 0 ||
-                lcu.indexOf("chla")               >= 0 || 
-                lcu.indexOf("chl|a|")             >= 0 || 
+                lcu.indexOf("chla")               >= 0 ||
+                lcu.indexOf("chl|a|")             >= 0 ||
                 lcu.indexOf("|pic|")              >= 0 ||
                 lcu.indexOf("|inorganic|carbon|") >= 0 ||
                 lcu.indexOf("|poc|")              >= 0 ||
@@ -9321,15 +9365,15 @@ public abstract class EDD {
                 lcu.indexOf("|wavelength|") >= 0 ||
                 lcu.indexOf("reflectance")  >= 0 ||
                 lcu.indexOf("reflectivity") >= 0 ||
-                lcu.indexOf("|transmissi")  >= 0 || //vity 
-                lcu.indexOf("|attenuation") >= 0 || 
+                lcu.indexOf("|transmissi")  >= 0 || //vity
+                lcu.indexOf("|attenuation") >= 0 ||
                 lcu.indexOf("|olr|")  >= 0 ||
                 ((lcu.indexOf("|radiative|") >= 0 ||
                   lcu.indexOf("|radiation|") >= 0 ||
                   lcu.indexOf("|irradiance|") >= 0 ||
                   lcu.indexOf("|shortwave|") >= 0 ||
                   lcu.indexOf("|longwave|")  >= 0 ||
-                  lcu.indexOf("|solar|")     >= 0) && 
+                  lcu.indexOf("|solar|")     >= 0) &&
                  (lcu.indexOf("|flux|")  >= 0 ||
                   lcu.indexOf("|fluxd|") >= 0))  ||
                 lcu.indexOf("|w/m^2|")      >= 0 ||
@@ -9341,7 +9385,7 @@ public abstract class EDD {
             } else if (
                 //??? add/distinguish Phytoplankton Abundance ???
                 lcu.indexOf("phytoplankton") >= 0) {  //not a great test
-                addAtts.add("ioos_category", "Phytoplankton Species"); 
+                addAtts.add("ioos_category", "Phytoplankton Species");
 
             } else if (
                 lcu.indexOf("eightbitcolor") >= 0 ||
@@ -9361,9 +9405,9 @@ public abstract class EDD {
                 addAtts.add("ioos_category", "Pressure");
 
             } else if (
-                lcu.indexOf("productivity") >= 0 || 
-                lcu.indexOf("prim|prod")    >= 0 || 
-                lcu.indexOf("primprod")     >= 0) { 
+                lcu.indexOf("productivity") >= 0 ||
+                lcu.indexOf("prim|prod")    >= 0 ||
+                lcu.indexOf("primprod")     >= 0) {
                 addAtts.add("ioos_category", "Productivity");
 
             //see Quality above
@@ -9381,9 +9425,9 @@ public abstract class EDD {
             //see Sea Level above
 
             } else if (
-                lcu.indexOf("soil")         >= 0) { 
+                lcu.indexOf("soil")         >= 0) {
                 addAtts.add("ioos_category", "Soils");
-    
+
 
             //see Statistics above
 
@@ -9395,9 +9439,9 @@ public abstract class EDD {
                 lcu.indexOf("wvht")         >= 0 ||
                 (lcu.indexOf("wave") >= 0 && lcu.indexOf("spectral") < 0 &&
                     lcu.indexOf("wavelength") < 0 &&
-                    lcu.indexOf("short") < 0 && lcu.indexOf("long") < 0)) { 
+                    lcu.indexOf("short") < 0 && lcu.indexOf("long") < 0)) {
                 addAtts.add("ioos_category", "Surface Waves");
-            
+
             } else if (
                 lcu.indexOf("phylum")       >= 0 ||
                 lcu.indexOf("order")        >= 0 ||
@@ -9413,23 +9457,23 @@ public abstract class EDD {
                 lcu.indexOf("scientific")   >= 0 ||
                 lcu.indexOf("vernacular")   >= 0 ||
                 lcu.indexOf("common|name")  >= 0 ||
-                lcu.indexOf("commonname")   >= 0) { 
+                lcu.indexOf("commonname")   >= 0) {
                 addAtts.add("ioos_category", "Taxonomy");
 
             } else if (
                 lcu.indexOf("airtemp")              >= 0 ||
                 lcu.indexOf("air|temp")             >= 0 ||
-                lcu.indexOf("atemp")                >= 0 || 
-                lcu.indexOf("atmp")                 >= 0 ||  //4 letter NDBC abbreviation 
-                lcu.indexOf("ztmp")                 >= 0 ||  
+                lcu.indexOf("atemp")                >= 0 ||
+                lcu.indexOf("atmp")                 >= 0 ||  //4 letter NDBC abbreviation
+                lcu.indexOf("ztmp")                 >= 0 ||
                 lcu.indexOf("|degree|c|")           >= 0 ||
                 lcu.indexOf("|degrees|c|")          >= 0 ||
                 lcu.indexOf("heating")              >= 0 ||
                 lcu.indexOf("sst")                  >= 0 ||
                 lcu.indexOf("temperature")          >= 0 ||
                 lcu.indexOf("wtmp")                 >= 0 ||  //4 letter NDBC abbreviation
-                lcu.indexOf("wtemp")                >= 0 ||  
-                lcu.indexOf("temp.")                >= 0 ||  
+                lcu.indexOf("wtemp")                >= 0 ||
+                lcu.indexOf("temp.")                >= 0 ||
                 //temperature units often used with other units for other purposes
                 //but if alone, it means temperature
                 hasTemperatureUnits) {  //also caught above before others
@@ -9454,14 +9498,14 @@ public abstract class EDD {
                 lcu.indexOf("wgst")         >= 0 ||
                 lcu.indexOf("wspu")         >= 0 ||
                 lcu.indexOf("wspv")         >= 0 ||
-                lcu.indexOf("wind")         >= 0)) { 
+                lcu.indexOf("wind")         >= 0)) {
                 addAtts.add("ioos_category", "Wind");
-           
+
             } else if (
                 //Physical Oceanography here to catch "stress" other than wind
                 //this can be very inclusive
-                lcu.indexOf("stress")       >= 0 ||             
-                lcu.indexOf("density")      >= 0 ||             
+                lcu.indexOf("stress")       >= 0 ||
+                lcu.indexOf("density")      >= 0 ||
                 lcu.indexOf("erosion")      >= 0 ||
                 lcu.indexOf("|sand|")       >= 0 ||
                 lcu.indexOf("sediment")     >= 0 ||
@@ -9470,7 +9514,7 @@ public abstract class EDD {
                 lcu.indexOf("tidal")        >= 0 ||
                 lcu.indexOf("mixed|layer")  >= 0) {
                 addAtts.add("ioos_category", "Physical Oceanography");
-            
+
             } else if (
                 lcu.indexOf("zooplankton") >= 0) {  //not a great test
                 addAtts.add("ioos_category", "Zooplankton Abundance");
@@ -9495,7 +9539,7 @@ public abstract class EDD {
                 lcu.indexOf("|minute")      >= 0 ||
                 lcu.indexOf("|month")       >= 0 ||
                 //lcu.indexOf("|s|")          >= 0 || //too likely something else   .../s
-                lcu.indexOf("|second|")     >= 0 || 
+                lcu.indexOf("|second|")     >= 0 ||
                 lcu.indexOf("|seconds|")    >= 0 ||
                 (lcu.indexOf("|time") >= 0 && lcu.indexOf("|time-averaged") < 0) ||
                 lcu.indexOf("|year")        >= 0)) {
@@ -9508,30 +9552,30 @@ public abstract class EDD {
 
             } else if (
                 //last resort statistics    (catch things not caught above)
-                lcu.indexOf("|average|")    >= 0 || 
-                lcu.indexOf("|mean|")       >= 0 || 
-                lcu.indexOf("|nav|")        >= 0 || 
-                lcu.indexOf("|ngrids|")     >= 0 || 
-                lcu.indexOf("|nmodels|")    >= 0 || 
-                lcu.indexOf("|nuser|")      >= 0 || 
-                lcu.indexOf("|nx|")         >= 0 || 
-                lcu.indexOf("|ny|")         >= 0 || 
-                lcu.indexOf("|nv|")         >= 0 || 
+                lcu.indexOf("|average|")    >= 0 ||
+                lcu.indexOf("|mean|")       >= 0 ||
+                lcu.indexOf("|nav|")        >= 0 ||
+                lcu.indexOf("|ngrids|")     >= 0 ||
+                lcu.indexOf("|nmodels|")    >= 0 ||
+                lcu.indexOf("|nuser|")      >= 0 ||
+                lcu.indexOf("|nx|")         >= 0 ||
+                lcu.indexOf("|ny|")         >= 0 ||
+                lcu.indexOf("|nv|")         >= 0 ||
                 lcu.indexOf("|n|")          >= 0) {
-                //See ABOVE for additional statistics 
+                //See ABOVE for additional statistics
                 addAtts.add("ioos_category", "Statistics");
 
             //catch Location last   so e.g., ocean_salt_x_transport caught by Salinity
-            //some Location caught above before others 
+            //some Location caught above before others
             } else if (
                 lcu.indexOf("altitude")     >= 0 ||
                 lcu.indexOf("elevation")    >= 0 ||
-                (lcu.indexOf("depth")       >= 0 && 
+                (lcu.indexOf("depth")       >= 0 &&
                  lcu.indexOf("integral")    <  0) ||
-                lcu.indexOf("geox")         >= 0 || 
-                lcu.indexOf("geoy")         >= 0 || 
-                (lcu.indexOf("|level|") >= 0 && 
-                   (lcu.indexOf("|m|") >= 0       || lcu.indexOf("|meter|") >= 0 || 
+                lcu.indexOf("geox")         >= 0 ||
+                lcu.indexOf("geoy")         >= 0 ||
+                (lcu.indexOf("|level|") >= 0 &&
+                   (lcu.indexOf("|m|") >= 0       || lcu.indexOf("|meter|") >= 0 ||
                     lcu.indexOf("|meters|") >= 0  || lcu.indexOf("|cm|") >= 0)) ||
                 (lcu.indexOf("|plev|") >= 0 && lcu.indexOf("|atm|") >= 0) ||
                 lcu.indexOf("|lon|")        >= 0 ||
@@ -9542,15 +9586,15 @@ public abstract class EDD {
                 lcu.indexOf("|tlat|")       >= 0 ||
                 lcu.indexOf("|vlat|")       >= 0 ||
                 lcu.indexOf("latitude")     >= 0 ||
-                lcu.indexOf("|x|")          >= 0 || 
+                lcu.indexOf("|x|")          >= 0 ||
                 lcu.indexOf("xax")          >= 0 || //x axis
-                lcu.indexOf("|xpos|")       >= 0 || 
+                lcu.indexOf("|xpos|")       >= 0 ||
                 lcu.indexOf("|y|")          >= 0 ||
                 lcu.indexOf("yax")          >= 0 || //y axis
-                lcu.indexOf("|ypos|")       >= 0 || 
-                lcu.indexOf("|z|")          >= 0 || 
+                lcu.indexOf("|ypos|")       >= 0 ||
+                lcu.indexOf("|z|")          >= 0 ||
                 lcu.indexOf("zax")          >= 0 || //z axis
-                lcu.indexOf("|zpos|")       >= 0 || 
+                lcu.indexOf("|zpos|")       >= 0 ||
                 lcu.indexOf("zlev")         >= 0 ||
                 lcu.indexOf("|cs|w|")       >= 0 ||
                 lcu.indexOf("|eta|rho|")    >= 0 ||
@@ -9561,7 +9605,7 @@ public abstract class EDD {
                 lcu.indexOf("|xi|rho|")     >= 0 ||
                 lcu.indexOf("|xi|u|")       >= 0 ||
                 lcu.indexOf("|xi|v|")       >= 0 ||
-                lcu.indexOf("|nsites|")     >= 0 || 
+                lcu.indexOf("|nsites|")     >= 0 ||
                 lcu.indexOf("|srs|")        >= 0 ||
                 lcu.indexOf("|datum|")      >= 0 ||
                 lcu.indexOf("|vertdatum|")  >= 0 ||
@@ -9576,31 +9620,31 @@ public abstract class EDD {
                 lcu.indexOf("|zip|")        >= 0 ||
                 lcu.indexOf("|country|")    >= 0 ||
                 lcu.indexOf("|fips")        >= 0) {
-                addAtts.add("ioos_category", "Location");            
+                addAtts.add("ioos_category", "Location");
 
             } else {
-                if (reallyVerbose || !lcu.equals("|nbnds|||nbnds|")) 
+                if (reallyVerbose || !lcu.equals("|nbnds|||nbnds|"))
                     String2.log("    ioos_category=Unknown for " + lcu);
                 addAtts.add("ioos_category", "Unknown");
-            }        
+            }
         }
 
         //add to addAtts if changed
-        if (!tUnits.equals(oUnits))               
+        if (!tUnits.equals(oUnits))
             addAtts.add("units",         String2.isSomething2(tUnits)?        tUnits        : "null");
-        if (!tLongName.equals(oLongName))         
+        if (!tLongName.equals(oLongName))
             addAtts.add("long_name",     String2.isSomething2(tLongName)?     tLongName     : "null");
         //standard_name is the only case-sensitive CF attribute name (see Sec 3.3)
         //All are all lower case.
-        tStandardName = tStandardName.toLowerCase(); 
-        if (!tStandardName.equals(oStandardName)) 
+        tStandardName = tStandardName.toLowerCase();
+        if (!tStandardName.equals(oStandardName))
             addAtts.add("standard_name", String2.isSomething2(tStandardName)? tStandardName : "null");
 
         //updateUrls() in every attribute
         EDStatic.updateUrls(sourceAtts, addAtts);
 
         //clean
-        addAtts.trimAndMakeValidUnicode();       
+        addAtts.trimAndMakeValidUnicode();
 
         //last:
         addAtts.removeIfSame(sourceAtts);
@@ -9611,18 +9655,18 @@ public abstract class EDD {
 
     /**
      * This is used by subclass's generateDatasetsXml methods to suggest
-     * a Conventions metadata value.    
+     * a Conventions metadata value.
      *
      * @param con the old Conventions value, may be "" or null.
      * @param the new Conventions value
      */
     public static String suggestConventions(String con) {
-        if (con == null) 
+        if (con == null)
             con = "";
         con = String2.replaceAll(con, "/",", ");
-        if (con.indexOf("COARDS") < 0) 
+        if (con.indexOf("COARDS") < 0)
             con += ", COARDS";
-        if (con.indexOf("CF") < 0) 
+        if (con.indexOf("CF") < 0)
             con += ", CF-1.6";
         else {
             con = String2.replaceAll(con, "CF 1.00","CF-1.6");
@@ -9643,7 +9687,7 @@ public abstract class EDD {
             con = String2.replaceAll(con, "CF-1.5", "CF-1.6");
         }
         con = String2.replaceAll(con, "Unidata Dataset Discovery v1.0", "ACDD-1.3");
-        if (con.indexOf("ACDD") < 0) 
+        if (con.indexOf("ACDD") < 0)
             con += ", ACDD-1.3";
         else {
             con = String2.replaceAll(con, "ACDD-1.0", "ACDD-1.3");
@@ -9662,15 +9706,15 @@ public abstract class EDD {
 
     /**
      * This is used by subclass's generateDatasetsXml methods to suggest
-     * a datasetID.    
+     * a datasetID.
      * <br>This seeks to be short, descriptive, and unique (so 2 datasets don't have same datasetID).
      *
-     * @param tPublicSourceUrl a real URL (starts with "http", e.g., https://oceanwatch.pfeg.noaa.gov/...), 
-     *   a fileDirectory (with trailing '/') or directory+fileName (may be a fileNameRegex), 
+     * @param tPublicSourceUrl a real URL (starts with "http", e.g., https://oceanwatch.pfeg.noaa.gov/...),
+     *   a fileDirectory (with trailing '/') or directory+fileName (may be a fileNameRegex),
      *   or a fake fileDirectory (not ideal).
      *   <br>If an OPeNDAP url, it is without the .das, .dds, or .html extension.
      *   <br>If a fileDirectory, the two rightmost directories are important.
-     *   <br>If you want to add additional information (e.g. dimension names or "EDDTableFromFileNames"), 
+     *   <br>If you want to add additional information (e.g. dimension names or "EDDTableFromFileNames"),
      *     add it add the end of the url.
      * @return a suggested datasetID, e.g., noaa_pfeg#########
      */
@@ -9698,16 +9742,16 @@ public abstract class EDD {
         dsi = String2.replaceAll(dsi, '.', '_');
         if (dsi.startsWith("_"))
             dsi = dsi.substring(1);
-        return dsi + String2.md5Hex12(tPublicSourceUrl);  
-        
-        //return String2.md5Hex12(tPublicSourceUrl);  
+        return dsi + String2.md5Hex12(tPublicSourceUrl);
+
+        //return String2.md5Hex12(tPublicSourceUrl);
     }
 
-    /** 
+    /**
      * This extracts the institution parts from a URL.
      *
-     * @param tPublicSourceUrl a real URL (starts with "http", e.g., https://oceanwatch.pfeg.noaa.gov/...), 
-     *     a fileDirectory (with or without trailing '/'), 
+     * @param tPublicSourceUrl a real URL (starts with "http", e.g., https://oceanwatch.pfeg.noaa.gov/...),
+     *     a fileDirectory (with or without trailing '/'),
      *     or a fake fileDirectory (not ideal).
      *     <br>If a fileDirectory, the rightmost directory is used.
      * @return a String[] with the parts, e.g., noaa, pmel
@@ -9769,7 +9813,7 @@ public abstract class EDD {
         } else {
             //tPublicSourceUrl is a filename
             tdi = String2.replaceAll(tdi, '\\', '/');
-            if (tdi.startsWith("/")) tdi = tdi.substring(1);   
+            if (tdi.startsWith("/")) tdi = tdi.substring(1);
             if (tdi.endsWith("/"))   tdi = tdi.substring(0, tdi.length() - 1);
             parts = StringArray.fromCSV(String2.replaceAll(tdi, '/', ','));
 
@@ -9781,11 +9825,11 @@ public abstract class EDD {
         return parts.toArray();
     }
 
-    /** 
+    /**
      * This extracts the institution from a URL.
      *
-     * @param tPublicSourceUrl a real URL (starts with "http", e.g., https://oceanwatch.pfeg.noaa.gov/...), 
-     *     a fileDirectory (with or without trailing '/'), 
+     * @param tPublicSourceUrl a real URL (starts with "http", e.g., https://oceanwatch.pfeg.noaa.gov/...),
+     *     a fileDirectory (with or without trailing '/'),
      *     or a fake fileDirectory (not ideal).
      *     <br>If a fileDirectory, the two rightmost directories are important.
      * @return e.g., NOAA PFEG
@@ -9795,14 +9839,14 @@ public abstract class EDD {
     }
 
     /**
-     * This is used by subclass's generateDatasetsXml methods to write 
+     * This is used by subclass's generateDatasetsXml methods to write
      * directions to datasets.xml file.
      * <br>This doesn't have the closing "-->\n\n" so users can add other comments.
      *
      * @throws Throwable if trouble
      */
     public static String directionsForGenerateDatasetsXml() throws Throwable {
-        return 
+        return
 "<!--\n" +
 " DISCLAIMER:\n" +
 "   The chunk of datasets.xml made by GenerageDatasetsXml isn't perfect.\n" +
@@ -9841,22 +9885,22 @@ public abstract class EDD {
      * <p>This suggests a destinationName (notably, longitude, latitude, time, or
      * if the sourceName can't be used as a destName.
      *
-     * @param sourceTable  may be null. 
-     *    <br>If present, the variables must parallel the variables in the addTable. 
+     * @param sourceTable  may be null.
+     *    <br>If present, the variables must parallel the variables in the addTable.
      *    <br>This is used to write the source attributes as comments.
-     *    <br>It is also used as a source for source "units", used to identify variables (e.g., for ioos_category) 
-     * @param addTable the main table. 
+     *    <br>It is also used as a source for source "units", used to identify variables (e.g., for ioos_category)
+     * @param addTable the main table.
      * @param variableType  e.g., axisVariable or dataVariable
      * @param sourceUnits one element per column in the table.
-     *    The whole thing can be null 
-     *    (it is for oldGenerateDatasetsXml methods, since the table has the source attributes), 
+     *    The whole thing can be null
+     *    (it is for oldGenerateDatasetsXml methods, since the table has the source attributes),
      *    or any element may be null.
      * @param questionDestinationName if true, the destinationName is preceded by "???"
      *    if it is different from sourceName.
      * @throws Throwable if trouble
      */
     public static String writeVariablesForDatasetsXml(Table sourceTable, Table addTable,
-        String variableType, boolean includeDataType, 
+        String variableType, boolean includeDataType,
         boolean questionDestinationName) throws Throwable {
 
         if (sourceTable != null) {
@@ -9864,14 +9908,14 @@ public abstract class EDD {
                 "The number of columns in sourceTable and addTable isn't equal!");
             sourceTable.ensureNoDuplicateColumnNames(variableType + " source table: ");
         }
-        addTable.ensureNoDuplicateColumnNames(variableType + " add table: ");
+        addTable.makeColumnNamesUnique();
 
         String indent = "    ";
         StringBuilder sb = new StringBuilder();
 
         //e.g., don't change "lon" to "longitude" if there is already a "longitude" variable
-        int sLongitude  = addTable.findColumnNumber("longitude"), 
-            sLatitude   = addTable.findColumnNumber("latitude"), 
+        int sLongitude  = addTable.findColumnNumber("longitude"),
+            sLatitude   = addTable.findColumnNumber("latitude"),
             sAltitude   = addTable.findColumnNumber("altitude"), //but just one of altitude or depth
             sDepth      = addTable.findColumnNumber("depth"),    //but just one of altitude or depth
             sTime       = addTable.findColumnNumber("time");
@@ -9879,8 +9923,8 @@ public abstract class EDD {
         //ensure time has proper units
         if (sTime >= 0) {
             Attributes addAtts = addTable.columnAttributes(sTime);
-            String tUnits = addAtts.getString("units");  
-            if (tUnits == null && sourceTable != null) 
+            String tUnits = addAtts.getString("units");
+            if (tUnits == null && sourceTable != null)
                 tUnits = sourceTable.columnAttributes(sTime).getString("units");
             if (!Calendar2.isTimeUnits(tUnits)) {
                 int n = 2;
@@ -9900,14 +9944,14 @@ public abstract class EDD {
                 indent + "    <sourceName>" + tSourceName + "</sourceName>\n");
 
             //make new destinationName?
-            Attributes sourceAtts = sourceTable == null? new Attributes() : 
+            Attributes sourceAtts = sourceTable == null? new Attributes() :
                 sourceTable.columnAttributes(col);
             Attributes addAtts = addTable.columnAttributes(col);
-            String tUnits = addAtts.getString("units");  
-            if (tUnits == null) 
+            String tUnits = addAtts.getString("units");
+            if (tUnits == null)
                 tUnits = sourceAtts.getString("units");
-            String tPositive = addAtts.getString("positive");  
-            if (tPositive == null) 
+            String tPositive = addAtts.getString("positive");
+            if (tPositive == null)
                 tPositive = sourceAtts.getString("positive");
             float tScaleFactor = sourceAtts.getFloat("scale_factor");
             String tDestName = addTable.getColumnName(col);
@@ -9926,7 +9970,7 @@ public abstract class EDD {
                     indent + "    <destinationName>" + tDestName + "</destinationName>\n");
 
             if (includeDataType) sb.append(
-                indent + "    <dataType>" + addTable.getColumn(col).elementClassString() + "</dataType>\n");
+                indent + "    <dataType>" + addTable.getColumn(col).elementTypeString() + "</dataType>\n");
             if (sourceTable != null)
                 sb.append(writeAttsForDatasetsXml(false, sourceAtts, indent + "    "));
             sb.append    (writeAttsForDatasetsXml(true,  addAtts,    indent + "    "));
@@ -9940,18 +9984,18 @@ public abstract class EDD {
      * This is used by tryToFindLLAT(), writeVariablesForDatasetsXml() and others to
      * suggest a destination name for a variable (notably, longitude, latitude, time,
      * but others if, e.g., the sourceName has invalid characters).
-     * <br>NOTE: time is caught solely via a value units value, 
+     * <br>NOTE: time is caught solely via a value units value,
      *    e.g., units="seconds since 1970-01-01",
      * <br>NOTE: there is no assurance that timezone is Zulu!!!
-     * <br>If tSourceName is "time" but units aren't "... since ..." or "???" or 
-     *   "" or include "%y", this returns "time2". 
+     * <br>If tSourceName is "time" but units aren't "... since ..." or "???" or
+     *   "" or include "%y", this returns "time2".
      * <br>Thus, this only returns "time" if the units are appropriate.
-     * 
+     *
      * @param tSourceName the sourceName (or better: a known suggested destName)
      * @param tUnits the addUnits or sourceUnits (may be null)
      * @param tPositive the value of the "positive" attribute (e.g., up or down, may be null)
      * @param tScaleFactor from the "scale_factor" attribute, or NaN.
-     *    This is used to look for the inverse of the scale_factor in the 
+     *    This is used to look for the inverse of the scale_factor in the
      *    variable name, e.g, "* 1000", and remove it.
      * @param tryToFindLLAT if true, this tries to catch and rename variables
      *    to longitude, latitude, altitude, depth, and time.
@@ -9959,14 +10003,20 @@ public abstract class EDD {
      *    <br>This should be false for grid data variables.
      * @return the suggested destinationName (which may be the same).
      */
-    public static String suggestDestinationName(String tSourceName, 
-        Attributes tSourceAtts, Attributes tAddAtts, String tUnits, 
+    public static String suggestDestinationName(String tSourceName,
+        Attributes tSourceAtts, Attributes tAddAtts, String tUnits,
         String tPositive, float tScaleFactor, boolean tryToFindLLAT) {
 
-        //remove (units) from SOS sourceNames, e.g., "name (units)"
         String oSourceName = tSourceName;
+
+        //remove (units) from SOS sourceNames, e.g., "name (units)"
         int po = tSourceName.indexOf(" (");
-        if (po > 0)
+        if (po > 0 && tSourceName.endsWith(")"))
+            tSourceName = tSourceName.substring(0, po);
+
+        //remove [units] from sourceNames, e.g., "name [units]"
+        po = tSourceName.indexOf(" [");
+        if (po > 0 && tSourceName.endsWith("]"))
             tSourceName = tSourceName.substring(0, po);
 
         //if from readXml (e.g., .../.../aaas:time), be brave and just use last part of the name
@@ -9976,7 +10026,7 @@ public abstract class EDD {
             int slashPo1 = tSourceName.indexOf('/');
             if (slashPo1 != slashPo) {
                 tSourceName = tSourceName.substring(slashPo + 1);
- 
+
                 //and it probably has unnecessary prefix:
                 int colonPo = tSourceName.lastIndexOf(':');
                 if (colonPo >= 0 && colonPo < tSourceName.length() - 1) { //not the last char
@@ -9992,61 +10042,61 @@ public abstract class EDD {
         if (tUnits == null) tUnits = "";
         po = tUnits.indexOf("???");
         if (po >= 0)
-            tUnits = tUnits.substring(po + 3);  
+            tUnits = tUnits.substring(po + 3);
         String tUnitsLC = tUnits.toLowerCase();
         boolean unitsAreMeters = String2.indexOf(EDV.METERS_VARIANTS, tUnitsLC) >= 0; //case sensitive
 
-        if (tPositive == null) 
+        if (tPositive == null)
             tPositive = "";
         tPositive = tPositive.toLowerCase();
 
         if (tryToFindLLAT) {
             if (EDV.probablyLon(tSourceName, tUnits))
-                return "longitude"; 
-                 
-            if (EDV.probablyLat(tSourceName, tUnits))      
-                return "latitude"; 
+                return "longitude";
+
+            if (EDV.probablyLat(tSourceName, tUnits))
+                return "latitude";
 
             if (lcSourceName.startsWith("altitude") ||  //stricter than lat and lon
                 (lcSourceName.startsWith("elevation") && unitsAreMeters) ||
-                (tPositive.equals("up") && lcSourceName.indexOf("_above_ground") < 0 && unitsAreMeters))      
-                return "altitude"; 
+                (tPositive.equals("up") && lcSourceName.indexOf("_above_ground") < 0 && unitsAreMeters))
+                return "altitude";
 
             if (lcSourceName.startsWith("depth") ||     //stricter than lat and lon
-                (tPositive.equals("down") && unitsAreMeters))      
-                return "depth"; 
+                (tPositive.equals("down") && unitsAreMeters))
+                return "depth";
 
             if (Calendar2.isNumericTimeUnits(tUnitsLC)) { //simple test; definitive test is below
                 try {
                     Calendar2.getTimeBaseAndFactor(tUnits); //just to throw exception if trouble
-                    return "time"; 
+                    return "time";
                 } catch (Exception e) {
-                    String2.log("Unexpected failure when checking validity of possible time var's units=\"" + 
-                        tUnits + "\":\n" + 
+                    String2.log("Unexpected failure when checking validity of possible time var's units=\"" +
+                        tUnits + "\":\n" +
                         MustBe.throwableToString(e));
                 }
             }
 
             //see Calendar2.suggestDateTimeFormat for common java.time (was Joda) date time formats
-            if (Calendar2.isStringTimeUnits(tUnitsLC) || tUnitsLC.indexOf("%y") >= 0 ) 
-                return "time"; 
+            if (Calendar2.isStringTimeUnits(tUnitsLC) || tUnitsLC.indexOf("%y") >= 0 )
+                return "time";
 
-            if (tSourceName.equals("time") && !tUnits.equals("")) 
-                //name is time but units aren't "... since ..." or "???" or ""! 
+            if (tSourceName.equals("time") && !tUnits.equals(""))
+                //name is time but units aren't "... since ..." or "???" or ""!
                 //so change name
                 return "time2";
         }
 
         //make sure tSourceName will be a valid destName
-        String tDestName = tSourceName; 
+        String tDestName = tSourceName;
 
         if (tDestName.equals("l3m_data")) { //common at jpl podaac
             tDestName     =    tAddAtts.getString("standard_name");
-            if (tDestName == null) 
+            if (tDestName == null)
                 tDestName = tSourceAtts.getString("standard_name");
-            if (tDestName == null) 
+            if (tDestName == null)
                 tDestName =    tAddAtts.getString("long_name");
-            if (tDestName == null) 
+            if (tDestName == null)
                 tDestName = tSourceAtts.getString("long_name");
 
             if (tDestName == null) {
@@ -10067,11 +10117,11 @@ public abstract class EDD {
 
         if (tDestName.equals("l3m_qual")) { //common at jpl podaac
             tDestName     =    tAddAtts.getString("standard_name");
-            if (tDestName == null) 
+            if (tDestName == null)
                 tDestName = tSourceAtts.getString("standard_name");
-            if (tDestName == null) 
+            if (tDestName == null)
                 tDestName =    tAddAtts.getString("long_name");
-            if (tDestName == null) 
+            if (tDestName == null)
                 tDestName = tSourceAtts.getString("long_name");
 
             if (tDestName == null) {
@@ -10093,7 +10143,7 @@ public abstract class EDD {
         //do before modifyToBeFileNameSafe, which removes '*'
         if (!Float.isNaN(tScaleFactor) && tScaleFactor != 0) {
             int inverse = Math2.roundToInt(1 / tScaleFactor);
-            tDestName = String2.replaceAll(tDestName, "*" + inverse, "");  //e.g., *10  
+            tDestName = String2.replaceAll(tDestName, "*" + inverse, "");  //e.g., *10
             tDestName = String2.replaceAll(tDestName, "x" + inverse, "");
             tDestName = String2.replaceAll(tDestName, "X" + inverse, "");
             tDestName = tDestName.trim();
@@ -10101,7 +10151,7 @@ public abstract class EDD {
 
         //make a valid destName
         tDestName = String2.modifyToBeFileNameSafe(tDestName);
-        if (tDestName.equals("_")) 
+        if (tDestName.equals("_"))
             tDestName = "a";
         tDestName = String2.replaceAll(tDestName, '.', '_');
         tDestName = String2.replaceAll(tDestName, '-', '_');
@@ -10113,7 +10163,7 @@ public abstract class EDD {
         }
         while (tDestName.indexOf("__") >= 0)
             tDestName = String2.replaceAll(tDestName, "__", "_");
-        while (tDestName.length() > 0 && "*_".indexOf(tDestName.charAt(tDestName.length() - 1)) >= 0) 
+        while (tDestName.length() > 0 && "*_".indexOf(tDestName.charAt(tDestName.length() - 1)) >= 0)
             tDestName = tDestName.substring(0, tDestName.length() - 1).trim();
         if (tDestName.length() == 0)
             tDestName = "a";
@@ -10127,7 +10177,7 @@ public abstract class EDD {
         //NOT YET. Most sourceNames aren't too long. aasg is the only known exception.
         //look for last '_', but not at very end
         //  and avoid e.g., several something_quality -> quality
-        //if (po < 0 && tDestName.length() > 20) 
+        //if (po < 0 && tDestName.length() > 20)
         //    po = tDestName.substring(0, tDestName.length() - 8).lastIndexOf(seek = "_");
         if (po >= 0)
             tDestName = tDestName.substring(po + seek.length());
@@ -10161,10 +10211,10 @@ public abstract class EDD {
      * @param indent a string of spaces
      * @throws Throwable if trouble
      */
-    public static String writeAttsForDatasetsXml(boolean isAddAtts, 
+    public static String writeAttsForDatasetsXml(boolean isAddAtts,
         Attributes addAtts, String indent) throws Throwable {
         StringBuilder sb = new StringBuilder();
-        sb.append(indent + 
+        sb.append(indent +
             (isAddAtts? "<addAttributes>\n" : "<!-- sourceAttributes>\n"));
         String names[] = addAtts.getNames();
         for (int att = 0; att < names.length; att++) {
@@ -10174,22 +10224,22 @@ public abstract class EDD {
                 String val = XML.encodeAsXML(attPa.getString(0));
                 if (!isAddAtts)
                     //replace all "--" with "- - " so not interpreted as end of comment
-                    val = String2.replaceAll(val, "--", "- - "); 
+                    val = String2.replaceAll(val, "--", "- - ");
                 sb.append(">" + val + "</att>\n");
             } else {
-                sb.append(" type=\"" + attPa.elementClassString() + 
+                sb.append(" type=\"" + attPa.elementTypeString() +
                     (attPa.size() > 1? "List" : "") +
                     "\">" + String2.replaceAll(attPa.toString(), ", ", " ") + "</att>\n");
             }
         }
-        sb.append(indent + 
+        sb.append(indent +
             (isAddAtts? "</addAttributes>\n" : "</sourceAttributes -->\n"));
         return sb.toString();
     }
 
-    /** 
-     * This is used by standardizeResultsTable 
-     * (and places that bypass standardizeResultsTable) to update the 
+    /**
+     * This is used by standardizeResultsTable
+     * (and places that bypass standardizeResultsTable) to update the
      * globalAttributes of a response table.
      * @return null if trouble.  The new history is used for tableWriters, which allow null.
      */
@@ -10197,17 +10247,17 @@ public abstract class EDD {
         try {
             String tHistory = addToHistory(
                 combinedGlobalAttributes.getString("history"), publicSourceUrl());
-            return addToHistory(tHistory,  
-                EDStatic.baseUrl + requestUrl + 
+            return addToHistory(tHistory,
+                EDStatic.baseUrl + requestUrl +
                 (userDapQuery == null || userDapQuery.length() == 0? "" : "?" + userDapQuery));
         } catch (Exception e) {
-            String2.log("Caught: " + MustBe.throwableToString(e));
+            String2.log("getNewHistory returning null because it caught: " + MustBe.throwableToString(e));
             return null;
         }
     }
 
     /**
-     * This adds a line to the "history" attribute (which is created if it 
+     * This adds a line to the "history" attribute (which is created if it
      * doesn't already exist).
      *
      * @param tHistory the previous value, may be null
@@ -10222,7 +10272,7 @@ public abstract class EDD {
     }
 
     /**
-     * This adds a line to the "history" attribute (which is created if it 
+     * This adds a line to the "history" attribute (which is created if it
      * doesn't already exist).
      *
      * @param attributes (should always be a COPY of the dataset's global attributes,
@@ -10247,7 +10297,7 @@ public abstract class EDD {
         String extra, int maxLength) {
         if (destinationName.length() >= 20 || //varName is already pretty long
             longName.length() + extra.length() >= maxLength) //longName+extra is too long
-            return false; 
+            return false;
         destinationName = String2.replaceAll(destinationName.toLowerCase(), " ", "");
         destinationName = String2.replaceAll(destinationName, "_", "");
         longName = String2.replaceAll(longName.toLowerCase(), " ", "");
@@ -10273,7 +10323,7 @@ public abstract class EDD {
     }
 
     /**
-     * This reads a badFile table from disk and creates a thread-safe ConcurrentHashMap 
+     * This reads a badFile table from disk and creates a thread-safe ConcurrentHashMap
      * (key=dir#/fileName, value=Object[0=(Long)lastMod, 1=(String)reason]).
      * <br>If trouble, this won't throw an Exception and will return an empty badFileMap.
      * <br>If there are no bad files, there is no file.
@@ -10292,7 +10342,7 @@ public abstract class EDD {
         try {
             if (File2.isFile(fileName)) {
                 Table badTable = new Table();
-                Test.ensureEqual(badTable.readEnhancedFlatNc(fileName, null), 
+                Test.ensureEqual(badTable.readEnhancedFlatNc(fileName, null),
                     Table.ENHANCED_VERSION, msg + "enhancedVersion");
                 Test.ensureEqual(badTable.globalAttributes().getInt(_dirFileTableVersion_),
                     DIR_FILE_TABLE_VERSION, msg + _dirFileTableVersion_);
@@ -10303,32 +10353,32 @@ public abstract class EDD {
                 Test.ensureEqual(badTable.getColumnName(0), "fileName", "Unexpected column#0 name.");
                 Test.ensureEqual(badTable.getColumnName(1), "lastMod",  "Unexpected column#1 name.");
                 Test.ensureEqual(badTable.getColumnName(2), "reason",   "Unexpected column#2 name.");
-                Test.ensureEqual(badTable.getColumn(0).elementClassString(), "String", "Unexpected column#0 type.");
-                Test.ensureEqual(badTable.getColumn(1).elementClassString(), "long",   "Unexpected column#1 type.");
-                Test.ensureEqual(badTable.getColumn(2).elementClassString(), "String", "Unexpected column#2 type.");
+                Test.ensureEqual(badTable.getColumn(0).elementTypeString(), "String", "Unexpected column#0 type.");
+                Test.ensureEqual(badTable.getColumn(1).elementTypeString(), "long",   "Unexpected column#1 type.");
+                Test.ensureEqual(badTable.getColumn(2).elementTypeString(), "String", "Unexpected column#2 type.");
                 if (nRows == 0)
                     return badFilesMap;
-                for (int row = 0; row < nRows; row++) 
-                    badFilesMap.put(badTable.getStringData(0, row), 
+                for (int row = 0; row < nRows; row++)
+                    badFilesMap.put(badTable.getStringData(0, row),
                         new Object[]{new Long(badTable.getLongData(1, row)),
                                      badTable.getStringData(2, row)});
             }
             return badFilesMap;
         } catch (Throwable t) {
             String subject = "Error while reading table of badFiles";
-            String content = fileName + "\n" + 
-                MustBe.throwableToString(t);  
+            String content = fileName + "\n" +
+                MustBe.throwableToString(t);
             String2.log(subject);
             String2.log(content);
             File2.delete(fileName);
-            if (content.indexOf(msg) < 0) 
+            if (content.indexOf(msg) < 0)
                 EDStatic.email(EDStatic.emailEverythingToCsv, subject, content);
             return newEmptyBadFileMap();
         }
     }
 
     /**
-     * This makes a badFile table from a thread-safe ConcurrentHashMap  
+     * This makes a badFile table from a thread-safe ConcurrentHashMap
      * (key=dir#/fileName, value=Object[0=(Long)lastMod, 1=(String)reason]).
      * and writes it to disk.
      * <br>If the file can't be written, an email is sent to emailEverythingToCsv.
@@ -10337,7 +10387,7 @@ public abstract class EDD {
      * @param badFilesMap
      * @throws Throwable if trouble
      */
-    public void writeBadFileMap(String randomFileName, ConcurrentHashMap badFilesMap) 
+    public void writeBadFileMap(String randomFileName, ConcurrentHashMap badFilesMap)
         throws Throwable {
 
         try {
@@ -10366,8 +10416,8 @@ public abstract class EDD {
             if (verbose) String2.log("Table of badFiles successfully written. nRows=" + badTable.nRows());
         } catch (Throwable t) {
             String subject = "Error while writing table of badFiles";
-            String content = randomFileName + "\n" + 
-                MustBe.throwableToString(t);  
+            String content = randomFileName + "\n" +
+                MustBe.throwableToString(t);
             String2.log(subject + ":\n" + content);
             EDStatic.email(EDStatic.emailEverythingToCsv, subject, content);
             File2.delete(randomFileName);
@@ -10375,34 +10425,34 @@ public abstract class EDD {
         }
     }
 
-    /** 
-     * This adds dirIndex/fileName, lastMod, and reason to a badFiles map. 
+    /**
+     * This adds dirIndex/fileName, lastMod, and reason to a badFiles map.
      *
      * @param badFileMap
-     * @param dirIndex   
+     * @param dirIndex
      * @param fileName   the fileName, for example  AG20090109.nc
-     * @param lastMod   the lastModified time (millis) of the file 
+     * @param lastMod   the lastModified time (millis) of the file
      * @param reason
      */
-    public void addBadFile(ConcurrentHashMap badFileMap, int dirIndex, String fileName, 
+    public void addBadFile(ConcurrentHashMap badFileMap, int dirIndex, String fileName,
             long lastMod, String reason) {
         String2.log(datasetID + " addBadFile: " + fileName + "\n  reason=" + reason);
         badFileMap.put(dirIndex + "/" + fileName, new Object[]{new Long(lastMod), reason});
     }
 
-    /** 
-     * This reads the table of badFiles, adds dirIndex/fileName and reason, 
-     *   and writes the table of badFiles. 
+    /**
+     * This reads the table of badFiles, adds dirIndex/fileName and reason,
+     *   and writes the table of badFiles.
      * This is used outside of the constructor, when a previously good file is found to be bad.
      * This won't throw an exception, just logs the message.
      *
-     * @param dirIndex   
+     * @param dirIndex
      * @param fileName   the fileName, for example  AG20090109.nc
      * @param lastMod   the lastModified time (millis) of the file
      * @param reason
      * @return an error string ("" if no error).
      */
-    public String addBadFileToTableOnDisk(int dirIndex, String fileName, long lastMod, 
+    public String addBadFileToTableOnDisk(int dirIndex, String fileName, long lastMod,
         String reason) {
 
         ConcurrentHashMap badFileMap = readBadFileMap();
@@ -10421,9 +10471,9 @@ public abstract class EDD {
         }
     }
 
-    /** 
+    /**
      * This returns a string representation of the information in a badFileMap.
-     * 
+     *
      * @param badFileMap
      * @param dirList
      * @return a string representation of the information in a badFileMap.
@@ -10432,7 +10482,7 @@ public abstract class EDD {
     public String badFileMapToString(ConcurrentHashMap badFileMap, StringArray dirList) {
 
         Object keys[] = badFileMap.keySet().toArray();
-        if (keys.length == 0) 
+        if (keys.length == 0)
             return "";
         StringBuilder sb = new StringBuilder(
             "\n" +
@@ -10445,7 +10495,7 @@ public abstract class EDD {
             String dir = File2.getDirectory(keys[k].toString());
             int dirI = dir.length() > 1 && dir.endsWith("/")?
                 String2.parseInt(dir.substring(0, dir.length() - 1)) : -1;
-            if (o != null && dirI >= 0 && dirI < nDir) { 
+            if (o != null && dirI >= 0 && dirI < nDir) {
                 Object oar[] = (Object[])o;
                 sb.append(dirList.get(dirI) + File2.getNameAndExtension(keys[k].toString()) + "\n" +
                   oar[1].toString() + "\n\n"); //reason
@@ -10456,19 +10506,19 @@ public abstract class EDD {
         return sb.toString();
     }
 
-    /** 
-     * This is used by EDDGridFromFiles and EDDTableFromFiles to 
+    /**
+     * This is used by EDDGridFromFiles and EDDTableFromFiles to
      * find a file from the fileTable (via linear search).
      *
      * @return the row number if it was in the fileTable (else -1)
-     */     
-    public static int findInFileTable(int dirIndex, String fileName, 
+     */
+    public static int findInFileTable(int dirIndex, String fileName,
         Table tFileTable, ShortArray ftDirIndex, StringArray ftFileList) {
 
         int fileListPo = 0;
         int nFiles = ftDirIndex.size();
         while (fileListPo < nFiles) {
-            if (dirIndex == ftDirIndex.get(fileListPo) && 
+            if (dirIndex == ftDirIndex.get(fileListPo) &&
                 fileName.equals(ftFileList.get(fileListPo))) {
                 return fileListPo;
             }
@@ -10477,16 +10527,16 @@ public abstract class EDD {
         return -1;
     }
 
-    /** 
+    /**
      * This is used by EDDGridFromFiles and EDDTableFromFiles to remove
      * a file from the fileTable (via linear search).
      *
      * @return true if it was in the fileTable and thus was removed
-     */     
-    public static boolean removeFromFileTable(int dirIndex, String fileName, 
+     */
+    public static boolean removeFromFileTable(int dirIndex, String fileName,
         Table tFileTable, ShortArray ftDirIndex, StringArray ftFileList) {
 
-        int fileListPo = findInFileTable(dirIndex, fileName, 
+        int fileListPo = findInFileTable(dirIndex, fileName,
             tFileTable, ftDirIndex, ftFileList);
         if (fileListPo >= 0) {
             tFileTable.removeRow(fileListPo);
@@ -10496,8 +10546,8 @@ public abstract class EDD {
         }
     }
 
-    /** 
-     * This is used by EDDGridFromFiles and EDDTableFromFiles to save 
+    /**
+     * This is used by EDDGridFromFiles and EDDTableFromFiles to save
      * all the file information to disk.
      *
      * @param tStandardizeWhat If &gt;=0 and &lt; MAX_VALUE, this will
@@ -10505,8 +10555,8 @@ public abstract class EDD {
      * @param badFileMap if null, it is just skipped
      * @throws Throwable if trouble
      */
-    public void saveDirTableFileTableBadFiles(int tStandardizeWhat, 
-        Table dirTable, Table fileTable, 
+    public void saveDirTableFileTableBadFiles(int tStandardizeWhat,
+        Table dirTable, Table fileTable,
         ConcurrentHashMap badFileMap) throws Throwable {
 
         String dirTableFileName  = datasetDir() +  DIR_TABLE_FILENAME;
@@ -10531,7 +10581,7 @@ public abstract class EDD {
                 writeBadFileMap(badFilesFileName + random, badFileMap);
             //if Windows, give OS file system time to settle
             //if (String2.OSIsWindows) Math2.gc(1000); //so things below go quickly
-            
+
             //Integrity of these files is important. Rename is less likely to have error.
             if (badFileMap == null) {} //do nothing
             else if (badFileMap.isEmpty())
@@ -10539,11 +10589,11 @@ public abstract class EDD {
             else File2.rename(badFilesFileName + random, badFilesFileName);
             File2.rename(     dirTableFileName + random, dirTableFileName);
             //do fileTable last: more changes, more important
-            File2.rename(    fileTableFileName + random, fileTableFileName); 
-            if (reallyVerbose) String2.log("save fileTable(first 5 rows)=\n" + 
+            File2.rename(    fileTableFileName + random, fileTableFileName);
+            if (reallyVerbose) String2.log("save fileTable(first 5 rows)=\n" +
                 fileTable.dataToString(5));
         } catch (Throwable t) {
-            String subject = String2.ERROR + 
+            String subject = String2.ERROR +
                 " while saving dirTable, fileTable, or badFiles for " + datasetID;
             String msg = MustBe.throwableToString(t);
             String2.log(subject + "\n" + msg);
@@ -10563,7 +10613,7 @@ public abstract class EDD {
      *
      * @param userQuery the part after the '?', still percentEncoded, may be null.
      * @param namesLC if true, the names are made toLowerCase.
-     * @return HashMap<String, String>  
+     * @return HashMap<String, String>
      *   <br>The keys and values will be percentDecoded.
      *   <br>A null or "" userQuery will return an empty hashMap.
      *   <br>If a part doesn't have '=', then it doesn't generate an entry in hashmap.
@@ -10601,11 +10651,11 @@ public abstract class EDD {
 
         for (int i = 0; i < queryParts.length; i++) {
             int po = queryParts[i].indexOf('=');
-            if (po >= 0) 
-                queryParts[i] = 
+            if (po >= 0)
+                queryParts[i] =
                     SSR.minimalPercentEncode(queryParts[i].substring(0, po)) + "=" +
                     SSR.minimalPercentEncode(queryParts[i].substring(po + 1));
-            else 
+            else
                 queryParts[i] = SSR.minimalPercentEncode(queryParts[i]);
         }
         return String2.toSVString(queryParts, "&", false);
@@ -10621,13 +10671,13 @@ public abstract class EDD {
      */
     public String getPngInfoFileName(String loggedInAs, String userDapQuery, String fileTypeName) {
         String tFileName = suggestFileName(loggedInAs, userDapQuery, fileTypeName + "Info");
-        return String2.canonical(cacheDirectory() + tFileName + pngInfoSuffix);  
+        return String2.canonical(cacheDirectory() + tFileName + pngInfoSuffix);
     }
 
-    /** 
+    /**
      * This writes pngInfo image information to a .json file (dictionary with entries).
      * If trouble, this logs the error to String2.log, but doesn't throw exception.
-     * 
+     *
      * @param loggedInAs
      * @param userDapQuery the same as used to make the image file (should be percent-encoded)
      * @param fileTypeName the same as used to make the image. e.g., .png or .smallPng
@@ -10638,14 +10688,17 @@ public abstract class EDD {
      * @param yMax  the double-value range of the graph
      */
     public void writePngInfo(String loggedInAs, String userDapQuery, String fileTypeName, ArrayList mmal) {
-
-        String infoFileName = getPngInfoFileName(loggedInAs, userDapQuery, fileTypeName);
-        synchronized (infoFileName) {
-            if (File2.isFile(infoFileName)) {
-                if (verbose) String2.log("  writePngInfo succeeded (file already existed)"); 
-                return;
-            }
+        String infoFileName = String2.canonical(getPngInfoFileName(loggedInAs, userDapQuery, fileTypeName));
+        try {
+            ReentrantLock lock = String2.canonicalLock(infoFileName);
+            if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+                throw new TimeoutException("Timeout waiting for lock in EDD.writePngInfo.");
             try {
+                if (File2.isFile(infoFileName)) {
+                    if (verbose) String2.log("  writePngInfo succeeded (file already existed)");
+                    return;
+                }
+
                 StringBuilder sb = new StringBuilder();
                 sb.append("{\n");
                 PrimitiveArray pa;
@@ -10657,7 +10710,7 @@ public abstract class EDD {
 
                 String tError = String2.writeToFile(infoFileName, sb.toString(), String2.UTF_8); //json always UTF-8
                 if (tError.length() == 0) {
-                    if (verbose) String2.log("  writePngInfo succeeded"); 
+                    if (verbose) String2.log("  writePngInfo succeeded");
                 } else {
                     String2.log(String2.ERROR + " while writing pngInfo image information to\n" +
                         infoFileName + " :\n" +
@@ -10666,21 +10719,23 @@ public abstract class EDD {
                 if (reallyVerbose) String2.log(
                         "    userDapQuery=" + userDapQuery + "\n" +
                         "    fileTypeName=" + fileTypeName + "\n" +
-                        "    infoFileName=" + infoFileName + "\n" + 
+                        "    infoFileName=" + infoFileName + "\n" +
                         sb.toString());
 
-            } catch (Throwable t) {
-                String2.log(String2.ERROR + " while writing pngInfo image information for\n" +
-                    "  userDapQuery=" + userDapQuery + "\n" +
-                    "  fileTypeName=" + fileTypeName + "\n" +
-                    "  infoFileName=" + infoFileName + "\n" + 
-                    MustBe.throwableToString(t));
+            } finally {
+                lock.unlock();
             }
+        } catch (Throwable t) {
+            String2.log(String2.ERROR + " while writing pngInfo image information for\n" +
+                "  userDapQuery=" + userDapQuery + "\n" +
+                "  fileTypeName=" + fileTypeName + "\n" +
+                "  infoFileName=" + infoFileName + "\n" +
+                MustBe.throwableToString(t));
         }
     }
 
-    /** 
-     * This reads the info from a pngInfo file. 
+    /**
+     * This reads the info from a pngInfo file.
      *
      * @param loggedInAs
      * @param userDapQuery the same as used to make the image file (should be percent-encoded)
@@ -10692,7 +10747,7 @@ public abstract class EDD {
         String infoFileName = getPngInfoFileName(loggedInAs, userDapQuery, fileTypeName);
         long eTime = System.currentTimeMillis();
         try {
-            if (reallyVerbose) 
+            if (reallyVerbose)
                 String2.log("  readPngInfo" +
                     "\n    userDapQuery=" + userDapQuery +
                     "\n    fileTypeName=" + fileTypeName +
@@ -10706,9 +10761,9 @@ public abstract class EDD {
                     //if this fails, the method fails since infoFile isn't in the dir anyway
                     String tUrl = fe.getLocalSourceErddapUrl() + fileTypeName + "Info" +
                         ((userDapQuery != null && userDapQuery.length() > 0)? "?" + userDapQuery : "");
-                    if (verbose) String2.log("  readPngInfo is trying to make " + infoFileName + 
+                    if (verbose) String2.log("  readPngInfo is trying to make " + infoFileName +
                         "\n  from remote ERDDAP: " + tUrl);
-                    SSR.downloadFile(tUrl, infoFileName, true);                    
+                    SSR.downloadFile(tUrl, infoFileName, true);
                 } else {
                     if (reallyVerbose)
                         String2.log(
@@ -10725,10 +10780,10 @@ public abstract class EDD {
 
             //read the json pngInfo file
             String sa[] = String2.readFromFile(infoFileName, String2.UTF_8, 1);
-            if (sa[0].length() > 0) 
+            if (sa[0].length() > 0)
                 throw new Exception(sa[0]);
             JSONTokener jTok = new JSONTokener(sa[1]);
-            JSONObject jDictionary = new JSONObject(jTok); 
+            JSONObject jDictionary = new JSONObject(jTok);
 
             JSONArray jArray = jDictionary.getJSONArray("graphDoubleWESN");
             double graphDoubleWESN[] = new double[4];
@@ -10747,11 +10802,11 @@ public abstract class EDD {
 
             return new Object[]{graphDoubleWESN, graphIntWESN};
         } catch (Throwable t) {
-            String2.log(String2.ERROR + " (time=" + (System.currentTimeMillis() - eTime) + 
-                ") while reading pngInfo image information for \n" + 
+            String2.log(String2.ERROR + " (time=" + (System.currentTimeMillis() - eTime) +
+                ") while reading pngInfo image information for \n" +
                 "  userDapQuery=" + userDapQuery + "\n" +
                 "  fileTypeName=" + fileTypeName + "\n" +
-                "  infoFileName=" + infoFileName + "\n" + 
+                "  infoFileName=" + infoFileName + "\n" +
                 MustBe.throwableToString(t));
             return null;
         }
@@ -10759,19 +10814,18 @@ public abstract class EDD {
 
 
 
-
     /**
      * This walks through the start directory and subdirectories and tries
      * to generateDatasetsXml for groups of data files that it finds.
-     * <br>This assumes that when a dataset is found, the dataset includes all 
+     * <br>This assumes that when a dataset is found, the dataset includes all
      *   subdirectories.
      * <br>If dataset is found, sibling directories will be treated as separate datasets
      *   (e.g., dir for 1990's, dir for 2000's, dir for 2010's will be separate datasets).
      *   But they should be easy to combine by hand.
-     * <br>This will only catch one type of file in a directory (e.g., 
+     * <br>This will only catch one type of file in a directory (e.g.,
      *   a dir with sst files and chl files will just catch one of those).
-     * 
-     * @return a suggested chunk of xml for all datasets it can find for use in datasets.xml 
+     *
+     * @return a suggested chunk of xml for all datasets it can find for use in datasets.xml
      * @throws Throwable if trouble, e.g., startDir not found or no valid datasets were made.
      *    If no trouble, then a valid dataset.xml chunk has been returned.
      */
@@ -10788,7 +10842,7 @@ public abstract class EDD {
         StringArray dirs = FileVisitorSubdir.oneStep(startDir, ".*"); //pathRegex
         int nDirs = dirs.size();
         //String2.pressEnterToContinue(String2.toNewlineString(dirs.toArray()));
-        
+
         StringArray dirInfo = new StringArray(nDirs, true);
         Table dirTable = new Table();
         dirTable.addColumn("dir", dirs);
@@ -10816,7 +10870,7 @@ public abstract class EDD {
                 continue;
             }
 
-            Table fileTable = FileVisitorDNLS.oneStep(tDir, ".*", 
+            Table fileTable = FileVisitorDNLS.oneStep(tDir, ".*",
                 false, null, false); //tRecursive, tPathRegex, tDirectoriesToo
             StringArray names = (StringArray)fileTable.getColumn(FileVisitorDNLS.NAME);
             StringArray exts = new StringArray();
@@ -10835,7 +10889,7 @@ public abstract class EDD {
                 String tName = names.get(filei);
                 String ext = File2.getExtension(tName); //may be ""
                 exts.add(ext);
-                if (ext.equals(".md5") || 
+                if (ext.equals(".md5") ||
                     tName.toLowerCase().startsWith("readme")) { //readme or read_me
                     //don't tally .md5, readme, or others?
                 } else {
@@ -10843,7 +10897,7 @@ public abstract class EDD {
                 }
             }
             fileTable.addColumn(0, "ext", exts);
-        
+
             //get the most common file extension
             ArrayList tallyArrayList = tally.getSortedNamesAndCounts("ext");
             if (tallyArrayList == null)
@@ -10865,7 +10919,7 @@ public abstract class EDD {
             String topOfAre = topCount + " of " + nFiles + " files are " + topExt + ": ";
 
             if (topCount < 4) {
-                //I'm looking for collections of data files. 
+                //I'm looking for collections of data files.
                 //Don't be distracted by e.g., one .txt file.
                 dirDone.set(diri);
                 String msg = topOfAre + "That's less than 4.";
@@ -10887,7 +10941,7 @@ public abstract class EDD {
                     try {
                         Attributes gAtts = new Attributes();
                         NcHelper.getGlobalAttributes(ncFile, gAtts);
-                        featureType = gAtts.getString("featureType"); 
+                        featureType = gAtts.getString("featureType");
                         if (featureType == null) //cdm allows these aliases
                             featureType = gAtts.getString("CF:featureType");
                         if (featureType == null)
@@ -10900,7 +10954,7 @@ public abstract class EDD {
 
                     //try to interpret as a .ncCF file
                     String xmlChunk = EDDTableFromNcCFFiles.generateDatasetsXml(
-                        tDir, ".*\\" + topExt, 
+                        tDir, ".*\\" + topExt,
                         tDir + sampleName, tReloadEveryNMinutes,
                         "", "", "", "", //extract
                         "", "", "", "", "", 0, "", //standardizeWhat=0, cacheFromUrl
@@ -10916,23 +10970,22 @@ public abstract class EDD {
                     nCreated++;
                     continue;
                 } catch (Throwable t) {
-                    String2.log("> Attempt with EDDTableFromNcCFFiles (" + 
+                    String2.log("> Attempt with EDDTableFromNcCFFiles (" +
                         featureType + ") failed:\n" +
                         MustBe.throwableToString(t));
                 }
             }
 
             //grid via netcdf-java
-            if (topExt.equals(".nc") || topExt.equals(".cdf") || 
-                topExt.equals(".hdf") || 
-                topExt.equals(".grb") || topExt.equals(".grb2") || 
-                topExt.equals(".bufr") || 
+            if (topExt.equals(".nc") || topExt.equals(".cdf") ||
+                topExt.equals(".hdf") ||
+                topExt.equals(".grb") || topExt.equals(".grb2") ||
+                topExt.equals(".bufr") ||
                 topExt.equals("")) {  //.hdf are sometimes unidentified
                 try {
                     String xmlChunk = EDDGridFromNcFiles.generateDatasetsXml(
-                        tDir, ".*\\" + topExt, 
-                        tDir + sampleName, 
-                        tReloadEveryNMinutes, 
+                        tDir, ".*\\" + topExt, tDir + sampleName,
+                        "", "", tReloadEveryNMinutes,  //group, dimensionsCSV
                         null, null); //cacheFromUrl, externalAddGlobalAttributes
                     resultsSB.append(xmlChunk);  //recursive=true
                     for (int diri2 = diri; diri2 < nDirs; diri2++)
@@ -10941,7 +10994,7 @@ public abstract class EDD {
                     String msg = topOfAre + "EDDGridFromNcFiles";
                     dirInfo.set(diri, indent + msg);
                     String2.log(success + msg);
-                    nGridNc++; 
+                    nGridNc++;
                     nCreated++;
                     continue;
                 } catch (Throwable t) {
@@ -10954,7 +11007,7 @@ public abstract class EDD {
             if (topExt.equals(".nc") || topExt.equals(".cdf")) {
                 try {
                     String xmlChunk = EDDTableFromMultidimNcFiles.generateDatasetsXml(
-                        tDir, ".*\\" + topExt, 
+                        tDir, ".*\\" + topExt,
                         tDir + sampleName, "", tReloadEveryNMinutes,
                         "", "", "", "", //extract
                         true, //removeMVRows
@@ -10969,24 +11022,24 @@ public abstract class EDD {
                     String msg = topOfAre + "EDDTableFromNcFiles";
                     dirInfo.set(diri, indent + msg);
                     String2.log(success + msg);
-                    nTableNc++; 
+                    nTableNc++;
                     nCreated++;
                     continue;
                 } catch (Throwable t) {
                     String2.log("> Attempt with EDDTableFromMultidimNcFiles failed:\n" +
                         MustBe.throwableToString(t));
                 }
-            } 
+            }
 
-            //ascii table 
-            if (topExt.equals(".csv") || topExt.equals(".tsv") || 
+            //ascii table
+            if (topExt.equals(".csv") || topExt.equals(".tsv") ||
                 topExt.equals(".txt")) {
                 try {
                     String xmlChunk = EDDTableFromAsciiFiles.generateDatasetsXml(
-                        tDir, ".*\\" + topExt, 
-                        tDir + sampleName, 
+                        tDir, ".*\\" + topExt,
+                        tDir + sampleName,
                         "", 1, 2, "", //charset, columnNamesRow, firstDataRow, columnSeparator
-                        tReloadEveryNMinutes, 
+                        tReloadEveryNMinutes,
                         "", "", "", "", //extract
                         "", "", "", "", "", "", 0, "", //standardizeWhat=0, cacheFromUrl
                         null); //other info
@@ -11009,8 +11062,8 @@ public abstract class EDD {
             //all fail? Use EDDTableFromFileNames and serve all files (not just topExt)
             try {
                 String xmlChunk = EDDTableFromFileNames.generateDatasetsXml(
-                    tDir, ".*", true, //recursive 
-                    tReloadEveryNMinutes, 
+                    tDir, ".*", true, //recursive
+                    tReloadEveryNMinutes,
                     "", "", "", "", null); //other info
                 resultsSB.append(xmlChunk);  //recursive=true
                 for (int diri2 = diri; diri2 < nDirs; diri2++)
@@ -11037,7 +11090,7 @@ public abstract class EDD {
             " nTableNc=" + nTableNc + " nTableAscii=" + nTableAscii +
             " nTableFileNames=" + nTableFileNames + ")\n");
         if (nCreated == 0)
-            throw new RuntimeException("No datasets.xml chunks where successfully constructed."); 
+            throw new RuntimeException("No datasets.xml chunks where successfully constructed.");
         return resultsSB.toString();
     }
 
@@ -11067,17 +11120,17 @@ public abstract class EDD {
         long memory = Math2.getMemoryInUse();
 
         if (clearCache)
-            EDD.deleteCachedDatasetInfo(tDatasetID);  
+            EDD.deleteCachedDatasetInfo(tDatasetID);
 
-        EDD edd = oneFromDatasetsXml(null, tDatasetID); 
+        EDD edd = oneFromDatasetsXml(null, tDatasetID);
 
-        tName = edd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
-            "EDD.testDasDds_" + tDatasetID, ".das"); 
+        tName = edd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory,
+            "EDD.testDasDds_" + tDatasetID, ".das");
         results.append("**************************** The .das for " + tDatasetID + " ****************************\n");
         results.append(String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName) + "\n");
 
-        tName = edd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory, 
-            "EDD.testDasDds_" + tDatasetID, ".dds"); 
+        tName = edd.makeNewFileForDapQuery(null, null, "", EDStatic.fullTestCacheDirectory,
+            "EDD.testDasDds_" + tDatasetID, ".dds");
         results.append("**************************** The .dds for " + tDatasetID + " ****************************\n");
         results.append(String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName) + "\n");
 
@@ -11093,9 +11146,9 @@ public abstract class EDD {
         if (false) {
             Math2.gcAndWait(); Math2.gcAndWait(); //Used in development.  Before getMemoryInUse().
             memory = Math2.getMemoryInUse() - memory;
-            String2.log("\n*** DasDds: memoryUse=" + (memory/1024) + 
+            String2.log("\n*** DasDds: memoryUse=" + (memory/1024) +
                 " KB\nPress CtrlBreak in console window to generate hprof heap info.");
-            String2.pressEnterToContinue(); 
+            String2.pressEnterToContinue();
         }
 
         return results.toString();
@@ -11146,7 +11199,7 @@ public abstract class EDD {
      *
      * @return the InPort XML content
      */
-    public String getInPortXmlString(String archiveLocation, String archiveOther, 
+    public String getInPortXmlString(String archiveLocation, String archiveOther,
         String archiveNone) {
         boolean isGrid = this instanceof EDDGrid;
         EDDGrid  eddGrid  = isGrid? (EDDGrid)this : null;
@@ -11165,76 +11218,76 @@ if (tOrganization.equals("NOAA NMFS SWFSC Environmental Research Division")) {
     tCity = "Santa Cruz"; //where data is located
 }
 
-        StringBuilder sb = new StringBuilder();       
+        StringBuilder sb = new StringBuilder();
 sb.append(
 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
 "<inport-metadata version=\"1.0\">\n" +
 "  <item-identification>\n" +
-"    <parent-catalog-item-id>???</parent-catalog-item-id>\n" + 
+"    <parent-catalog-item-id>???</parent-catalog-item-id>\n" +
 //2016-02-17 Michael Chang email says that a new dataset has a parent-catalog-item-id
 //  and an existing dataset has a catalog-item-id. They are mutually exclusive.
-//To create a new catalog item, enter the catalog item ID of the existing catalog item under which this new item should be created. Do not include this tag if you are updating, and not creating an item. 
-"    <catalog-item-id>???</catalog-item-id>\n" + 
+//To create a new catalog item, enter the catalog item ID of the existing catalog item under which this new item should be created. Do not include this tag if you are updating, and not creating an item.
+"    <catalog-item-id>???</catalog-item-id>\n" +
 //To update an existing catalog item, enter its catalog item ID here. Do not include this tag if you are creating a new item, rather than updating an existing item.
-"    <catalog-item-type>Data Set</catalog-item-type>\n" + 
+"    <catalog-item-type>Data Set</catalog-item-type>\n" +
 //Enter the catalog item type of the item being created or updated (e.g. Data Set)
-"    <title>" + XML.encodeAsXML(title()) + "</title>\n" + 
+"    <title>" + XML.encodeAsXML(title()) + "</title>\n" +
 //Enter the catalog item title. If this upload is updating an existing catalog item, the title here will replace the existing one.
-"    <short-name>" + XML.encodeAsXML(datasetID()) + "</short-name>\n" + 
+"    <short-name>" + XML.encodeAsXML(datasetID()) + "</short-name>\n" +
 //Enter a short name for the catalog item.
 "    <status>In Work</status>\n" + //??? while still working on these records, then Complete
 //Enter the status. Must be one of the following values: In Work, Planned, Complete.
-"    <abstract>" + XML.encodeAsXML(summary()) + "</abstract>\n" + 
+"    <abstract>" + XML.encodeAsXML(summary()) + "</abstract>\n" +
 //Enter the abstract/description of the catalog item.
 "    <purpose></purpose>\n" + //Enter the purpose.
 "    <notes></notes>\n" + //Enter notes if applicable.
 "    <other-citation-details></other-citation-details>\n" + //Enter other citation details.
-"    <supplemental-information>" + XML.encodeAsXML(infoUrl()) + "</supplemental-information>\n" + 
+"    <supplemental-information>" + XML.encodeAsXML(infoUrl()) + "</supplemental-information>\n" +
 //Enter supplemental information if applicable.
 "  </item-identification>\n" +
 "  <physical-location>\n" + //where the data is located!
-"    <organization>" + XML.encodeAsXML(tOrganization) + 
-   "</organization>\n" + 
+"    <organization>" + XML.encodeAsXML(tOrganization) +
+   "</organization>\n" +
 //Enter EITHER the organization name, OR the organization acronym, EXACTLY as it is listed in InPort. The organization must exist in InPort.
 "    <city>" + XML.encodeAsXML(tCity) +  //where the data is located
-   "</city>\n" + 
+   "</city>\n" +
 //Enter the city.
-"    <state-province>" + 
-    XML.encodeAsXML(EDStatic.adminStateOrProvince == null? "" : EDStatic.adminStateOrProvince) + 
-   "</state-province>\n" + 
+"    <state-province>" +
+    XML.encodeAsXML(EDStatic.adminStateOrProvince == null? "" : EDStatic.adminStateOrProvince) +
+   "</state-province>\n" +
 //Enter the state or province (2 letter acronym). Must be a valid state/province.
-"    <country>" + 
-    XML.encodeAsXML(EDStatic.adminCountry == null? "" : EDStatic.adminCountry) + 
-   "</country>\n" + 
+"    <country>" +
+    XML.encodeAsXML(EDStatic.adminCountry == null? "" : EDStatic.adminCountry) +
+   "</country>\n" +
 //Enter the country.
-"    <location-description></location-description>\n" + 
+"    <location-description></location-description>\n" +
 //Enter the location description.
 "  </physical-location>\n" +
 "  <data-set-information>\n" +
-"    <data-presentation-form>" + 
+"    <data-presentation-form>" +
     XML.encodeAsXML("Table (digital)") + //odd for grids, but close enough
    "</data-presentation-form>\n" +
 //Bob says see http://www.isotc211.org/2005/resources/Codelist/gmxCodelists.xml#CI_OnLineFunctionCode\
 //  which has OnLineFunctionCodes and OnLinePresentationCodes (this)
 //  There isn't an option for Grids: "Table (digital)" is closest and reasonable.
 //Enter one data presentation form from the following list of possible values: Document (digital), Document (hardcopy), Image (digital), Image (hardcopy), Map (digital), Map (hardcopy), Profile (digital), Profile (hardcopy), Table (digital), Table (hardcopy), Video (digital), Video (hardcopy), Audio, Other
-"    <data-presentation-form-other>" + //For grids, I decided against "Multidimensional Grid (digital)" : "") + 
-   "</data-presentation-form-other>\n" + 
+"    <data-presentation-form-other>" + //For grids, I decided against "Multidimensional Grid (digital)" : "") +
+   "</data-presentation-form-other>\n" +
 //If the Data Presentation Form is Other, enter what it is here. This field should not be populated if the Data Presentation Form is not Other.\n" +
-"    <instrument>" + 
+"    <instrument>" +
     XML.encodeAsXML(gatts.getString("instrument") != null? gatts.getString("instrument") :
-                    gatts.getString("sensor")     != null? gatts.getString("sensor") : 
+                    gatts.getString("sensor")     != null? gatts.getString("sensor") :
                     "Not Applicable") + //from rubric
    "</instrument>\n" +
 //Enter the name of the instrument used for data collection, if applicable.
-"    <platform>" + 
+"    <platform>" +
     XML.encodeAsXML(gatts.getString("platform")  != null? gatts.getString("platform") :
-                    gatts.getString("satellite") != null? gatts.getString("satellite") : 
+                    gatts.getString("satellite") != null? gatts.getString("satellite") :
                     "Not Applicable") + //from rubric
     "</platform>\n" +
 //Enter the name of the platform used for data collection, if applicable.
 "    <physical-collection-fishing-gear>Not Applicable" + //from rubric
-   "</physical-collection-fishing-gear>\n" + 
+   "</physical-collection-fishing-gear>\n" +
 //Enter the name of the physical collection or fishing gear used for data collection, if applicable.
 "  </data-set-information>\n");
 
@@ -11242,85 +11295,85 @@ sb.append(
 sb.append(
 "  <support-roles mode=\"replace\">\n");
 
-//support role info for ERDDAP admin 
-String adminSupportInfo = 
+//support role info for ERDDAP admin
+String adminSupportInfo =
 "      <from-date>" + now.substring(0, 4) + "</from-date>\n" + //unknown start date, so use this year
 //Enter the start date of the support role in ISO 8601 basic format (YYYYMMDD), up to the appropriate granularity which is significant. For example, if the date is significant only up to the month, enter YYYYMM.
-//still in effect, so don't specify: "      <to-date></to-date>\n" + 
+//still in effect, so don't specify: "      <to-date></to-date>\n" +
 //If the support role is still in effect, do not include this field. Otherwise, enter the end date of the support role in ISO 8601 basic format (YYYYMMDD), up to the appropriate granularity which is significant. For example, if the date is significant only up to the month, enter YYYYMM.
-"      <person-email>" + 
-    XML.encodeAsXML(EDStatic.adminEmail == null? "" : EDStatic.adminEmail) + 
-     "</person-email>\n" + 
+"      <person-email>" +
+    XML.encodeAsXML(EDStatic.adminEmail == null? "" : EDStatic.adminEmail) +
+     "</person-email>\n" +
 //If the support role is a person, enter the person's email address. The person must exist in InPort. Please contact your librarian is the person is not in InPort.
-"      <organization>" + XML.encodeAsXML(tOrganization) + 
-     "</organization>\n" + 
+"      <organization>" + XML.encodeAsXML(tOrganization) +
+     "</organization>\n" +
 //If the support role is an organization, enter EITHER the organization name OR the organization acronym, as it is listed in InPort. The organization must exist in InPort.
-"      <contact-instructions>" + 
-    XML.encodeAsXML(EDStatic.adminEmail == null? "" : "email " + EDStatic.adminEmail) + 
-     "</contact-instructions>\n" + 
+"      <contact-instructions>" +
+    XML.encodeAsXML(EDStatic.adminEmail == null? "" : "email " + EDStatic.adminEmail) +
+     "</contact-instructions>\n" +
 //Enter the contact instructions for the person or organization specified for the support role.
 "    </support-role>\n";
 
-//support role info for creator metadata 
+//support role info for creator metadata
 String creatorSupportInfo = gatts.getString("creator_email") == null? "" :
 "      <from-date>" + now.substring(0, 4) + "</from-date>\n" + //unknown start date, so use this year
 //Enter the start date of the support role in ISO 8601 basic format (YYYYMMDD), up to the appropriate granularity which is significant. For example, if the date is significant only up to the month, enter YYYYMM.
-//still in effect, so don't specify: "      <to-date></to-date>\n" + 
+//still in effect, so don't specify: "      <to-date></to-date>\n" +
 //If the support role is still in effect, do not include this field. Otherwise, enter the end date of the support role in ISO 8601 basic format (YYYYMMDD), up to the appropriate granularity which is significant. For example, if the date is significant only up to the month, enter YYYYMM.
-"      <person-email>" + 
-     XML.encodeAsXML(gatts.getString("creator_email") == null? "" : gatts.getString("creator_email")) + 
-     "</person-email>\n" + 
-//If the support role is a person, enter the person's email address. 
+"      <person-email>" +
+     XML.encodeAsXML(gatts.getString("creator_email") == null? "" : gatts.getString("creator_email")) +
+     "</person-email>\n" +
+//If the support role is a person, enter the person's email address.
 //??? The person must exist in InPort. Please contact your librarian is the person is not in InPort.
-"      <organization></organization>\n" + 
+"      <organization></organization>\n" +
 //??? is creator_name person or org?
 //If the support role is an organization, enter EITHER the organization name OR the organization acronym, as it is listed in InPort. The organization must exist in InPort.
-"      <contact-instructions>" + 
-     XML.encodeAsXML(gatts.getString("creator_email") == null? "" : "email " + gatts.getString("creator_email")) + 
-     "</contact-instructions>\n" + 
+"      <contact-instructions>" +
+     XML.encodeAsXML(gatts.getString("creator_email") == null? "" : "email " + gatts.getString("creator_email")) +
+     "</contact-instructions>\n" +
 //Enter the contact instructions for the person or organization specified for the support role.
 "    </support-role>\n";
 
-//SUPPORT ROLE TYPES: Enter Author, Collection Item Originator, Data Set Credit, 
-//Data Steward, Distributor, Metadata Contact, Originator, Point of Contact, 
+//SUPPORT ROLE TYPES: Enter Author, Collection Item Originator, Data Set Credit,
+//Data Steward, Distributor, Metadata Contact, Originator, Point of Contact,
 //Process Contact, Publisher
 
-//Metadata Contact from admin 
+//Metadata Contact from admin
 sb.append(
 "    <support-role>\n" +
-"      <support-role-type>Metadata Contact</support-role-type>\n" + 
+"      <support-role-type>Metadata Contact</support-role-type>\n" +
 adminSupportInfo);
 
-//Distributor from admin 
+//Distributor from admin
 sb.append(
 "    <support-role>\n" +
-"      <support-role-type>Distributor</support-role-type>\n" + 
+"      <support-role-type>Distributor</support-role-type>\n" +
 adminSupportInfo);
 
 //Author from creator
-if (creatorSupportInfo.length() > 0) 
+if (creatorSupportInfo.length() > 0)
     sb.append(
 "    <support-role>\n" +
-"      <support-role-type>Author</support-role-type>\n" + 
+"      <support-role-type>Author</support-role-type>\n" +
 creatorSupportInfo);
 
 //Data Set Credit from creator
-if (creatorSupportInfo.length() > 0) 
+if (creatorSupportInfo.length() > 0)
     sb.append(
 "    <support-role>\n" +
-"      <support-role-type>Data Set Credit</support-role-type>\n" + 
+"      <support-role-type>Data Set Credit</support-role-type>\n" +
 creatorSupportInfo);
 
 //Data Steward from creator or admin
 sb.append(
 "    <support-role>\n" +
-"      <support-role-type>Data Steward</support-role-type>\n" + 
+"      <support-role-type>Data Steward</support-role-type>\n" +
 (creatorSupportInfo.length() > 0? creatorSupportInfo : adminSupportInfo));
 
 //Point of Contact (for the data) from creator or admin
 sb.append(
 "    <support-role>\n" +
-"      <support-role-type>Point of Contact</support-role-type>\n" + 
+"      <support-role-type>Point of Contact</support-role-type>\n" +
 (creatorSupportInfo.length() > 0? creatorSupportInfo : adminSupportInfo));
 
 
@@ -11334,32 +11387,32 @@ sb.append(
 
 //time-frame
 if ((isGrid? eddGrid.timeIndex() : eddTable.timeIndex()) >= 0) {
-    EDV edv = isGrid? eddGrid.axisVariables()[eddGrid.timeIndex()] : 
+    EDV edv = isGrid? eddGrid.axisVariables()[eddGrid.timeIndex()] :
                       eddTable.dataVariables()[eddTable.timeIndex()];
-    double start = edv.destinationMin();
-    double stop = edv.destinationMax();
+    double start = edv.destinationMinDouble();
+    double stop  = edv.destinationMaxDouble();
     if (Double.isFinite(start)) {
         String startS = String2.replaceAll(String2.replaceAll(
             edv.destinationMinString(), "-", ""), ":", "");
-        //if stop is in last 60 days, treat as Continuing 
-        String stopS  = 
+        //if stop is in last 60 days, treat as Continuing
+        String stopS  =
             Double.isFinite(stop) &&
-            System.currentTimeMillis()/1000.0 - stop > 60 * Calendar2.SECONDS_PER_DAY? 
+            System.currentTimeMillis()/1000.0 - stop > 60 * Calendar2.SECONDS_PER_DAY?
             edv.destinationMaxString() : "";
         stopS = String2.replaceAll(String2.replaceAll(stopS, "-", ""), ":", "");
 sb.append(
 "      <time-frames>\n" +
 "        <time-frame>\n" +
 "          <time-frame-type>" + (stopS.length() == 0? "Continuing" : "Range") +
-         "</time-frame-type>\n" + 
+         "</time-frame-type>\n" +
 //Enter Continuing, Range or Discrete
-"          <start-date-time>" + startS + 
-         "</start-date-time>\n" + 
+"          <start-date-time>" + startS +
+         "</start-date-time>\n" +
 //Enter a start date/time of the catalog item's temporal extent in ISO 8601 basic format (YYYYMMDDTHHMMSS.FFFZ), up to the appropriate granularity which is significant. For example, if the date/time is significant only up to the month, enter YYYYMM. Dates without a time zone component will be interpreted as GMT.
-"          <end-date-time>" + (stopS.length() == 0? "" : stopS) + 
-         "</end-date-time>\n" + 
+"          <end-date-time>" + (stopS.length() == 0? "" : stopS) +
+         "</end-date-time>\n" +
 //If the time frame is a Range, enter the end date/time of the catalog item's temporal extent in ISO 8601 basic format (YYYYMMDDTHHMMSS.FFFZ), up to the appropriate granularity which is significant. For example, if the date/time is significant only up to the month, enter YYYYMM. Dates without a time zone component will be interpreted as GMT. The end date/time must be later than the start date/time.
-"          <description></description>\n" + 
+"          <description></description>\n" +
 //Enter a description of the time frame.
 "        </time-frame>\n" +
 "      </time-frames>\n");
@@ -11369,16 +11422,16 @@ sb.append(
 //geographic area
 if (isGrid? eddGrid.lonIndex()  >= 0 && eddGrid.latIndex()  >= 0 :
             eddTable.lonIndex() >= 0 && eddTable.latIndex() >= 0) {
-    EDV edv = isGrid? eddGrid.axisVariables()[eddGrid.lonIndex()] : 
+    EDV edv = isGrid? eddGrid.axisVariables()[eddGrid.lonIndex()] :
                       eddTable.dataVariables()[eddTable.lonIndex()];
-    double west = edv.destinationMin();
-    double east = edv.destinationMax();
-    edv = isGrid? eddGrid.axisVariables()[eddGrid.latIndex()] : 
+    double west = edv.destinationMinDouble();
+    double east = edv.destinationMaxDouble();
+    edv = isGrid? eddGrid.axisVariables()[eddGrid.latIndex()] :
                   eddTable.dataVariables()[eddTable.latIndex()];
-    double south = edv.destinationMin();
-    double north = edv.destinationMax();
+    double south = edv.destinationMinDouble();
+    double north = edv.destinationMaxDouble();
     boolean global = (west <= -179 && east >= 179) || //test before modifying west and east
-                     (west <= 0    && east >= 359);        
+                     (west <= 0    && east >= 359);
     if (Double.isFinite(west) && Double.isFinite(east)) {
         if (west >= 180) {west -= 360; east -= 360;}
         if (west < 180 && east > 180)  { //span date line?
@@ -11390,20 +11443,20 @@ if (isGrid? eddGrid.lonIndex()  >= 0 && eddGrid.latIndex()  >= 0 :
 sb.append(
 "      <geographic-areas>\n" +
 "        <geographic-area>\n" +
-"          <west-bound>" + (Double.isFinite(west)? "" + west : "") + 
-         "</west-bound>\n" + 
+"          <west-bound>" + (Double.isFinite(west)? "" + west : "") +
+         "</west-bound>\n" +
 //Enter a numeric value between -180 to 180. All bounds must be supplied (no partial bounding boxes).
 "          <east-bound>" + (Double.isFinite(east)? "" + east : "") +
-         "</east-bound>\n" + 
+         "</east-bound>\n" +
 //Enter a numeric value  between -180 to 180. All bounds must be supplied (no partial bounding boxes).
-"          <north-bound>" + (Double.isFinite(north)? "" + north : "") + 
-         "</north-bound>\n" + 
+"          <north-bound>" + (Double.isFinite(north)? "" + north : "") +
+         "</north-bound>\n" +
 //Enter a numeric value between -90 to 90. All bounds must be supplied (no partial bounding boxes). The north bound must be greater or equal to the south bound.
-"          <south-bound>" + (Double.isFinite(south)? "" + south : "") + 
-         "</south-bound>\n" + 
+"          <south-bound>" + (Double.isFinite(south)? "" + south : "") +
+         "</south-bound>\n" +
 //Enter a numeric value between -90 to 90. All bounds must be supplied (no partial bounding boxes). The north bound must be greater or equal to the south bound.
 "          <description>" + //AFSC recommends lat-long box or this, not both: (global? "global" : "") +
-          "</description>\n" + 
+          "</description>\n" +
 //Enter a description for the geographic extent.
 "        </geographic-area>\n" +
 "      </geographic-areas>\n");
@@ -11414,18 +11467,18 @@ if (false) { //??? OMIT THIS until vertical crs URLs are figured out
 boolean hasAlt   = isGrid? eddGrid.altIndex()   >= 0 : eddTable.altIndex()   >= 0; //prefer
 boolean hasDepth = isGrid? eddGrid.depthIndex() >= 0 : eddTable.depthIndex() >= 0;
 if (hasAlt || hasDepth) {
-    EDV edv = isGrid? eddGrid.axisVariables( )[hasAlt? eddGrid.altIndex( ) : eddGrid.depthIndex()] : 
+    EDV edv = isGrid? eddGrid.axisVariables( )[hasAlt? eddGrid.altIndex( ) : eddGrid.depthIndex()] :
                       eddTable.dataVariables()[hasAlt? eddTable.altIndex() : eddTable.depthIndex()];
-    double min = edv.destinationMin();
-    double max = edv.destinationMax();
+    double min = edv.destinationMinDouble();
+    double max = edv.destinationMaxDouble();
 sb.append(
 "      <vertical-extents>\n" +
 "        <vertical-extent>\n" +
-"          <min>" + (Double.isFinite(min)? "" + min : "") + "</min>\n" + 
+"          <min>" + (Double.isFinite(min)? "" + min : "") + "</min>\n" +
 //Enter the minimum vertical value (numeric value).
-"          <max>" + (Double.isFinite(max)? "" + max : "") + "</max>\n" + 
+"          <max>" + (Double.isFinite(max)? "" + max : "") + "</max>\n" +
 //Enter the maximum vertical value (numeric value). The maximum must be greater than or equal to the minimum value.
-"          <coordinate-reference-system-url></coordinate-reference-system-url>\n" + 
+"          <coordinate-reference-system-url></coordinate-reference-system-url>\n" +
 //??? I don't know the URLs and I don't have a good system for knowing which is appropriate.
 //Enter the URL that describes the coordinate reference system being used.  The URL must start with http://, https://, or ftp://
 "        </vertical-extent>\n" +
@@ -11435,7 +11488,7 @@ sb.append(
 //end of extents
 if (accessibleTo != null)
     throw new RuntimeException("This method is only set up for public datasets, " +
-        "but this dataset has accessibleTo limitions."); 
+        "but this dataset has accessibleTo limitions.");
 
 String tSearchUrl = EDStatic.erddapUrl;
 if (this instanceof FromErddap) {
@@ -11449,140 +11502,140 @@ sb.append(
 "    </extent>\n" +
 "  </extents>\n" +
 "  <access-information>\n" +
-"    <security-class>Unclassified</security-class>\n" + 
+"    <security-class>Unclassified</security-class>\n" +
 //A value for this field is required for this section. It must be one of the following values: \"Top Secret\", \"Secret\", \"Confidential\", \"Restricted\", \"Sensitive\", \"Unclassified\".
-"    <security-classification-system></security-classification-system>\n" + 
+"    <security-classification-system></security-classification-system>\n" +
 //??? Tallying shows that there are a wide range of values. Very few look like the name of a system.
 //Enter the security classification system.
-"    <security-handling-description></security-handling-description>\n" + 
+"    <security-handling-description></security-handling-description>\n" +
 //Enter the security handling description.
-"    <data-access-policy>" + XML.encodeAsXML(gatts.getString("license")) + 
-   "</data-access-policy>\n" + 
+"    <data-access-policy>" + XML.encodeAsXML(gatts.getString("license")) +
+   "</data-access-policy>\n" +
 //Enter the data access policy.
 "    <data-access-procedure>The data can be obtained from ERDDAP: " + XML.encodeAsXML(tSearchUrl) +
-   "</data-access-procedure>\n" + 
+   "</data-access-procedure>\n" +
 //Enter the data access procedure.
-"    <data-access-constraints>Not Applicable</data-access-constraints>\n" + 
+"    <data-access-constraints>Not Applicable</data-access-constraints>\n" +
 //Enter the data access constraints.  [rubric says to use "Not Applicable"]
-"    <data-use-constraints>" + 
-    XML.encodeAsXML(gatts.getString("license")) + 
-   "</data-use-constraints>\n" + 
+"    <data-use-constraints>" +
+    XML.encodeAsXML(gatts.getString("license")) +
+   "</data-use-constraints>\n" +
 //Enter the data use constraints.
-"    <metadata-access-constraints>None</metadata-access-constraints>\n" + 
+"    <metadata-access-constraints>None</metadata-access-constraints>\n" +
 //Enter the metadata access constraints.
-"    <metadata-use-constraints>None</metadata-use-constraints>\n" + 
+"    <metadata-use-constraints>None</metadata-use-constraints>\n" +
 //Enter the metadata use constraints.
 "  </access-information>\n" +
 "  <data-quality>\n" +
-"    <representativeness></representativeness>\n" + 
+"    <representativeness></representativeness>\n" +
 //Enter the representativeness.
 "    <accuracy>" +
-     XML.encodeAsXML(gatts.getString("accuracy") == null? "" : gatts.getString("accuracy")) + 
-   "</accuracy>\n" + 
+     XML.encodeAsXML(gatts.getString("accuracy") == null? "" : gatts.getString("accuracy")) +
+   "</accuracy>\n" +
 //Enter the accuracy.
-"    <analytical-accuracy></analytical-accuracy>\n" + 
+"    <analytical-accuracy></analytical-accuracy>\n" +
 //Enter the analytical accuracy.
-"    <quantitation-limits></quantitation-limits>\n" + 
+"    <quantitation-limits></quantitation-limits>\n" +
 //Enter the quantitation limits.
-"    <bias></bias>\n" + 
+"    <bias></bias>\n" +
 //Enter the bias.
-"    <comparability></comparability>\n" + 
+"    <comparability></comparability>\n" +
 //Enter the comparability.
-"    <completeness-measure></completeness-measure>\n" + 
+"    <completeness-measure></completeness-measure>\n" +
 //Enter the completeness measure.
 "    <precision>" +
-     XML.encodeAsXML(gatts.getString("precision") == null? "" : gatts.getString("precision")) + 
-   "</precision>\n" + 
+     XML.encodeAsXML(gatts.getString("precision") == null? "" : gatts.getString("precision")) +
+   "</precision>\n" +
 //Enter the precision.
-"    <analytical-precision></analytical-precision>\n" + 
+"    <analytical-precision></analytical-precision>\n" +
 //Enter the analytical precision.
-"    <field-precision></field-precision>\n" + 
+"    <field-precision></field-precision>\n" +
 //Enter the field precision.
-"    <sensitivity></sensitivity>\n" + 
+"    <sensitivity></sensitivity>\n" +
 //Enter the sensitivity.
-"    <detection-limit></detection-limit>\n" + 
+"    <detection-limit></detection-limit>\n" +
 //Enter the detection limit.
-"    <completeness-report></completeness-report>\n" + 
+"    <completeness-report></completeness-report>\n" +
 //Enter the completeness report.
-"    <conceptual-consistency></conceptual-consistency>\n" + 
+"    <conceptual-consistency></conceptual-consistency>\n" +
 //Enter the conceptual consistency.
 "    <quality-control-procedures>" +
     "Data is checked for completeness, conceptual consistency, and reasonableness." + //rubric requires something
-   "</quality-control-procedures>\n" + 
+   "</quality-control-procedures>\n" +
 //Enter details quality control procedures employed.
 "  </data-quality>\n");
 
 //Data Management
 sb.append(
 "  <data-management>\n" +
-"    <resources-identified>Yes</resources-identified>\n" + 
+"    <resources-identified>Yes</resources-identified>\n" +
 //Enter Yes or No, in regards to whether or not resources for data management have been identified.
-"    <resources-budget-percentage>Unknown</resources-budget-percentage>\n" + 
+"    <resources-budget-percentage>Unknown</resources-budget-percentage>\n" +
 //Enter the percentage of the budget for these data devoted to data management. Specify a percentage (e.g. 5%) or Unknown.
-"    <data-access-directive-compliant>Yes</data-access-directive-compliant>\n" + 
+"    <data-access-directive-compliant>Yes</data-access-directive-compliant>\n" +
 //Enter Yes or No, in regards to whether or not these data comply with the Data Access Directive.
-"    <data-access-directive-waiver></data-access-directive-waiver>\n" + 
+"    <data-access-directive-waiver></data-access-directive-waiver>\n" +
 //Enter Yes or No, in regards to whether or not a Data Access Waiver has been filed. This field should only be included if data are not to be made available to the public, or if it is available with limitations.
-//"    <hosting-service-needed></hosting-service-needed>\n" + 
+//"    <hosting-service-needed></hosting-service-needed>\n" +
 //Indicate whether a hosting service is needed. This field should only be included if no distributor is currently providing data access.
 "    <delay-collection-dissemination>0 days" + //rubric suggests "0 days" for no delay
-   "</delay-collection-dissemination>\n" + 
+   "</delay-collection-dissemination>\n" +
 //Enter the approximate delay between data collection and dissemination.
 "    <delay-collection-dissemination-explanation></delay-collection-dissemination-explanation>\n");
 //If the delay between data collection and dissemination is longer than the latency of automated processing, explain under what authority data access is delayed. This field should only be included if the delay is longer than the latency of automated processing.
 
 sb.append(
-"    <archive-location>" + XML.encodeAsXML(archiveLocation) + 
-   "</archive-location>\n" + 
+"    <archive-location>" + XML.encodeAsXML(archiveLocation) +
+   "</archive-location>\n" +
 //Enter only one of the following fixed values: NCEI-MD, NCEI-CO, NCEI-NC, NCEI-MS, World Data Center (WDC) Facility, Other, To Be Determined, Unable to Archive, No Archiving Intended
-"    <archive-location-explanation-other>" + XML.encodeAsXML(archiveOther) + 
-   "</archive-location-explanation-other>\n" + 
-//Specify the archive location, if World Data Center (WDC) Facility or Other was entered. This field should only be included if one of those values was entered. 
-"    <archive-location-explanation-none>" + XML.encodeAsXML(archiveNone) + 
-   "</archive-location-explanation-none>\n" + 
+"    <archive-location-explanation-other>" + XML.encodeAsXML(archiveOther) +
+   "</archive-location-explanation-other>\n" +
+//Specify the archive location, if World Data Center (WDC) Facility or Other was entered. This field should only be included if one of those values was entered.
+"    <archive-location-explanation-none>" + XML.encodeAsXML(archiveNone) +
+   "</archive-location-explanation-none>\n" +
 //Provide an explanation, if To Be Determined, Unable to Archive, or No Archiving Intended was entered.
 "    <delay-collection-archive>" +
     (archiveLocation.equals("No Archiving Intended") ||
-     archiveLocation.equals("Other")? "Not Applicable" : "") + 
-   "</delay-collection-archive>\n" + 
+     archiveLocation.equals("Other")? "Not Applicable" : "") +
+   "</delay-collection-archive>\n" +
 //45 days
 "    <data-protection-plan>" + //modified from AFSC
     "The Environmental Research Department's IT Security and Contingency Plan " +
     "establishes the security practices that ensure the security of the data and " +
-    "the plans necessary to recover and restore the data if problems occur.</data-protection-plan>\n" + 
+    "the plans necessary to recover and restore the data if problems occur.</data-protection-plan>\n" +
 //Discuss how the data will be protected from accidental or malicious modification or deletion prior to receipt by the archive. Include relevant information on data back-up, disaster recovery/contingency planning, and off-site data storage relevant to the data collection.
 "  </data-management>\n" +
 "  <lineage>\n" +
-"    <lineage-statement></lineage-statement>\n" + 
+"    <lineage-statement></lineage-statement>\n" +
 
 //Enter the lineage statement. //This is for a lower level originator. Skip it.
 //"    <lineage-sources>\n" +
 //"      <lineage-source>\n" +
-//"        <citation-title></citation-title>\n" + 
+//"        <citation-title></citation-title>\n" +
 //Enter the citation title of the lineage source.
-//"        <originator-publisher-type></originator-publisher-type>\n" + 
+//"        <originator-publisher-type></originator-publisher-type>\n" +
 //Indicate the type of originator/publisher related to the lineage source citation. The value here must be one of the following values: \"InPort Person\", \"InPort Organization\", or \"Non-InPort Person/Organization\".
-//"        <originator-publisher></originator-publisher>\n" + 
+//"        <originator-publisher></originator-publisher>\n" +
 //If the originator/publisher is a person who exists in InPort, enter their email address here (do not enter their name). If the originator/publisher is an organization that exists in InPort, enter the organization name, exactly as it appears in InPort, here. If the originator/publisher is a person or organization that does not exist in InPort, enter the person/organization name here.\n" +
-//"        <publish-date></publish-date>\n" + 
+//"        <publish-date></publish-date>\n" +
 //Enter the publication date of the lineage source citation in ISO 8601 basic format (YYYYMMDD).\n" +
-//"        <extent-type></extent-type>\n" + 
+//"        <extent-type></extent-type>\n" +
 //Enter Continuing, Range or Discrete
-//"        <extent-start-date-time></extent-start-date-time>\n" + 
+//"        <extent-start-date-time></extent-start-date-time>\n" +
 //Enter a start date/time of the lineage source's temporal extent in ISO 8601 basic format (YYYYMMDDTHHMMSS), up to the appropriate granularity which is significant. For example, if the date/time is significant only up to the month, enter YYYYMM. Date/times are interpreted as GMT.
-//"        <extent-end-date-time></extent-end-date-time>\n" + 
+//"        <extent-end-date-time></extent-end-date-time>\n" +
 //If the time frame is a Range, enter the end date/time of the lineage source's temporal extent in ISO 8601 basic format (YYYYMMDDTHHMMSS), up to the appropriate granularity which is significant. For example, if the date/time is significant only up to the month, enter YYYYMM. Date/times are interpreted as GMT. The end date/time must be later than the start date/time.
-//"        <scale-denominator></scale-denominator>\n" + 
+//"        <scale-denominator></scale-denominator>\n" +
 //Enter the scale denominator of the lineage source as an integer. The value must be greater than zero.
-//"        <citation-url></citation-url>\n" + 
+//"        <citation-url></citation-url>\n" +
 //Enter the citation URL. The URL must start with http:// or https://.
 //"      </lineage-source>\n" +
-//"    </lineage-sources>\n" +    
+//"    </lineage-sources>\n" +
 "    <lineage-process-steps>\n");
 
 if (gatts.getString("history") != null) {
 //??? Is history 1 string, so split it at '/n'?
-    String historySA[] = String2.split(gatts.getString("history"), '\n'); 
+    String historySA[] = String2.split(gatts.getString("history"), '\n');
     int sequenceNumber = 1;
     for (int historyi = 0; historyi < historySA.length; historyi++) {
         //look for date at beginning
@@ -11606,52 +11659,52 @@ if (gatts.getString("history") != null) {
         }
 sb.append(
 "      <lineage-process-step>\n" +
-"        <sequence-number>" + sequenceNumber++ + "</sequence-number>\n" + 
+"        <sequence-number>" + sequenceNumber++ + "</sequence-number>\n" +
 //Enter the sequence number as an integer.
-"        <description>" + XML.encodeAsXML(th) + "</description>\n" + 
+"        <description>" + XML.encodeAsXML(th) + "</description>\n" +
 //Enter a description for the process step.
-"        <process-date-time>" + XML.encodeAsXML(tDate) + "</process-date-time>\n" + 
+"        <process-date-time>" + XML.encodeAsXML(tDate) + "</process-date-time>\n" +
 //Enter the process date/time of the step in ISO 8601 basic format (YYYYMMDDTHHMMSS). Any valid granularity is acceptable, but the value will be stored up to seconds precision, in GMT.
-"        <process-contact-type></process-contact-type>\n" + 
+"        <process-contact-type></process-contact-type>\n" +
 //Indicate the type of process contact related to the lineage process step. The value here must be one of the following values: \"InPort Person\", \"InPort Organization\", or \"Non-InPort Person/Organization\".
-"        <process-contact></process-contact>\n" + 
+"        <process-contact></process-contact>\n" +
 //If the process contact is a person who exists in InPort, enter their email address here (do not enter their name). If the process contact is an organization that exists in InPort, enter the organization name, exactly as it appears in InPort, here. If the process contact is a person or organization that does not exist in InPort, enter the person/organization name here.\n" +
-"        <process-contact-phone></process-contact-phone>\n" + 
+"        <process-contact-phone></process-contact-phone>\n" +
 //Only applicable for process contacts that do not exist in InPort. Enter the phone number of the process contact.\n" +
-"        <process-contact-email-address></process-contact-email-address>\n" + 
+"        <process-contact-email-address></process-contact-email-address>\n" +
 //Only applicable for process contacts that do not exist in InPort. Enter the email address of the process contact.\n" +
-"        <source-citation></source-citation>\n" + 
+"        <source-citation></source-citation>\n" +
 //Enter the source citation, if any. This must match the citation title of a lineage source exactly, or it will not be included.
 "      </lineage-process-step>\n");
     }
 }
 
-//end of lineage 
+//end of lineage
 sb.append(
 "    </lineage-process-steps>\n" +
 "  </lineage>\n" +
 "  <downloads mode=\"replace\">\n" +
 "    <download>\n" +
-"      <download-url>" + XML.encodeAsXML(tSearchUrl) + 
-     "</download-url>\n" + 
+"      <download-url>" + XML.encodeAsXML(tSearchUrl) +
+     "</download-url>\n" +
 //Enter the download URL. The URL must start with http://, https://, or ftp://
-"      <file-name>" + datasetID + "</file-name>\n" + 
+"      <file-name>" + datasetID + "</file-name>\n" +
 //Enter the file name.
-"      <description>This dataset is available in ERDDAP, a data server that gives you a simple, consistent way to download subsets of gridded and tabular scientific datasets in common file formats and make graphs and maps.</description>\n" + 
+"      <description>This dataset is available in ERDDAP, a data server that gives you a simple, consistent way to download subsets of gridded and tabular scientific datasets in common file formats and make graphs and maps.</description>\n" +
 //Enter the download description.
-"      <file-date-time></file-date-time>\n" + 
+"      <file-date-time></file-date-time>\n" +
 //Enter the date/time of the file. The date/time must be specified as YYYYMMDD, YYYYMMDDTHH, YYYYMMDDTHHMM, or YYYYMMDDTHHMMSS.
-"      <file-type>In ERDDAP, you can specify the file type that you want. Options include .htmlTable, OPeNDAP .das .dds or .dods, .esriAscii, .esriCsv, .mat, .nc, .odvTxt, .csv, .tsv, .json, .geoJson, .xhtml, .ncHeader, .ncml, .fgdc, .iso19115, Google Earth .kml, .geotif, .png, .transparentPng, and .pdf.</file-type>\n" + 
+"      <file-type>In ERDDAP, you can specify the file type that you want. Options include .htmlTable, OPeNDAP .das .dds or .dods, .esriAscii, .esriCsv, .mat, .nc, .odvTxt, .csv, .tsv, .json, .geoJson, .xhtml, .ncHeader, .ncml, .fgdc, .iso19115, Google Earth .kml, .geotif, .png, .transparentPng, and .pdf.</file-type>\n" +
 //Enter the type of file.
-"      <fgdc-content-type>Live Data and Maps</fgdc-content-type>\n" + 
+"      <fgdc-content-type>Live Data and Maps</fgdc-content-type>\n" +
 //Enter the FGDC content type of the download. Must be one of the following: Applications, Clearinghouses, Downloadable Data, Geographic Activities, Geographic Services, Live Data and Maps, Map Files, Offline Data, Other Documents, Static Map Images
-"      <file-size></file-size>\n" + 
+"      <file-size></file-size>\n" +
 //Enter the file size of the download.
-"      <application-version></application-version>\n" + 
+"      <application-version></application-version>\n" +
 //Enter the application version for the download.
-"      <compression>Uncompressed</compression>\n" + 
+"      <compression>Uncompressed</compression>\n" +
 //Enter the compression status of the download file. Must be one of the following values: Uncompressed, Zip, GZIP, Z, TAR, GTAR, Unknown, no compression applied
-"      <review-status>Chked Viruses Inapp Content</review-status>\n" + 
+"      <review-status>Chked Viruses Inapp Content</review-status>\n" +
 //Enter the review status of the download. Must be one of the following values: Not Chked, Chked MD, Chked Viruses, Chked Inapp Content, Chked Viruses Inapp Content
 "    </download>\n" +
 "  </downloads>\n" +
@@ -11665,7 +11718,7 @@ sb.append(
      */
     public void writeInPortXmlFile(String fullFileName, String archiveLocation,
         String archiveOther, String archiveNone) {
-        String error = String2.writeToFile(fullFileName, 
+        String error = String2.writeToFile(fullFileName,
             getInPortXmlString(archiveLocation, archiveOther, archiveNone), String2.UTF_8);
         if (error.length() > 0)
             throw new RuntimeException(error);
@@ -11690,7 +11743,7 @@ sb.append(
 
         //make HashSet with datasetIDs
         HashSet hashset = new HashSet();
-        for (int line = 0; line < nLines; line++) 
+        for (int line = 0; line < nLines; line++)
             hashset.add(String2.split(lines.get(line), ',')[0]);
 
         //consider making InPort Xml for these datasets
@@ -11732,19 +11785,19 @@ if (nSuccess >= 2)
                 tDatasetID.startsWith("ucsd") ||         //HFRadar ???
                 tDatasetID.startsWith("UMD / SODA") ||   //???
                 tDatasetID.startsWith("gtopp") ||   //???
-                tDatasetID.startsWith("NWIOOS") ||   
+                tDatasetID.startsWith("NWIOOS") ||
                 tDatasetID.startsWith("ncddc") ||
                 tDatasetID.startsWith("ncdc") ||
                 tDatasetID.startsWith("ncep") ||
-                tDatasetID.startsWith("erdCAMarCat") ||  //Jan Mason???  
+                tDatasetID.startsWith("erdCAMarCat") ||  //Jan Mason???
                 tDatasetID.startsWith("erdHadISST") ||   //Roy???
                 tDatasetID.startsWith("erdCalCOFI") ||   //done in La Jolla
-                tDatasetID.startsWith("siocalcofi") ||  
+                tDatasetID.startsWith("siocalcofi") ||
                 tDatasetID.startsWith("earthCube") ||  //was a test dataset
-                tDatasetID.startsWith("erdFedRockfish") ||  //??? 
+                tDatasetID.startsWith("erdFedRockfish") ||  //???
                 tDatasetID.startsWith("erdPrd") ||          //???
-                tDatasetID.startsWith("FRDCPS") ||          //??? 
-                tDatasetID.startsWith("fedCalLandings") ||  //??? 
+                tDatasetID.startsWith("FRDCPS") ||          //???
+                tDatasetID.startsWith("fedCalLandings") ||  //???
                 tDatasetID.startsWith("LiquidR") ||         //???
                 tDatasetID.startsWith("osu") ||             //???
                 tDatasetID.startsWith("PRBO") ||  //Farallon Island Seabird data ???
@@ -11757,10 +11810,10 @@ if (nSuccess >= 2)
 
             String gridTable = parts[1]; //grid or table
             String fileName = "ErddapToInPort_" + tDatasetID + ".xml";
-            EDD edd = oneFromXmlFragment(null, 
+            EDD edd = oneFromXmlFragment(null,
 "<dataset type=\"EDD" + String2.toTitleCase(gridTable) + "FromErddap\" datasetID=\"" + tDatasetID + "\" active=\"true\">\n" +
 "    <sourceUrl>https://coastwatch.pfeg.noaa.gov/erddap/" + gridTable + "dap/" + tDatasetID + "</sourceUrl>\n" +
-"</dataset>\n");        
+"</dataset>\n");
             Attributes gatts = edd.combinedGlobalAttributes();
             String tCreatorEmail = gatts.getString("creator_email");
             String tInstitution  = gatts.getString("institution");
@@ -11786,7 +11839,7 @@ if (nSuccess >= 2)
                 tInstitution.indexOf("JPL")  >= 0 ||
                 tInstitution.indexOf("NASA") >= 0 ||
                 tInstitution.indexOf("OBPG") >= 0) {
-                archiveLocation = "Other"; 
+                archiveLocation = "Other";
                 archiveOther = "NASA";
 
             } else if (tDatasetID.startsWith("erdlasFn") ||
@@ -11795,21 +11848,21 @@ if (nSuccess >= 2)
                        tInstitution.indexOf("FNMOC") >= 0 ||
                        tInstitution.indexOf("Naval Oceanographic") >= 0 ||
                        tInstitution.indexOf("Naval Research") >= 0) {
-                archiveLocation = "Other"; 
+                archiveLocation = "Other";
                 archiveOther = "US Department of Defense"; //???
 
             } else if (tDatasetID.startsWith("aadc") || //obis
                        tDatasetID.startsWith("usgs")) { //Coastal Relief Model
-                archiveLocation = "Other"; 
+                archiveLocation = "Other";
                 archiveOther = "USGS"; //???
 
             } else if (tDatasetID.startsWith("erdCinp")) { //National Park Service
-                archiveLocation = "Other"; 
+                archiveLocation = "Other";
                 archiveOther = "US Department of Interior"; //???
 
             } else if (tDatasetID.startsWith("aviso") ||
                        tDatasetID.startsWith("erdTA")) { //aviso
-                archiveLocation = "World Data Center"; 
+                archiveLocation = "World Data Center";
                 archiveOther = "AVISO"; //???
 
             } else if (tDatasetID.startsWith("esrl") ||
@@ -11825,11 +11878,11 @@ if (nSuccess >= 2)
                        tDatasetID.startsWith("UMD / SODA") ||   //???
                        tDatasetID.startsWith("gtopp") ||   //???
                        tInstitution.indexOf("CeNCOOS") >= 0 || //IOOS works to archive regional data
-                       tInstitution.indexOf("GoMOOS") >= 0 || 
-                       tInstitution.indexOf("NERACOOS") >= 0 || 
-                       tDatasetID.startsWith("NWIOOS") ||   
-                       tInstitution.indexOf("AOML") >= 0 || 
-                       tInstitution.indexOf("FSU") >= 0 ||  //NOAA ship 
+                       tInstitution.indexOf("GoMOOS") >= 0 ||
+                       tInstitution.indexOf("NERACOOS") >= 0 ||
+                       tDatasetID.startsWith("NWIOOS") ||
+                       tInstitution.indexOf("AOML") >= 0 ||
+                       tInstitution.indexOf("FSU") >= 0 ||  //NOAA ship
                        tInstitution.indexOf("NDBC") >= 0 ||
                        tInstitution.indexOf("NODC") >= 0 ||
                        tInstitution.indexOf("NOS") >= 0) {
@@ -11845,15 +11898,15 @@ if (nSuccess >= 2)
                 archiveLocation = "NCEI-NC";  //NCDC
 
             //skip local datasets that others will enter into InPort
-            } else if (tDatasetID.startsWith("erdCAMarCat") ||  //Jan Mason???  
+            } else if (tDatasetID.startsWith("erdCAMarCat") ||  //Jan Mason???
                        tDatasetID.startsWith("erdHadISST") ||   //Roy???
                        tDatasetID.startsWith("erdCalCOFI") ||   //done in La Jolla
-                       tDatasetID.startsWith("siocalcofi") ||  
+                       tDatasetID.startsWith("siocalcofi") ||
                        tDatasetID.startsWith("earthCube") ||  //was a test dataset
-                       tDatasetID.startsWith("erdFedRockfish") ||  //??? 
+                       tDatasetID.startsWith("erdFedRockfish") ||  //???
                        tDatasetID.startsWith("erdPrd") ||          //???
-                       tDatasetID.startsWith("FRDCPS") ||          //??? 
-                       tDatasetID.startsWith("fedCalLandings") ||  //??? 
+                       tDatasetID.startsWith("FRDCPS") ||          //???
+                       tDatasetID.startsWith("fedCalLandings") ||  //???
                        tDatasetID.startsWith("LiquidR") ||         //???
                        tDatasetID.startsWith("osu") ||             //???
                        tDatasetID.startsWith("PRBO") ||  //Farallon Island Seabird data ???
@@ -11864,7 +11917,7 @@ if (nSuccess >= 2)
             } else {
                 //default archive info (e.g., for Dave's datasets)
                 //These are the ones we'll actually submit to InPort.
-                archiveLocation = "No Archiving Intended"; 
+                archiveLocation = "No Archiving Intended";
                 archiveNone = "This data is derived from data in an archive. " +
                     "The archives only want to archive the source data.";
             }
@@ -11889,7 +11942,7 @@ if (nSuccess >= 2)
         String2.log("\n******\n");
         String2.log(errorSB.toString());
         String2.log("generateInPortXmlFilesForCoastwatchErddap() finished.\n" +
-            "  nSkip=" + nSkip + " nSuccess=" + nSuccess + " nFailure=" + nFailure + 
+            "  nSkip=" + nSkip + " nSuccess=" + nSuccess + " nFailure=" + nFailure +
             " time=" + Calendar2.elapsedTimeString(System.currentTimeMillis() - eTime));
     }
 
@@ -11899,21 +11952,21 @@ if (nSuccess >= 2)
         String gridTable = "grid"; //grid or table
         String tDatasetID = "erdSWchlamday";
         String fileName = "ErddapToInPort_" + tDatasetID + ".xml";
-        EDD edd = oneFromXmlFragment(null, 
+        EDD edd = oneFromXmlFragment(null,
 "<dataset type=\"EDD" + String2.toTitleCase(gridTable) + "FromErddap\" datasetID=\"" + tDatasetID + "\" active=\"true\">\n" +
 "    <sourceUrl>https://coastwatch.pfeg.noaa.gov/erddap/" + gridTable + "dap/" + tDatasetID + "</sourceUrl>\n" +
-"</dataset>\n");        
-        String error = String2.writeToFile(dir + fileName, 
+"</dataset>\n");
+        String error = String2.writeToFile(dir + fileName,
             edd.getInPortXmlString(
                 "No Archiving Intended",
                 "",
                 "This data is derived from data in an archive. " +
-                "The archives only want to archive the source data."), 
+                "The archives only want to archive the source data."),
             String2.UTF_8);
         if (error.length() > 0)
             throw new RuntimeException(error);
         String results = String2.directReadFromUtf8File(dir + fileName);
-        String expected = 
+        String expected =
 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
 "<inport-metadata version=\"1.0\">\n" +
 "  <item-identification>\n" +
@@ -12061,7 +12114,7 @@ if (nSuccess >= 2)
 "    <archive-location-explanation-other>NASA</archive-location-explanation-other>\n" +
 "    <archive-location-explanation-none></archive-location-explanation-none>\n" +
 "    <delay-collection-archive>Not Applicable</delay-collection-archive>\n" +
-"    <data-protection-plan>The Environmental Research Department's IT Security and Contingency Plan establishes the security practices that ensure the security of the data and the plans necessary to recover and restore the data if problems occur.</data-protection-plan>\n" + 
+"    <data-protection-plan>The Environmental Research Department's IT Security and Contingency Plan establishes the security practices that ensure the security of the data and the plans necessary to recover and restore the data if problems occur.</data-protection-plan>\n" +
 "  </data-management>\n" +
 "  <lineage>\n" +
 "    <lineage-statement></lineage-statement>\n" +
@@ -12171,24 +12224,24 @@ if (nSuccess >= 2)
         Test.ensureEqual(String2.toCSSVString(suggestInstitutionParts(
             "/")), "", "");
     }
-            
-    /** 
-	 * This calls sparql to convert one SDN P01 term into one P02 term.
-	 * See the form at https://vocab.nerc.ac.uk/sparql/
+
+    /**
+     * This calls sparql to convert one SDN P01 term into one P02 term.
+     * See the form at https://vocab.nerc.ac.uk/sparql/
      * Put this text in the box:  (and Shift submit shows the URL in a separate window)
-prefix skos:<https://www.w3.org/2004/02/skos/core#> prefix rdf:<https://www.w3.org/1999/02/22-rdf-syntax-ns#> prefix owl:<https://www.w3.org/2002/07/owl#> prefix dc:<http://purl.org/dc/terms/> 
- 
+prefix skos:<https://www.w3.org/2004/02/skos/core#> prefix rdf:<https://www.w3.org/1999/02/22-rdf-syntax-ns#> prefix owl:<https://www.w3.org/2002/07/owl#> prefix dc:<http://purl.org/dc/terms/>
+
 select distinct (?dci as ?Identifier) (?pl as ?PrefLabel) (?defx as ?Definition) (?ver as ?Version) (?sr as ?related) ?Date (?dt as ?Url) where {<https://vocab.nerc.ac.uk/collection/P01/current/>  skos:member ?dt .
 FILTER(regex(str(?dt),"PSLTZZ01"))
 ?dt dc:identifier ?dci . optional{?dt skos:definition ?def .FILTER(langMatches(lang(?def), "en"))} . ?dt skos:prefLabel ?pl . FILTER(langMatches(lang(?pl), "en"))  ?dt owl:versionInfo ?ver ; dc:date ?Date ; owl:deprecated ?deprecated . optional {?dt skos:altLabel ?alt }.
 ?dt skos:broader ?sr .
 FILTER (regex(str(?sr), "P02","i"))
- 
-FILTER((str(?deprecated)="false"))
- 
-BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl 
 
-     * 
+FILTER((str(?deprecated)="false"))
+
+BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
+
+     *
      * @param p01 e.g., PSLTZZ01
      * @return the corresponding P02 term, e.g., PSAL. If this fails, it returns null.
      */
@@ -12198,27 +12251,27 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         String urlString = EDStatic.sparqlP01toP02pre + p01 + EDStatic.sparqlP01toP02post;
         try {
             Table table = new Table();
-            table.readASCII("sparqlP01toP02", 
-                SSR.getBufferedUrlReader(urlString), 0, 1, "", 
+            table.readASCII("sparqlP01toP02",
+                SSR.getBufferedUrlReader(urlString), "", "", 0, 1, "",
                 null, null, null, null, false); //readColumns, simplify
             //String2.log(table.dataToString(5));
 //row,Identifier,PrefLabel,Definition,Version,related,Date,Url
-//0,SDN:P01::PSLTZZ01,Practical salinity of the water body,The quantity of dissolved ions (predominantly salt in seawater) expressed on a scale (PSS-78) based on the conductivity ratio of a seawater sample to a standard KCl solution.,1,https://vocab.nerc.ac.uk/collection/P02/current/PSAL/,2009-11-03 16:19:38.0,https://vocab.nerc.ac.uk/collection/P01/current/PSLTZZ01/            
+//0,SDN:P01::PSLTZZ01,Practical salinity of the water body,The quantity of dissolved ions (predominantly salt in seawater) expressed on a scale (PSS-78) based on the conductivity ratio of a seawater sample to a standard KCl solution.,1,https://vocab.nerc.ac.uk/collection/P02/current/PSAL/,2009-11-03 16:19:38.0,https://vocab.nerc.ac.uk/collection/P01/current/PSLTZZ01/
             int nRows = table.nRows();
-            if (nRows < 1) { 
+            if (nRows < 1) {
                 String2.log("sparqlP01toP02 returned 0 rows");
                 return null;
             }
-            if (nRows > 1) 
+            if (nRows > 1)
                 String2.log("sparqlP01toP02 returned " + nRows + " rows");
             //related=https://vocab.nerc.ac.uk/collection/P02/current/PSAL/
-            String s = table.getStringData(4, 0);  
+            String s = table.getStringData(4, 0);
             s = File2.getNameAndExtension(s.substring(0, s.length() - 1));
             return s;
-            
+
         } catch (Exception e) {
-            String2.log(String2.ERROR + " in sparqlP01toP02(" + p01 + 
-                ") url=" + urlString + "\n" + 
+            String2.log(String2.ERROR + " in sparqlP01toP02(" + p01 +
+                ") url=" + urlString + "\n" +
                 e.toString());
             return null;
         }
@@ -12229,55 +12282,47 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         Test.ensureEqual(sparqlP01toP02("PSLTZZ01"), "PSAL",  "");
         String2.log("* Test of invalid P01 value:");
         Test.ensureEqual(sparqlP01toP02("Bob"),      null, "");
-    
+
     }
 
-    /** 
+    /**
      * This makes a destination PA of the correct data type
      * (given scale_factor, add_offset, and _Unsigned) for
      * GenerateDatasetsXml.
      * If not scaled/offset/unsigned, this returns the sourcePA.
+     *
      */
     public static PrimitiveArray makeDestPAForGDX(PrimitiveArray sourcePA,
         Attributes sourceAtts) {
 
-        Class tClass = sourcePA.elementClass();
-        if (tClass == String.class)
+        PAType tPAType = sourcePA.elementType();
+        if (tPAType == PAType.STRING)
             return sourcePA;
-        
+
         PrimitiveArray sf = sourceAtts.get("scale_factor");
         PrimitiveArray ao = sourceAtts.get("add_offset");
-        PrimitiveArray un = sourceAtts.get("_Unsigned");
         if ((sf == null || sf.getDouble(0) == 1) &&  //default or explicit
             (ao == null || ao.getDouble(0) == 0)) {  //default or explicit
             //In this case, makeReadyToUseAddVariableAttributes will set these
             //to null in addAttributes. So mimic that.
             sf = null;
             ao = null;
-        }        
-        
-        if (ao != null) 
-            tClass = ao.elementClass();
-        else if (sf != null) 
-            tClass = sf.elementClass();
-        else if (un != null && "true".equals(un.toString()) &&
-            PrimitiveArray.isIntegerType(tClass))
-            tClass = 
-                tClass == byte.class?  short.class :
-                tClass == short.class? int.class :
-                tClass == int.class?   long.class :
-                tClass == long.class?  double.class :
-                                       double.class; //shouldn't happen
+        }
+
+        if (ao != null)
+            tPAType = ao.elementType();
+        else if (sf != null)
+            tPAType = sf.elementType();
 
         //scale or add att is String?!  that's an improper type!
-        if (tClass == String.class)
+        if (tPAType == PAType.STRING)
             return sourcePA;
 
         //convert (if different)
-        return PrimitiveArray.factory(tClass, sourcePA); 
+        return PrimitiveArray.factory(tPAType, sourcePA);
     }
 
-    /** 
+    /**
      * This returns the version number of a remote ERDDAP.
      *
      * @param localSourceUrl a URL which includes /erddap/
@@ -12285,22 +12330,22 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
      */
     public static double getRemoteErddapVersion(String localSourceUrl) {
         String find = "/erddap/";
-        int po = localSourceUrl.indexOf(find);            
+        int po = localSourceUrl.indexOf(find);
         if (po < 0) {
             find = "/cwexperimental/";
-            po = localSourceUrl.indexOf(find);            
+            po = localSourceUrl.indexOf(find);
         }
         if (po < 0) {
-            String2.log(String2.ERROR + " in getRemoteErddapVersion(" + localSourceUrl + 
+            String2.log(String2.ERROR + " in getRemoteErddapVersion(" + localSourceUrl +
                 "): \"/erddap/\" not found.");
             return 1.22;
         }
         String vUrl = localSourceUrl.substring(0, po + find.length()) + "version";
         try {
-            ArrayList<String> response = SSR.getUrlResponseArrayList(vUrl); //has timeout and descriptive error 
+            ArrayList<String> response = SSR.getUrlResponseArrayList(vUrl); //has timeout and descriptive error
             double v = Double.NaN;
             String response0 = response.get(0);
-            if (response0.startsWith("ERDDAP_version=")) 
+            if (response0.startsWith("ERDDAP_version="))
                 v = String2.parseDouble(response0.substring(15));
             if (reallyVerbose) String2.log("  remote ERDDAP version=" + v);
             return Double.isNaN(v)? 1.22 : v;
@@ -12310,6 +12355,537 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
             return 1.22;
         }
     }
+
+    /**
+     * This does the work for the "addFillValueAttributes" option in GenerateDatasetsXml.
+     * It adds _FillValue attributes to addAttributes in datasets.xml to integer variables
+     * that don't have _FillValue or missing_value attributes.
+     *
+     * <p>This assumes that the XML for each dataset uses the same style
+     * (usually 1 XML tag per line) and parameter order that GenerateDatasetsXml creates.
+     * If that is not true, the results may be imperfect.
+     *
+     * <p>This doesn't assume that datasets.xml file is valid XML.
+     * This just does simple regex matching.
+     * This isn't aware of comment vs not a comment.
+     * This approach has advantages and disadvantages.
+     *
+     * @param datasetsXmlFileName the full file name of the datasets.xml file.
+     * @param csvChangesFileName the full file name of the csv file with 3 columns:
+     *    datasetID, sourceName, and toBeAdded.
+     * @return results and error messages
+     * @throws Exception if serious trouble
+     */
+    public static String addFillValueAttributes(String datasetsXmlFileName, String csvChangesFileName) throws Exception {
+
+        try {
+
+        String2.log("\n*** addFillValuesAttributes");
+        String dateTime = Calendar2.getCurrentISODateTimeStringLocal();
+        String compactDateTime = String2.replaceAll(dateTime, ":", "");
+               compactDateTime = String2.replaceAll(compactDateTime, "T", "");
+               compactDateTime = String2.replaceAll(compactDateTime, "-", "");
+
+        //read datasets.xml file
+        StringArray dxLines = StringArray.fromFile(datasetsXmlFileName, "ISO-8859-1");
+
+        //read csvChangesFileName
+        Table table = new Table();
+        table.readASCII(csvChangesFileName, String2.ISO_8859_1,
+            "", "", 0, 1, null, null, null, null, null, false); //simplify?
+        int nChanges = table.nRows();
+        if (table.nColumns() != 3 ||
+            !table.getColumnName(0).equals("datasetID") ||
+            !table.getColumnName(1).equals("variableSourceName") ||
+            !table.getColumnName(2).equals("attribute"))
+            throw new RuntimeException(
+              "The csvChanges file should have 3 columns: datasetID,variableSourceName,attribute (not " +
+              table.getColumnNamesCSVString() + ").");
+        StringArray datasetIDs  = (StringArray)table.getColumn(0);
+        StringArray sourceNames = (StringArray)table.getColumn(1);
+        StringArray fillValues  = (StringArray)table.getColumn(2);
+
+        //make the changes
+        StringBuilder errors = new StringBuilder();
+        for (int change = 0; change < nChanges; change++) {
+            String error = "ERROR on line #" + (change+1) + " of addFillValueAttributes file: ";
+
+            //find datasetID
+            int dPo = dxLines.lineContaining(datasetIDs.get(change), 0);
+            if (dPo < 0) {
+                errors.append(error + "datasetID=" + String2.toJson(datasetIDs.get(change)) + " wasn't found in datasets.xml!\n");
+                continue;
+            }
+
+            //find next <dataset> tag
+            int ndPo = dxLines.lineContaining("<dataset ", dPo+1);
+            if (ndPo < 0) //this is the last dataset
+                ndPo = dxLines.size();
+
+            //find sourceName (must be before another <dataset>)
+            int snPo = dxLines.lineContaining("<sourceName>" + sourceNames.get(change), dPo+1);
+            if (snPo < 0 || snPo >= ndPo) {
+                errors.append(error +
+                    "for datasetID=" + String2.toJson(datasetIDs.get(change)) +
+                    ", sourceName=" + String2.toJson(sourceNames.get(change)) +
+                    " wasn't found in datasets.xml!\n");
+                continue;
+            }
+
+            //find next start/end axis/data Variable> tag
+            int nvPo = dxLines.lineContaining("Variable>", snPo+1);
+            if (nvPo < 0 || nvPo > ndPo) //this is the last variable in datasets.xml or last in this dataset
+                nvPo = ndPo;
+
+            //find <addAttributes> before next var or next dataset
+            int aaPo = dxLines.lineContaining("<addAttributes>", snPo+1);
+            if (aaPo < 0 || aaPo >= nvPo) {
+                errors.append(error +
+                    "for datasetID=" + String2.toJson(datasetIDs.get(change)) +
+                    " sourceName=" + String2.toJson(sourceNames.get(change)) +
+                    ": <addAttributes> wasn't found in datasets.xml!\n");
+                continue;
+            }
+
+            //insert it right after <addAttributes> line
+            dxLines.atInsert(aaPo+1, "            " + fillValues.get(change).trim() +
+                " <!-- added by addFillValueAttributes at " + dateTime + " -->");
+        }
+
+        //save changed dxLines
+        dxLines.toFile(datasetsXmlFileName + "temp");
+
+        //save errors to file and write to console
+        String errorLogName = File2.getDirectory(csvChangesFileName) + "addFillValueAttributesErrors" + compactDateTime + ".txt";
+        if (errors.length() > 0) {
+            String2.log(errors.toString());
+            String2.writeToFile(errorLogName, errors.toString());
+        } else {
+            String2.log("0 errors");
+        }
+
+        //rename files
+        File2.rename(datasetsXmlFileName,          datasetsXmlFileName + compactDateTime); //exception if trouble
+        File2.rename(datasetsXmlFileName + "temp", datasetsXmlFileName);                   //exception if trouble
+
+        return
+            "*** addFillValues finished successfully.\n" +
+            "The original datasets.xml file is now named " + datasetsXmlFileName + compactDateTime + " .\n" +
+            "The revised datasets.xml file is named " + datasetsXmlFileName + " .\n" +
+            (errors.length() > 0? "The error log file is named " + errorLogName : "No errors (so no error log file).");
+        } catch (Exception e) {
+
+            //delete the temp file, if any
+            File2.delete(datasetsXmlFileName + "temp");
+
+            //rethrow the exception
+            throw e;
+        }
+    }
+
+    /**
+     * This tests addFillValueAttributes.
+     *
+     * @throws Exception if trouble
+     */
+    public static void testAddFillValueAttributes() throws Throwable {
+        String2.log("\n*** EDD.testAddFillValueAttributes()");
+        String dir = EDStatic.unitTestDataDir + "addFillValueAttributes/";
+
+        try {
+            //make temp copy of datasets.xml
+            File2.copy(dir + "datasets.xml", dir + "tempDatasets.xml");
+
+            //alter that temp copy
+            //String results = addFillValueAttributes(  //throws exception
+            //    dir + "tempDatasets.xml", dir + "addFillValueAttributes.csv");
+            //String2.log(results);
+
+            //same thing but done via generateDatasetsXml
+            String results = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose",
+                "addFillValueAttributes",
+                 dir + "tempDatasets.xml", dir + "addFillValueAttributes.csv"},
+                false); //doIt loop?
+
+            if (results.indexOf("failed") > 0)
+                throw new RuntimeException(results);
+
+            //*** addFillValues finished successfully.
+            //The original datasets.xml file is now named /erddapTest/addFillValueAttributes/tempDatasets.xml20200915144031 .
+            //The revised datasets.xml file is named /erddapTest/addFillValueAttributes/tempDatasets.xml .
+            //The error log file is named addFillValueAttributeErrors20200915144031.txt
+            Test.ensureEqual(results.indexOf("*** addFillValues finished successfully.\nThe original datasets.xml file is now named"), 0, "");
+            Test.ensureTrue(results.indexOf("The revised datasets.xml file is named") > 0, "");
+            String logFile = String2.extractCaptureGroup(results, "The error log file is named (.*\\.txt)", 1);
+            String2.log("logFile=" + logFile);
+            String log = String2.readFromFile(logFile)[1];
+            String expected =
+"ERROR on line #3 of addFillValueAttributes file: datasetID=\"noSuchDataset\" wasn't found in datasets.xml!\n" +
+"ERROR on line #4 of addFillValueAttributes file: for datasetID=\"dataset1\", sourceName=\"noSuchVariable\" wasn't found in datasets.xml!\n" +
+"ERROR on line #5 of addFillValueAttributes file: for datasetID=\"dataset1\" sourceName=\"var1\": <addAttributes> wasn't found in datasets.xml!\n";
+            Test.ensureEqual(log, expected, "log=\n" + log);
+
+            //check results
+            results = String2.readFromFile(dir + "tempDatasets.xml")[1];
+            results = results.replaceAll(" \\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2} ", " [COMPACT_TIME] ");
+            expected =
+"<startOfFile (but with nonstandard tag)>\n" +
+"\n" +
+"<dataset type=\"EDDTableFromNcFiles\" datasetID=\"dataset1\" active=\"false\">\n" +
+"    junk line 2\n" +
+"    <dataVariable>\n" +
+"        <sourceName>var1</sourceName>\n" +
+"        <!-- no addAttributes -->\n" +
+"    </dataVariable>\n" +
+"    <addAttributes>\n" +
+"    no closing tag\n" +
+"\n" +
+"</dataset>\n" +
+"\n" +
+"<!-- I removed a lot of unnecessary (for this test) info from this <dataset> definition -->\n" +
+"<dataset type=\"EDDGridFromNcFiles\" datasetID=\"nceiPH53sstd1day\" active=\"true\">\n" +
+"    <reloadEveryNMinutes>1440</reloadEveryNMinutes>\n" +
+"    <!-- sourceAttributes>\n" +
+"    </sourceAttributes -->\n" +
+"    <addAttributes>\n" +
+"        <att name=\"title\">AVHRR Pathfinder Version 5.3 L3-Collated (L3C) SST, Global, 0.0417&deg;, 1981-present, Daytime (1 Day Composite)</att>\n" +
+"    </addAttributes>\n" +
+"    <axisVariable>\n" +
+"        <sourceName>***replaceFromFileName,timeFormat=yyyyDDD,.*_Pathfinder-PFV5\\.3_NOAA\\d\\d_G_(\\d{7})_day.*\\.nc,1</sourceName>\n" +
+"        <destinationName>time</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"comment\">This is the centered, reference time.</att>\n" +
+"            <att name=\"ioos_category\">Time</att>\n" +
+"            <att name=\"long_name\">Centered Time</att>\n" +
+"            <att name=\"units\">seconds since 1970-01-01T12:00:00Z</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <axisVariable>\n" +
+"        <sourceName>lat</sourceName>\n" +
+"        <destinationName>latitude</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"ioos_category\">Location</att>\n" +
+"            <att name=\"long_name\">Latitude</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <axisVariable>\n" +
+"        <sourceName>lon</sourceName>\n" +
+"        <destinationName>longitude</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"ioos_category\">Location</att>\n" +
+"            <att name=\"long_name\">Longitude</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>sea_surface_temperature</sourceName>\n" +
+"        <destinationName>sea_surface_temperature</destinationName>\n" +
+"        <dataType>double</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"add_offset\" type=\"double\">0</att>\n" +
+"            <att name=\"ioos_category\">Temperature</att>\n" +
+"            <att name=\"units\">degree_C</att>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>wind_speed</sourceName>\n" +
+"        <destinationName>windSpeed</destinationName>\n" +
+"        <dataType>byte</dataType>\n" +
+"        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">99</att> <!-- added by addFillValueAttributes at [COMPACT_TIME] -->\n" +
+"            <att name=\"ioos_category\">Wind</att>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>quality_level</sourceName>\n" +
+"        <destinationName>qualityLevel</destinationName>\n" +
+"        <dataType>byte</dataType>\n" +
+"        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att> <!-- added by addFillValueAttributes at [COMPACT_TIME] -->\n" +
+"            <att name=\"ioos_category\">Quality</att>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"</dataset>\n" +
+"\n" +
+"\n" +
+"<dataset type=\"EDDTableFromNcFiles\" datasetID=\"dataset3\">\n" +
+"    junk line 2\n" +
+"    <addAttributes>\n" +
+"    no closing tag\n" +
+"\n" +
+"    <axisVariable>\n" +
+"        <sourceName>lat</sourceName>\n" +
+"        <destinationName>latitude</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"units\">degrees_north</att>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"ioos_category\">Location</att>\n" +
+"            <att name=\"long_name\">Latitude</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>flag</sourceName>\n" +
+"        <destinationName>flag</destinationName>\n" +
+"        <dataType>byte</dataType>\n" +
+"        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">110</att> <!-- added by addFillValueAttributes at [COMPACT_TIME] -->\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"</dataset>\n" +
+"\n" +
+"<endOfFile (with nonstandard tag)>\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            String2.log("\n*** testAddFillValueAttributes finished successfully.");
+
+        } finally {
+
+            //delete any file other than original datasets.xml and addFillValueAttributes.csv file
+            File files[] = new File(dir).listFiles();
+            for (int i = 0; i < files.length; i++) {
+                String name = files[i].getName();
+                if (name.equals("datasets.xml") ||
+                    name.equals("addFillValueAttributes.csv")) {
+                } else {
+                    File2.delete(dir + name);
+                }
+            }
+        }
+    }
+
+
+/* UNFINISHED. NOT USED.
+    public static String addFillValuesForV210(String datasetsXmlFullName, String erddapUrl) throws Exception {
+        String2.log("\n*** EDD.addFillValuesForV210()");
+
+        BufferedReader oldXmlReader = null;
+        BufferedWriter newXmlWriter = null;
+        BufferedWriter notes = null;
+        String dateTime = Calendar2.getCurrentISODateTimeStringLocal();
+        String compactDateTime = String2.replaceAll(dateTime, ":", "");
+               compactDateTime = String2.replaceAll(dateTime, "-", "");
+        String notesName = datasetsXmlFullName + compactDateTime + "Notes.txt";
+        String2.log("\n*** EDD.addFillValuesForV210()  compactDateTime=" + compactDateTime);
+        if (erddapUrl == null || !erddap.endsWith("/erddap/"))
+            throw new RuntimeException("The erddapUrl must end with \"/erddap/\".");
+
+        try {
+            //open oldXmlReader
+            oldXmlReader = File2.getDecompressedBufferedFileReader(
+                datasetsXmlFullName, String2.ISO_8859_1);
+
+            //open newXmlWriter
+//newXmlWriter = getBufferedOutputStreamWriter88591(new FileOutputStream(datasetsXmlFullName + compactDateTime));
+
+            //open notes
+            notes = String2.getBufferedOutputStreamWriter88591(new FileOutputStream(notesName));
+
+            //go through lines of oldXml
+            String datasetType        = null; //null if not currently in a dataset
+            String datasetID          = null; //null if not currently in a dataset
+            EDDGrid  eddGrid          = null; //null if not currently in an EDDGrid dataset
+            EDDTable eddTable         = null; //null if not currently in an EDDGrid dataset
+            boolean inAxisVar         = false;
+            boolean inDataVar         = false;
+            String sourceName         = null;
+            String destName           = null;
+            boolean inAddAttributes   = false;
+
+            Pattern startDatasetPattern  = Pattern.compile(".*<\\s*dataset.*type=\"(.*)\".*datasetID=\"(.*)\".*(|active=\"(.*)\").*>.*");
+            Pattern   endDatasetPattern  = Pattern.compile(".*</\\s*dataset.*>.*");
+            Pattern startAxisVarPattern  = Pattern.compile(".*<\\s*axisVariable\\s*>.*");
+            Pattern   endAxisVarPattern  = Pattern.compile(".*</\\s*axisVariable\\s*>.*");
+            Pattern startDataVarPattern  = Pattern.compile(".*<\\s*dataVariable\\s*>.*");
+            Pattern   endDataVarPattern  = Pattern.compile(".*</\\s*dataVariable\\s*>.*");
+            Pattern sourceNamePattern    = Pattern.compile(".*<\\s*sourceName\\s*>(.*)</\\s*sourceName\\s*>.*");
+            Pattern   destNamePattern    = Pattern.compile(".*<\\s*destinationName\\s*>(.*)</\\s*destinationName\\s*>.*");
+            Pattern startAddAttsPattern  = Pattern.compile(".*<\\s*addAttributes.*>.*");
+            Pattern   endAddAttsPattern  = Pattern.compile(".*</\\s*addAttributes.*>.*");
+
+            String line = oldXmlReader.readLine();
+            int lineNumber = 0;
+            Matcher matcher;
+            while (line != null) {
+                lineNumber++;
+                if ((lineNumber % 1000) == 0) String2.log("line #" + lineNumber);
+if ((lineNumber % 1000) == 0) break;
+
+                //try to match a pattern
+                //(this assumes 1 thing = 1 line)
+                if ((matcher = startDatasetPattern.matcher(line)).matches()) {
+                    if (datasetID != null)
+                        notes.write("SYNTAX WARNING on line #" + lineNumber + ": Unexpected <dataset> tag.\n");
+                    datasetType   = matcher.group(1);
+                    datasetID     = matcher.group(2);
+                    String active = matcher.group(4);
+                    boolean bActive = active == null || "true".equals(active);
+                    if (debugMode)
+                        notes.write("<dataset datasetType=" + datasetType + " datasetID=" + datasetID + " active=" + bActive + " >\n");
+                    EDD edd = null;
+                    if (datasetType == null) {
+                        notes.write("ERROR: For datasetID=" + datasetID + ", datasetType wasn't specified.\n");
+
+                    } else (bActive) {
+                        try {
+                            //make an EDDGrid/TableFromErddap dataset
+                            String gt = datasetType.startsWith("EDDGrid")? "Grid" : "Table";
+                            String snippet =
+                                "<dataset type=\"EDD" + gt + "FromErddap\" datasetID=\"" + datasetID + "\">\n" +
+                                "  <sourceUrl>" + erddapUrl + gt.toLowerCase() + "dap/" + datasetID + "</sourceUrl>\n" +
+                                "</dataset>\n";
+                            EDD edd = oneFromXml(null, snippet);   //erddap=null
+                            if ((gt.equals("Grid"))
+                                 eddGrid = (EDDGrid)edd;
+                            else eddTable = (EDDTable)edd;
+
+                        } catch (Exception e) {
+                            notes.write("ERROR: Unable to access datasetID=" + datasetID + " in local ERDDAP. Caught:\n" +
+                                MustBe.throwableToString(e));
+                            datasetID = null;  //so skip this dataset
+                        }
+                    }
+
+                } else if ((matcher = endDatasetPattern.matcher(line)).matches()) {
+                    //datasetID may already be null if trouble above
+                    datasetType = null;
+                    datasetID   = null;  //that locks out other options
+                    if (debugMode)
+                        notes.write("</dataset>\n");
+
+                //axisVariable or dataVariable
+                } else if (datasetID != null && startAxisVarPattern.matcher(line).matches()) {
+                    if (datasetID != null)
+                        notes.write("SYNTAX WARNING on line #" + lineNumber + ": Unexpected <axisVariable> tag.\n");
+                    inAxisVar = true;
+                    inDataVar = false;
+                    sourceName = null;
+                    destName   = null;
+                    inAddAttributes = false;
+                    if (debugMode)
+                        notes.write("  <axisVariable>\n");
+
+                } else if (datasetID != null && startDataVarPattern.matcher(line).matches()) {
+                    if (datasetID != null)
+                        notes.write("SYNTAX WARNING on line #" + lineNumber + ": Unexpected <dataVariable> tag.\n");
+                    inAxisVar = false;
+                    inDataVar = true;
+                    sourceName = null;
+                    destName   = null;
+                    inAddAttributes = false;
+                    if (debugMode)
+                        notes.write("  <dataVariable>\n");
+
+                } else if (datasetID != null &&
+                    (endAxisVarPattern.matcher(line).matches() ||
+                     endDataVarPattern.matcher(line).matches())) {
+                    if (datasetID != null)
+                        notes.write("SYNTAX WARNING on line #" + lineNumber + ": Unexpected </axisVariable> or </dataVariable> tag.\n");
+                    inAxisVar = false;  //that locks out things below
+                    inDataVar = false;  //that locks out things below
+                    if (debugMode)
+                        notes.write("  </axis|dataVariable>\n");
+
+                } else if (datasetID != null && (inAxisVar || inDataVar) && (matcher = sourceNamePattern.matcher(line)).matches()) {
+                    sourceName = matcher.group(1);
+                    if (debugMode)
+                        notes.write("    sourceName=" + sourceName + "\n");
+
+                } else if (datasetID != null && (inAxisVar || inDataVar) && (matcher = destNamePattern.matcher(line)).matches()) {
+                    destName = matcher.group(1);
+                    if (debugMode)
+                        notes.write("    destName=" + destName + "\n");
+
+                //addAttributes
+                } else if (datasetID != null && (inAxisVar || inDataVar) && startAddAttsPattern.matcher(line).matches()) {
+                    if (datasetID != null)
+                        notes.write("SYNTAX WARNING on line #" + lineNumber + ": Unexpected <addAttributes> tag.\n");
+                    inAddAttributes = true;
+                    if (debugMode)
+                        notes.write("    <addAttributes>\n");
+
+                } else if (datasetID != null && (inAxisVar || inDataVar) && endAddAttsPattern.matcher(line).matches()) {
+                    if (datasetID != null)
+                        notes.write("SYNTAX WARNING on line #" + lineNumber + ": Unexpected </addAttributes> tag.\n");
+                    inAddAttributes = false;
+
+                    //check var in dataset: does it have mv or fv (including in sourceAtts or addAtts since scale/offset --> double may obsure it) ?
+                    if (destName == null)
+                        destName = sourceName;
+                    try {
+                        EDV edv = destName != null && inAxisVar?  eddGrid.findAxisVariableByDestinationName(destName) : //throws exception if not found
+                            eddGrid != null?                      eddGrid.findDataVariableByDestinationName(destName) :
+                                                                 eddTable.findDataVariableByDestinationName(destName);
+                        PrimitiveArray mv = edv.sourceAttributes().get("missing_value");
+                        if (mv == null || mv.toString().equals("null"))
+                            mv = edv.addAttributes().get("missing_value");
+                        if (mv == null || mv.toString().equals("null"))
+                            mv = edv.combinedAttributes().get("missing_value");
+                        if (mv == null && mv.toString().equals("null"))
+                            mv = null;
+
+                        PrimitiveArray fv = edv.sourceAttributes().get("_FillValue");
+                        if (fv == null || fv.toString().equals("null"))
+                            fv = edv.addAttributes().get("_FillValue");
+                        if (fv == null || fv.toString().equals("null"))
+                            fv = edv.combinedAttributes().get("_FillValue");
+                        if (fv == null && fv.toString().equals("null"))
+                            fv = null;
+
+                        //is destination type an integerType?
+                        boolean isIntegerType = PAType.isIntegerType(edv.sourceDataPAType());
+
+                        //add fv?
+                        if (isIntegerType && mv == null && fv == null) {
+                            notes.write("ADDED: For datasetID=" + datasetID + " destinationName=" + destName + ", there is no defined mv or fv!\n");
+//newXmlReader.write(line + "\n");
+                        }
+                    } catch (Exception e) {
+                        notes.write("CAUGHT EXCEPTION on line #" + lineNumber + ": " + MustBe.throwableToString(e));
+                    }
+
+                    if (debugMode)
+                        notes.write("    </addAttributes>\n");
+
+                }
+
+                //write line to newXmlWriter
+//newXmlReader.write(line + "\n");
+
+                //read next line from oldXmlReader
+                line = oldXmlReader.readLine();
+            }
+
+            //close reader and writer
+            oldXmlReader.close();
+            if (newXmlWriter != null) newXmlWriter.close();
+
+//rename files
+
+            notes.append("EDD.addFillValuesForV210() finished successfully\n");
+
+        } finally {
+            //close oldXmlReader
+            if (oldXmlReader != null) try {oldXmlReader.close(); } catch (Exception e) {}
+
+            //close newXmlWriter
+            if (newXmlWriter != null) try {newXmlWriter.close(); } catch (Exception e) {}
+
+            //close notes
+            if (notes != null) try {notes.close(); } catch (Exception e) {}
+
+        }
+
+        return notesName;
+    }
+    */
 
     public static void testAddMvFvAttsIfNeeded() throws Throwable {
         String2.log("\n*** EDD.testAddMvFvAttsIfNeeded()");
@@ -12327,153 +12903,154 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         sourceAtts = new Attributes();
         Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, null), false, "");
 
-        //size=0 -> false
-        pa = new ByteArray(new byte[]{});
-        sourceAtts = new Attributes();
-        addAtts    = new Attributes();
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
-
         //StringArray -> false
         pa = new StringArray(new String[]{"99"});
         sourceAtts = new Attributes();
         addAtts    = new Attributes();
         Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
 
-        //99
+
+        //***
+        //99 is caught if observed and nothing defined
         pa = new ByteArray(new byte[]{12,99});
         sourceAtts = new Attributes();
         addAtts    = new Attributes();
         Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
         Test.ensureEqual(addAtts.get("_FillValue"), new ByteArray(new byte[]{99}), "");
 
-        //99 -> false if already defined
-        pa = new ByteArray(new byte[]{12,99});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{99}));
-        addAtts    = new Attributes();
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
-
-        //99 -> false if already defined
-        pa = new ByteArray(new byte[]{12,99});
-        sourceAtts = (new Attributes()).add("_FillValue", new ByteArray(new byte[]{99}));
-        addAtts    = new Attributes();
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
-
-        //99 -> false if already defined
-        pa = new ByteArray(new byte[]{12,99});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{99}));
-        addAtts    = new Attributes();
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
-
-        //99 -> true if mv fv already defined different but identical
-        pa = new ByteArray(new byte[]{12,99});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{127}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{127}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new ByteArray(new byte[]{99}), "");
-
-        //-128 -> true if mv fv already defined different but identical
-        pa = new ByteArray(new byte[]{12,-128});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{127}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{127}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new ByteArray(new byte[]{-128}), "");
-
-        //-127 -> true if mv fv already defined different but identical
+        //-127 is caught if observed and nothing defined
         pa = new ByteArray(new byte[]{12,-127});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{127}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{127}));
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
         Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new ByteArray(new byte[]{-127}), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new ByteArray(new byte[]{-127}), "");
 
-        //127 -> true if mv fv already defined different but identical
+        //-128 is caught if observed and nothing defined
+        pa = new ByteArray(new byte[]{12,-128});
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new ByteArray(new byte[]{-128}), "");
+
+        //127 is caught even if no values
+        pa = new ByteArray();
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new ByteArray(new byte[]{127}), "");
+
+        //127 is caught even if no values
+        pa = new ByteArray().setMaxIsMV(true);
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new ByteArray(new byte[]{127}), "");
+
+        //127 is caught if present, even if something else is defined (duplicate)
         pa = new ByteArray(new byte[]{12,127});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{-127}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{-127}));
+        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{99}));
+        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{99}));
         Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
         Test.ensureEqual(addAtts.get("missing_value"), new ByteArray(new byte[]{127}), "");
 
-        //99 -> false if mv fv already defined but identical
-        pa = new ByteArray(new byte[]{12,99});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{99}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{99}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
-         
-        //99 -> false if mv fv already defined
-        pa = new ByteArray(new byte[]{12,99,127});
-        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{-127}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ByteArray(new byte[]{ 127}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
-         
-        //short -32767 -> true if mv fv already defined different but identical
+
+        //ubyte 255 -> true if nothing defined
+        pa = new UByteArray(new short[]{12});
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new UByteArray(new short[]{255}), "");
+
+        //short -32767 -> true if nothing defined
         pa = new ShortArray(new short[]{12,-32767,32767});
-        sourceAtts = (new Attributes()).add("missing_value", new ShortArray(new short[]{32767}));
-        addAtts    = (new Attributes()).add("_FillValue",    new ShortArray(new short[]{32767}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new ShortArray(new short[]{-32767}), "");
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new ShortArray(new short[]{-32767}), "");
 
-        //int -2147483647 -> true if mv fv already defined different but identical
+        //int -2147483647 -> true if nothing defined
         pa = new IntArray(new int[]{12,-2147483647,2147483647});
-        sourceAtts = (new Attributes()).add("missing_value", new IntArray(new int[]{2147483647}));
-        addAtts    = (new Attributes()).add("_FillValue",    new IntArray(new int[]{2147483647}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new IntArray(new int[]{-2147483647}), "");
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new IntArray(new int[]{-2147483647}), "");
 
-
-        //long -9223372036854775808 -> true if mv fv already defined different but identical
+        //long -9223372036854775808 -> true if nothing defined
         pa = new LongArray(new long[]{12,-9223372036854775808L});
-        sourceAtts = (new Attributes()).add("missing_value", new LongArray(new long[]{9223372036854775807L}));
-        addAtts    = (new Attributes()).add("_FillValue",    new LongArray(new long[]{9223372036854775807L}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new LongArray(new long[]{-9223372036854775808L}), "");
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new LongArray(new long[]{-9223372036854775808L}), "");
 
-        //long -9223372036854775807 -> true if mv fv already defined different but identical
+        //long -9223372036854775807 -> true if nothing defined
         pa = new LongArray(new long[]{12,-9223372036854775807L});
-        sourceAtts = (new Attributes()).add("missing_value", new LongArray(new long[]{9223372036854775807L}));
-        addAtts    = (new Attributes()).add("_FillValue",    new LongArray(new long[]{9223372036854775807L}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new LongArray(new long[]{-9223372036854775807L}), "");
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new LongArray(new long[]{-9223372036854775807L}), "");
 
-        //long 9223372036854775807 -> true if mv fv already defined different but identical
-        pa = new LongArray(new long[]{12,9223372036854775807L});
-        sourceAtts = (new Attributes()).add("missing_value", new LongArray(new long[]{-9223372036854775807L}));
-        addAtts    = (new Attributes()).add("_FillValue",    new LongArray(new long[]{-9223372036854775807L}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new LongArray(new long[]{9223372036854775807L}), "");
+        //long 9223372036854775807 -> true nothing defined
+        pa = new LongArray(new long[]{12});
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new LongArray(new long[]{9223372036854775807L}), "");
 
-        //long 9999 -> true if mv fv already defined different but identical
-        pa = new LongArray(new long[]{12,999,9223372036854775807L});
-        sourceAtts = (new Attributes()).add("missing_value", new LongArray(new long[]{9223372036854775807L}));
-        addAtts    = (new Attributes()).add("_FillValue",    new LongArray(new long[]{9223372036854775807L}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
-        Test.ensureEqual(addAtts.get("missing_value"), new LongArray(new long[]{999}), "");
+        //long 9999 -> true if nothing defined
+        pa = new LongArray(new long[]{12,9999});
+        sourceAtts = new Attributes();
+        addAtts    = new Attributes();
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
+        Test.ensureEqual(addAtts.get("_FillValue"), new LongArray(new long[]{9999}), "");
+
+
+        //***
+        //99 not caught if something already defined
+        pa = new ByteArray(new byte[]{12,99});
+        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{120}));
+        addAtts    = new Attributes();
+        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
+
+        //-127 not caught if something already defined
+        pa = new ByteArray(new byte[]{12,-127});
+        sourceAtts = new Attributes();
+        addAtts    = (new Attributes()).add("_FillValue", new ByteArray(new byte[]{120}));
+        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
+
+        //-128 not caught if something already defined
+        pa = new ByteArray(new byte[]{12,-128});
+        sourceAtts = (new Attributes()).add("missing_value", new ByteArray(new byte[]{120}));
+        addAtts    = new Attributes();
+        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), false, "");
+
 
 
         //float -9223372036854775807 -> true if mv fv already defined different but identical
         pa = new FloatArray(new float[]{12,-999});
         sourceAtts = (new Attributes()).add("missing_value", new FloatArray(new float[]{9999}));
         addAtts    = (new Attributes()).add("_FillValue",    new FloatArray(new float[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new FloatArray(new float[]{-999}), "");
 
         //float NaN -> true if mv fv already defined different but identical
         pa = new FloatArray(new float[]{12,Float.NaN});
         sourceAtts = (new Attributes()).add("missing_value", new FloatArray(new float[]{9999}));
         addAtts    = (new Attributes()).add("_FillValue",    new FloatArray(new float[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new FloatArray(new float[]{Float.NaN}), "");
 
         //float 1.234567e36f -> true if mv fv already defined different but identical
         pa = new FloatArray(new float[]{12,1.234567e36f});
         sourceAtts = (new Attributes()).add("missing_value", new FloatArray(new float[]{9999}));
         addAtts    = (new Attributes()).add("_FillValue",    new FloatArray(new float[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new FloatArray(new float[]{1.234567e36f}), "");
 
         //float -99.9f -> true if mv fv already defined different but identical
         pa = new FloatArray(new float[]{12,9999,-99.9f});
         sourceAtts = (new Attributes()).add("missing_value", new FloatArray(new float[]{9999}));
         addAtts    = (new Attributes()).add("_FillValue",    new FloatArray(new float[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new FloatArray(new float[]{-99.9f}), "");
 
 
@@ -12482,7 +13059,7 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         sourceAtts = (new Attributes()).add("_FillValue",    new DoubleArray(new double[]{9999}))
                                        .add("missing_value", new DoubleArray(new double[]{-999}));  //will be ignored
         addAtts    = (new Attributes()).add("missing_value", new DoubleArray(new double[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new DoubleArray(new double[]{-999}), "");
 
         //double NaN -> true if mv fv already defined different but identical
@@ -12490,7 +13067,7 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         sourceAtts = (new Attributes()).add("_FillValue",    new DoubleArray(new double[]{9999}))
                                        .add("missing_value", new DoubleArray(new double[]{-999}));  //will be ignored
         addAtts    = (new Attributes()).add("missing_value", new DoubleArray(new double[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new DoubleArray(new double[]{Double.NaN}), "");
 
         //double 1.234567890987654e36 -> true if mv fv already defined different but identical
@@ -12498,7 +13075,7 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         sourceAtts = (new Attributes()).add("_FillValue",    new DoubleArray(new double[]{9999}))
                                        .add("missing_value", new DoubleArray(new double[]{-999}));  //will be ignored
         addAtts    = (new Attributes()).add("missing_value", new DoubleArray(new double[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new DoubleArray(new double[]{1.234567890987654e36}), "");
 
         //double 1.5e301 -> true if mv fv already defined different but identical
@@ -12506,31 +13083,59 @@ BIND(if(EXISTS{?dt skos:definition ?def},?def,"") as ?defx) } order by ?pl
         sourceAtts = (new Attributes()).add("_FillValue",    new DoubleArray(new double[]{9999}))
                                        .add("missing_value", new DoubleArray(new double[]{-999}));  //will be ignored
         addAtts    = (new Attributes()).add("missing_value", new DoubleArray(new double[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new DoubleArray(new double[]{1.5e301}), "");
 
         //double -99.9 -> true if mv fv already defined different but identical
         pa = new DoubleArray(new double[]{12,9999,-99.9});
         sourceAtts = (new Attributes()).add("missing_value", new DoubleArray(new double[]{9999}));
         addAtts    = (new Attributes()).add("_FillValue",    new DoubleArray(new double[]{9999}));
-        Test.ensureEqual(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), true, "");
+        Test.ensureTrue(addMvFvAttsIfNeeded("testVar", pa, sourceAtts, addAtts), "");
         Test.ensureEqual(addAtts.get("missing_value"), new DoubleArray(new double[]{-99.9}), "");
-
-
-
     }
 
-    /** This tests some of the static methods in this class.
-     * Almost all of the testing of this class is done by subclasses.
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests;
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test).
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDD.testEDD");
+    public static void test(StringBuilder errorSB, boolean interactive,
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 3;
+        String msg = "\n^^^ EDD.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testSuggestInstitutionParts();
-        testSparqlP01toP02();
-        testAddMvFvAttsIfNeeded();
-        /* */
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
 
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testSuggestInstitutionParts();
+                    if (test ==  1) testSparqlP01toP02();
+                    if (test ==  2) testAddMvFvAttsIfNeeded();
+                    if (test ==  3) testAddFillValueAttributes();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" +
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive)
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 }

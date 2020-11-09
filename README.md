@@ -8,12 +8,12 @@ This aims to be a complete drop-in replacement for ERDDAP. Users should notice n
 
 ### ERDDAP Version
 
-The ERDDAP version will appear different on your installation in the bottom left of the ERDDAP website. If you run the `2.02` version of ERDDAP, instead of the typical `ERDDAP, Version 2.02` you will see `ERDDAP, Version 2.02_axiom-r1` where `r1` is a release of this codebase of a specific version fo ERDDAP.
+The ERDDAP version will appear different on your installation in the bottom left of the ERDDAP website. If you run the `2.02` version of ERDDAP, instead of the typical `ERDDAP, Version 2.02` you will see `ERDDAP, Version 2.02_axiom-r1` where `r1` is a release of this codebase of a specific version of ERDDAP.
 
 ### Custom Classes
 
 This repository contains some extra dataset access classes. If you are developing a dataset access class and would like it included in this repository please submit a PR! We are happy to be a holding place until your class can be flushed out, tested, and integrated upstream into the ERDDAP codebase.
- 
+
 Examples:
 
 * `src/main/java/gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService.java`
@@ -58,7 +58,7 @@ Unit tests can just be run like normal (within your IDE).
 ### Integration Tests
 
 Integration tests are a bit of a pain. Before running integration tests, make sure you have the project set up as explained above. If you have a better solution to this please advise!
- 
+
 1. In `pom.xml`, remove the line `<scope>provided</scope>` under `<groupId>javax.servlet</groupId>`, and the line `<scope>test</scope>` under `<groupId>junit</groupId>`.
 
 2. Run `./run-integration-tests.sh` in a CLI in the root of this codebase
@@ -87,14 +87,14 @@ popd
 # EDDTableFromAxiomSensorCSVService
 mvn compile war:exploded && \
 pushd . && \
-cd target/erddap-2.02_axiom-r1/WEB-INF/ && \
+cd target/erddap-2.10_axiom-r1/WEB-INF/ && \
 java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomSensorCSVService; \
 popd
 
 # EDDTableFromAxiomStation
 mvn compile war:exploded && \
 pushd . && \
-cd target/erddap-2.02_axiom-r1/WEB-INF/ && \
+cd target/erddap-2.10_axiom-r1/WEB-INF/ && \
 java -DerddapContentDirectory=/data/erddap/content -classpath "./classes:./lib/*" -Xmx1200M -Xms1200M gov/noaa/pfel/erddap/dataset/EDDTableFromAxiomStation; \
 popd
 ```

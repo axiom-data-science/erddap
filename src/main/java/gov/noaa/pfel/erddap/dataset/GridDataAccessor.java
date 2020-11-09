@@ -9,6 +9,8 @@ import com.cohort.array.ByteArray;
 import com.cohort.array.FloatArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.NDimensionalIndex;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.ShortArray;
 import com.cohort.array.StringArray;
@@ -22,6 +24,7 @@ import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.variable.EDV;
 import gov.noaa.pfel.erddap.variable.EDVGridAxis;
 
+import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
@@ -115,7 +118,7 @@ public class GridDataAccessor {
      * @param tRowMajor  
      *    Set this to true if you want to get the data in row major order. 
      *    Set this to false if you want to get the data in column major order. 
-     * @param tConvertToNaN  set this to True if you want the GridDataAccessor
+     * @param tConvertToNaN  set this to true if you want the GridDataAccessor
      *    to convert stand-in missing values (e.g., -9999999.0, as identified
      *    by the missing_value or _FillValue metadata) to NaNs.
      * @throws Throwable if trouble
@@ -180,7 +183,7 @@ public class GridDataAccessor {
 
             //convert source values to destination values  
             //(e.g., convert datatype and apply scale_factor/scaleFactor and add_offset/addOffset)
-            axisValues[av] = axisVariables[av].toDestination(axisValues[av]);
+            axisValues[av] = axisVariables[av].toDestination(axisValues[av]);  //handles maxIsMV, but never any mv in axis values
 
             //setActualRangeAndBoundingBox  (see comments in method javadocs above)
             //if no data, don't specify range
@@ -190,7 +193,7 @@ public class GridDataAccessor {
             if (dMin > dMax) {
                 double d = dMin; dMin = dMax; dMax = d;
             }
-            PrimitiveArray minMax = PrimitiveArray.factory(axisValues[av].elementClass(), 2, false);
+            PrimitiveArray minMax = PrimitiveArray.factory(axisValues[av].elementType(), 2, false);
             minMax.addDouble(dMin);
             minMax.addDouble(dMax);
 
@@ -347,11 +350,11 @@ public class GridDataAccessor {
         tFileTable = eddGrid.getFileTable(); 
 
         //finish up
-        EDStatic.ensureMemoryAvailable(nBytesPerPartialRequest, "GridDataAccessor");
+        Math2.ensureMemoryAvailable(nBytesPerPartialRequest, "GridDataAccessor");
         driverIndex = new NDimensionalIndex(driverShape);
         partialIndex = new NDimensionalIndex(partialShape);
-        EDStatic.ensureArraySizeOkay(driverIndex.size(), "GridDataAccessor");  //ensure not >Integer.MAX_VALUE chunks (will never finish!)
-        EDStatic.ensureArraySizeOkay(partialIndex.size(), "GridDataAccessor"); //ensure each chunk size() is ok
+        Math2.ensureArraySizeOkay(driverIndex.size(), "GridDataAccessor");  //ensure not >Integer.MAX_VALUE chunks (will never finish!)
+        Math2.ensureArraySizeOkay(partialIndex.size(), "GridDataAccessor"); //ensure each chunk size() is ok
         totalNBytes = driverIndex.size() * nBytesPerPartialRequest; //driverIndex.size() is a long
         if (reallyVerbose) String2.log("      getAllOfNAxes=" + getAllOfNAxes + 
             //driverShape e.g., [15][1][1][1],  note getAllOfNAxes 1's on right if row-major
@@ -598,9 +601,10 @@ public class GridDataAccessor {
 
             EDStatic.rethrowClientAbortException(t);  //first throwable type handled
 
-            //if interrupted or too much data, rethrow t
+            //if interrupted, OutOfMemoryError or too much data, rethrow t
             String tToString = t.toString();
             if (t instanceof InterruptedException ||
+                t instanceof java.lang.OutOfMemoryError ||
                 tToString.indexOf(Math2.memoryTooMuchData) >= 0)
                 throw t;
 
@@ -713,7 +717,7 @@ class GetChunkCallable implements Callable {
             for (int dv = 0; dv < gda.dataVariables.length; dv++) {
                 if (gda.dataEncodingLC[dv] == null ||
                     partialResults[dv] == null ||
-                    partialResults[dv].elementClass() != String.class)
+                    partialResults[dv].elementType() != PAType.STRING)
                     continue;
 
                 //decode UTF-8
@@ -768,7 +772,7 @@ class GetChunkCallable implements Callable {
             for (int dv = 0; dv < gda.dataVariables.length; dv++) { //dv in the query
                 //convert source values to destination values and store
                 //String2.log("!source  dv=" + gda.dataVariables[dv].destinationName() + " " + partialResults[gda.nAxisVariables + dv]);
-                partialDataValues[dv] = gda.dataVariables[dv].toDestination(partialResults[gda.nAxisVariables + dv]);
+                partialDataValues[dv] = gda.dataVariables[dv].toDestination(partialResults[gda.nAxisVariables + dv]); //handles maxIsMV
                 //String2.log("!dest    dv=" + gda.dataVariables[dv].destinationName() + " " + partialDataValues[dv]);
 
                 //save memory
@@ -825,30 +829,10 @@ class GetChunkCallable implements Callable {
      * Call this after increment() to get a current axis destination value (as an int).
      *
      * @param av an axisVariable number
-     * @return the axis destination value
+     * @return paOne, for convenience
      */
-    public int getAxisValueAsInt(int av) {
-        return axisValues[av].getInt(totalIndex.getCurrent()[av]);
-    }
-
-    /**
-     * Call this after increment() to get a current axis destination value (as a long).
-     *
-     * @param av an axisVariable number
-     * @return the axis destination value
-     */
-    public long getAxisValueAsLong(int av) {
-        return axisValues[av].getLong(totalIndex.getCurrent()[av]);
-    }
-
-    /**
-     * Call this after increment() to get a current axis destination value (as a float).
-     *
-     * @param av an axisVariable number
-     * @return the axis destination value
-     */
-    public float getAxisValueAsFloat(int av) {
-        return axisValues[av].getFloat(totalIndex.getCurrent()[av]);
+    public PAOne getAxisValueAsPAOne(int av, PAOne paOne) {
+        return paOne.readFrom(axisValues[av], totalIndex.getCurrent()[av]);
     }
 
     /**
@@ -861,15 +845,6 @@ class GetChunkCallable implements Callable {
         return axisValues[av].getDouble(totalIndex.getCurrent()[av]);
     }
 
-    /**
-     * Call this after increment() to get a current axis destination value (as a String).
-     *
-     * @param av an axisVariable number
-     * @return the axis destination value
-     */
-    public String getAxisValueAsString(int av) {
-        return axisValues[av].getString(totalIndex.getCurrent()[av]);
-    }
 
     /**
      * Call this after increment() to get the current data value (as an int) 
@@ -879,32 +854,10 @@ class GetChunkCallable implements Callable {
      * will return standard missing value as Integer.MAX_VALUE (not Byte.MAX_VALUE).
      *
      * @param dv a dataVariable number in the query 
-     * @return the data value
+     * @return paOne, for convenience
      */
-    public int getDataValueAsInt(int dv) {
-        return partialDataValues[dv].getInt((int)partialIndex.getIndex()); //safe since partialIndex size checked when constructed
-    }
-
-    /**
-     * Call this after increment() to get the current data value (as a long) 
-     * from the specified dataVariable.
-     *
-     * @param dv a dataVariable number in the query 
-     * @return the data value
-     */
-    public long getDataValueAsLong(int dv) {
-        return partialDataValues[dv].getLong((int)partialIndex.getIndex()); //safe since partialIndex size checked when constructed
-    }
-
-    /**
-     * Call this after increment() to get the current data value (as a float) 
-     * from the specified dataVariable.
-     *
-     * @param dv a dataVariable number in the query
-     * @return the data value
-     */
-    public float getDataValueAsFloat(int dv) {
-        return partialDataValues[dv].getFloat((int)partialIndex.getIndex()); //safe since partialIndex size checked when constructed
+    public PAOne getDataValueAsPAOne(int dv, PAOne paOne) {
+        return paOne.readFrom(partialDataValues[dv], (int)partialIndex.getIndex()); //safe since partialIndex size checked when constructed
     }
 
     /**
@@ -922,13 +875,36 @@ class GetChunkCallable implements Callable {
      * Call this after increment() to get the current data value (as a String) 
      * from the specified dataVariable.
      *
-     * @param dv a dataVariable number in the query
+     * @param dv a dataVariable number in the query 
      * @return the data value
      */
     public String getDataValueAsString(int dv) {
         return partialDataValues[dv].getString((int)partialIndex.getIndex()); //safe since partialIndex size checked when constructed
     }
 
+    /**
+     * This writes the dv to the randomAccessFile.
+     * This works perfectly and efficiently will all PATypes.
+     * 
+     * @param dv a dataVariable number in the query 
+     * @param raf a randomAccessFile
+     */
+    public void writeToRAF(int dv, RandomAccessFile raf) throws Exception {
+        partialDataValues[dv].writeToRAF(raf, (int)partialIndex.getIndex());
+    }
+
+    /**
+     * Call this after increment() to write the current data value 
+     * to a Random Access File.
+     *
+     * @param dv a dataVariable number in the query
+     * @return the data value
+     */
+/* 2020-03-12 not finished    
+    public String writeDataValueToRAF(RandomAccessFile raf, int dv) {
+        return partialDataValues[dv].getString((int)partialIndex.getIndex()); //safe since partialIndex size checked when constructed
+    }
+*/
     /** 
      * The garbage collector calls this.  Users should call releaseGetResources instead().
      */

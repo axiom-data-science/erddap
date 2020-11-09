@@ -5,7 +5,9 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAType;
 import com.cohort.util.Calendar2;
+import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
@@ -70,7 +72,7 @@ public class TableWriterGeoJson extends TableWriter {
         super(tEdd, tNewHistory, tOutputStreamSource);
         jsonp = tJsonp;
         if (jsonp != null && !String2.isJsonpNameSafe(jsonp))
-            throw new SimpleException(EDStatic.errorJsonpFunctionName);
+            throw new SimpleException(EDStatic.queryError + EDStatic.errorJsonpFunctionName);
     }
 
 
@@ -105,7 +107,7 @@ public class TableWriterGeoJson extends TableWriter {
             latColumn = table.findColumnNumber(EDV.LAT_NAME);
             altColumn = table.findColumnNumber(EDV.ALT_NAME); 
             if (lonColumn < 0 || latColumn < 0) 
-                throw new SimpleException("Error: " +
+                throw new SimpleException(EDStatic.queryError + 
                     "Requests for GeoJSON data must include the longitude and latitude variables.");
             //it is unclear to me if specification supports altitude in coordinates info...
             isTimeStamp = new boolean[nColumns];
@@ -125,8 +127,8 @@ public class TableWriterGeoJson extends TableWriter {
             }
 
             //write the header
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.UTF_8), String2.UTF_8));
+            writer = String2.getBufferedOutputStreamWriterUtf8(
+                outputStreamSource.outputStream(String2.UTF_8));
             if (jsonp != null) 
                 writer.write(jsonp + "(");
 
@@ -148,9 +150,9 @@ public class TableWriterGeoJson extends TableWriter {
                     "  \"propertyNames\": [");
                 boolean somethingWritten = false;
                 for (int col = 0; col < nColumns; col++) {
-                    Class cClass = table.getColumn(col).elementClass();
-                    isChar[  col] = cClass == char.class;
-                    isString[col] = cClass == String.class;
+                    PAType cPAType = table.getColumn(col).elementType();
+                    isChar[  col] = cPAType == PAType.CHAR;
+                    isString[col] = cPAType == PAType.STRING;
                     if (col != lonColumn && col != latColumn && col != altColumn) {
                         if (somethingWritten) writer.write(", "); else somethingWritten = true;
                         writer.write(String2.toJson(table.getColumnName(col)));
@@ -180,8 +182,9 @@ public class TableWriterGeoJson extends TableWriter {
 
         //avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
         int nRows = table.nRows();
+        boolean flushAfterward = totalNRows == 0; //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
-        EDStatic.ensureArraySizeOkay(totalNRows, "GeoJson");
+        Math2.ensureArraySizeOkay(totalNRows, "GeoJson");
 
         //write the data
         if (nColumns == 2 ||
@@ -290,10 +293,8 @@ public class TableWriterGeoJson extends TableWriter {
             }       
         }
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward)
             writer.flush(); 
-
     }
 
     

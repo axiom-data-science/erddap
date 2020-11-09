@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -101,7 +102,7 @@ public class EDDGridCopy extends EDDGrid {
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
         int tnThreads = -1; //interpret invalid values (like -1) as EDStatic.nGridThreads
-        boolean tAccessibleViaFiles = false;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         boolean tDimensionValuesInMemory = true;
         String tOnlySince = null;
 
@@ -159,7 +160,7 @@ public class EDDGridCopy extends EDDGrid {
 
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -260,6 +261,7 @@ public class EDDGridCopy extends EDDGrid {
         setReloadEveryNMinutes(tReloadEveryNMinutes);
         matchAxisNDigits = tMatchAxisNDigits;
         onlySince = tOnlySince;
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles;
         nThreads = tnThreads; //interpret invalid values (like -1) as EDStatic.nGridThreads
         dimensionValuesInMemory = tDimensionValuesInMemory; 
 
@@ -412,10 +414,10 @@ public class EDDGridCopy extends EDDGrid {
                             }
                         }
                         ncDataVarNames.add(varName);
-                        Class tClass = NcHelper.getElementClass(var.getDataType());
-                        if      (tClass == char.class)    tClass = String.class;
-                        else if (tClass == boolean.class) tClass = byte.class; 
-                        ncDataVarTypes.add(PrimitiveArray.elementClassToString(tClass));
+                        PAType tPAType = NcHelper.getElementPAType(var);
+                        if      (tPAType == PAType.CHAR)    tPAType = PAType.STRING;
+                        else if (tPAType == PAType.BOOLEAN) tPAType = PAType.BYTE; 
+                        ncDataVarTypes.add(PAType.toCohortString(tPAType));
                     }
                 }
                 ncFile.close();
@@ -470,7 +472,7 @@ public class EDDGridCopy extends EDDGrid {
             copyDatasetDir, fileNameRegex, recursive, ".*", //true pathRegex is for remote site
             EDDGridFromFiles.MF_LAST,
             matchAxisNDigits,  //sourceEdd should have made them consistent
-            tFileTableInMemory, false, nThreads, dimensionValuesInMemory, //accessibleViaFiles false here
+            tFileTableInMemory, tAccessibleViaFiles, nThreads, dimensionValuesInMemory, 
             "", -1, ""); //cacheFromUrl, cacheSizeGB, cachePartialPathRegex
 
         //copy things from localEdd 
@@ -497,13 +499,6 @@ public class EDDGridCopy extends EDDGrid {
         depthIndex    = localEdd.depthIndex;
         timeIndex     = localEdd.timeIndex;
 
-        //accessibleViaFiles
-        if (EDStatic.filesActive && tAccessibleViaFiles) {
-            accessibleViaFilesDir = copyDatasetDir;
-            accessibleViaFilesRegex = fileNameRegex;
-            accessibleViaFilesRecursive = recursive;
-        }
-
         //ensure the setup is valid
         ensureValid(); //this ensures many things are set, e.g., sourceUrl
 
@@ -512,10 +507,11 @@ public class EDDGridCopy extends EDDGrid {
             tryToSubscribeToChildFromErddap(sourceEdd);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridCopy " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -578,21 +574,37 @@ public class EDDGridCopy extends EDDGrid {
     }
 
     /** 
-     * This returns a fileTable (formatted like 
-     * FileVisitorDNLS.oneStep(tDirectoriesToo=false, size is LongArray,
-     * and last_mod is LongArray of epochMillis)
+     * This returns a fileTable
      * with valid files (or null if unavailable or any trouble).
      * This is a copy of any internal data, so client can modify the contents.
      *
      * @param nextPath is the partial path (with trailing slash) to be appended 
      *   onto the local fileDir (or wherever files are, even url).
      * @return null if trouble,
-     *   or Object[2] where [0] is a sorted DNLS table which just has files in fileDir + nextPath and 
-     *   [1] is a sorted String[] with the short names of directories that are 1 level lower.
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
      */
     public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
         return localEdd.accessibleViaFilesFileTable(nextPath);
     }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+     public String accessibleViaFilesGetLocal(String relativeFileName) {
+         if (!accessibleViaFiles)
+             return null;
+         return localEdd.accessibleViaFilesGetLocal(relativeFileName);
+     }
 
 
     /**
@@ -877,9 +889,8 @@ expected =
             //  */
 
         } catch (Throwable t) {
-            String2.pressEnterToContinue(
-                "\nThis EDDGridCopy test only works on Bob's computer." +
-                "\n" + MustBe.throwableToString(t)); 
+            throw new RuntimeException(
+                "This EDDGridCopy test only works on Bob's computer.", t); 
         }
 
         defaultCheckSourceData = true;
@@ -925,26 +936,139 @@ expected =
         String2.pressEnterToContinue(
             "The time values shown should only include times since " + 
             Calendar2.epochSecondsToIsoStringTZ(
-            Calendar2.nowStringToEpochSeconds("now-3days")));
+            Calendar2.nowStringToEpochSeconds("now-3days")) + " (with rounding)");
+    }
+
+   /**
+     * This tests the /files/ "files" system.
+     * This requires testGridCopy in the localhost ERDDAP.
+     */
+    public static void testFiles() throws Throwable {
+
+        String2.log("\n*** EDDGridCopy.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
+
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridCopy/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"1.1991888E9.nc,1429801650000,12465108,\n" +
+"1.1992752E9.nc,1429801652000,12465108,\n" +
+"1.1993616E9.nc,1429801654000,12465108,\n";
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridCopy/");
+            Test.ensureTrue(results.indexOf("1&#x2e;1992752E9&#x2e;nc") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf(">12465108<")               > 0, "results=\n" + results);
+
+            //download a file in root
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridCopy/1.1992752E9.nc").substring(0, 50));
+            expected = 
+"CDF[1][0][0][0][0][0][0][0][10]\n" +
+"[0][0][0][4][0][0][0][4]time[0][0][0][1][0][0][0][8]altitude[0][0][0][1][0][0][0][8]la[end]"; 
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridCopy/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testGridCopy/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridCopy/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testGridCopy/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+
+
+        } catch (Throwable t) {
+            throw new RuntimeException("Unexpected error. This test requires testGridCopy in the localhost ERDDAP.", t); 
+        } 
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n****************** EDDGridCopy.test() *****************\n");
-        testVerboseOn();
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 0 : 2;
+        String msg = "\n^^^ EDDGridCopy.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        //always done
-        testBasic(true); //checkSourceData
-        testBasic(false); 
-        testOnlySince();
-        
-        //not usually done
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testOnlySince();
 
+                } else {
+                    if (test ==  0) testBasic(true); //checkSourceData
+                    if (test ==  1) testBasic(false); 
+                    if (test ==  2) testFiles();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

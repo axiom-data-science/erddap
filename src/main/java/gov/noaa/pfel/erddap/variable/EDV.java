@@ -5,6 +5,8 @@
 package gov.noaa.pfel.erddap.variable;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -12,10 +14,11 @@ import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
+import com.cohort.util.Units2;
 
 import gov.noaa.pfel.coastwatch.griddata.DataHelper;
+import gov.noaa.pfel.coastwatch.sgt.SgtMap;
 import gov.noaa.pfel.erddap.util.EDStatic;
-import gov.noaa.pfel.erddap.util.EDUnits;
 
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -50,7 +53,7 @@ public class EDV {
      * These are the standardized variable names, long names, CF standard names, 
      * and units for the lon, lat, alt, and time axes in the results. 
      * These names match the CF standard names
-     * (see http://cfconventions.org/standard-names.html).
+     * (see https://cfconventions.org/standard-names.html).
      */
     public final static String
         LON_NAME  = "longitude", LON_LONGNAME  = "Longitude", LON_STANDARD_NAME  = "longitude", LON_UNITS  = "degrees_east",        
@@ -66,7 +69,7 @@ public class EDV {
         ALT_UNITS, "meter", "meters", "metre", "metres"};
 
     /** */
-    public static String TIME_UCUM_UNITS = EDUnits.udunitsToUcum(TIME_UNITS);
+    public static String TIME_UCUM_UNITS = Units2.udunitsToUcum(TIME_UNITS);
 
     /** The optional string for no units. 
      * There doesn't seem to be a udUnits standard. But LAS uses "unitless".*/
@@ -85,7 +88,7 @@ public class EDV {
      * (IOOS) NOAA's Approach to Building an Initial Operating Capability".
      * Bob(!) added many of these categories to deal with other types of data.
      * See the variables listed on pg 1-5 of
-     * http://www.iooc.us/wp-content/uploads/2010/11/US-IOOS-Blueprint-for-Full-Capability-Version-1.0.pdf
+     * https://www.iooc.us/wp-content/uploads/2010/11/US-IOOS-Blueprint-for-Full-Capability-Version-1.0.pdf
      * (marked "November 2010")
      * <ul>
      * <li>"Other" is not one of the original categories, but is a fallback
@@ -175,8 +178,8 @@ public class EDV {
 
     /** These variables are always set by the constructor. */
     protected String sourceName, destinationName, longName, sourceDataType, destinationDataType;
-    /** e.g., float.class or String.class. */
-    protected Class sourceDataTypeClass, destinationDataTypeClass;
+    /** e.g., PAType.FLOAT or PAType.STRING. */
+    protected PAType sourceDataPAType, destinationDataPAType;
     /** "units" are set by the constructor if they are available in 
      * sourceAttributes or addAtributes. It is highly recommended that you set "units".
      * At ERD, we always set "ioos_category".
@@ -190,18 +193,20 @@ public class EDV {
     protected Attributes addAttributes = new Attributes();
     /** Attributes made from sourceAtt and addAtt, then revised (e.g., remove "null" values) */
     protected Attributes combinedAttributes;
-    /** The constructor sets this to length>0 string if the
+    /** The constructor sets this to a non-null string if the
      * variable isn't in the data source and so is represented by 
      * a fixed value.
      * Define this so sourceValue=destinationValue (if time: epoch seconds; 
      *   no altUnits=-1 or odd time format or scale addOffset).
+     * 2019-11-20 Now, it can only be a fixed Value if the value is 
+     *   a single number or a single, JSON-encoded String.
      */ 
-    protected String fixedValue = "";
-    /** The destination minimum and maximum values (in standardized destination units) 
+    protected String fixedValue = null;
+    /** The destination numeric minimum and maximum values (in standardized destination units) 
      * of this variable. 
      * These are set if the information is available; else they remain NaN. */
-    protected double destinationMin = Double.NaN;
-    protected double destinationMax = Double.NaN;
+    protected PAOne destinationMin = PAOne.fromDouble(Double.NaN);  
+    protected PAOne destinationMax = PAOne.fromDouble(Double.NaN);
     /** This is the value of the source's missing value stand-in. 
      * It may remain NaN.
      * It is pre-scaleFactor and addOffset.
@@ -209,12 +214,13 @@ public class EDV {
      */
     protected double sourceMissingValue = Double.NaN;
     protected double sourceFillValue = Double.NaN;
+    protected boolean setSourceMaxIsMV = false; 
     protected double destinationMissingValue = Double.NaN;
     protected double destinationFillValue = Double.NaN;
     protected double safeDestinationMissingValue = Double.NaN;
-    protected String stringMissingValue = ""; //won't be null
-    protected String stringFillValue = ""; //won't be null
-    protected String safeStringMissingValue = ""; //won't be null. If not "", then there is probably no 1 source MV 
+    protected String stringMissingValue = "";     //for String variables. destination.  won't be null  
+    protected String stringFillValue = "";        //for String variables. destination.  won't be null
+    protected String safeStringMissingValue = ""; //for String variables. destination.  won't be null. If not "", then there is probably no 1 source MV 
     protected boolean hasColorBarMinMax = false;
     protected byte[] sliderCsvValues = null; //stored as utf8Bytes
 
@@ -244,6 +250,7 @@ public class EDV {
      *
      * <p>Call setActualRangeFromDestinationMinMax() sometime after this returns.
      *
+     * @param datasetID for diagnostic messages
      * @param tSourceName the name of the variable in the dataset source
      *    (usually with no spaces)
      *    or a derived variable (e.g., "=0").
@@ -278,9 +285,9 @@ public class EDV {
      *    <br>data_min, or data_max attribute! 
      * @throws Throwable if trouble
      */
-    public EDV(String tSourceName, String tDestinationName,
+    public EDV(String tDatasetID, String tSourceName, String tDestinationName,
         Attributes tSourceAttributes, Attributes tAddAttributes, 
-        String tSourceDataType, double tSourceMin, double tSourceMax) 
+        String tSourceDataType, PAOne tSourceMin, PAOne tSourceMax) 
         throws Throwable {
 
         //String2.log("*EDV " + tDestinationName);        
@@ -303,25 +310,20 @@ public class EDV {
                 Integer.parseInt(fixedValue); 
                 sourceDataType = "int";  //if no error, it's an int
             } catch (Exception e1) {
-                //2011-02-09 Bob Simons added to avoid Java hang bug.
-                //But now, latest version of Java is fixed.
-                //if (String2.isDoubleTrouble(fixedValue)) {
-                //    sourceDataType = "double";
-                //} else {
-                    try {
-                        Double.parseDouble(fixedValue); 
-                        sourceDataType = "double";  //if no error, it's a double
-                    } catch (Exception e2) {
-                        sourceDataType = "String";
-                    }
-                //}
+                try {
+                    Double.parseDouble(fixedValue); 
+                    sourceDataType = "double";  //if no error, it's a double
+                } catch (Exception e2) {
+                    sourceDataType = "String";
+                }
             }
         }
         sourceDataType = String2.canonical(sourceDataType);
         try {
-            sourceDataTypeClass = PrimitiveArray.elementStringToClass(sourceDataType);
+            sourceDataPAType = PAType.fromCohortString(sourceDataType);
         } catch (Throwable t) {
-            throw new IllegalArgumentException("datasets.xml error: Invalid source dataType=" + 
+            throw new IllegalArgumentException("datasets.xml error: For datasetID=" + tDatasetID + 
+                ": Invalid source dataType=" + 
                 sourceDataType + " for sourceName=" + sourceName);
         }
 
@@ -342,23 +344,20 @@ public class EDV {
         if (decimal_digits < 0 || decimal_digits >= Math2.Ten.length)
             decimal_digits = Integer.MAX_VALUE;
 
-        //extractScaleAddOffset     It sets destinationDataType and destinationDataTypeClass
+        //extractScaleAddOffset     It sets destinationDataType and destinationDataPAType
         extractScaleAddOffset(); 
 
         if (isFixedValue()) {
-            destinationMin = String2.parseDouble(fixedValue); //if String, will be NaN (as it should be)
+            destinationMin = new PAOne(sourceDataPAType, fixedValue); //if String, will be NaN (as it should be)
             destinationMax = destinationMin;
         } else {
             setDestinationMinMaxFromSource(tSourceMin, tSourceMax);
-            if (sourceDataType.equals("float")) {  //destinationDataType not known yet
-                destinationMin = Math2.floatToDouble(destinationMin);  //unbruise them
-                destinationMax = Math2.floatToDouble(destinationMax);
-            }            
         }
+        //String2.log(">> EDV destinationMin=" + destinationMin + " max=" + destinationMax);
+
 
         //after extractScaleAddOffset, get sourceMissingValue and sourceFillValue
         //and convert to destinationDataType (from scaleAddOffset)
-        //???eek!!! can there be String missing_value or _FillValue?
         //
         //ERDDAP policy: a variable can have one/both/neither of 
         //missing_value (CF deprecated) and _FillValue metadata. 
@@ -372,18 +371,20 @@ public class EDV {
                 pa.getUnsignedDouble(0) : 
                 pa.getNiceDouble(0); 
             destinationMissingValue = sourceMissingValue * scaleFactor + addOffset;
-            if (destinationDataTypeClass == String.class ||
-                destinationDataTypeClass == char.class) {
+            if (destinationDataPAType == PAType.STRING ||
+                destinationDataPAType == PAType.CHAR) {
                 stringMissingValue = String2.canonical(
                     stringMissingValue == null? "" : stringMissingValue);
                 combinedAttributes.remove("missing_value");
             } else {
+                //trouble: needs support for PAType.LONG (LongArray) and PAType.ULONG (ULongArray) 
                 stringMissingValue = "";
-                PrimitiveArray pa2 = PrimitiveArray.factory(destinationDataTypeClass, 1, false);
+                PrimitiveArray pa2 = PrimitiveArray.factory(destinationDataPAType, 1, false);
                 pa2.addDouble(destinationMissingValue);
                 combinedAttributes.set("missing_value", pa2);
             }
         }
+
         pa = combinedAttributes.get("_FillValue"); 
         if (pa != null) {
             //attributes are supposed to be unsigned if _Unsigned=true, but sometimes aren't
@@ -392,14 +393,15 @@ public class EDV {
                 pa.getUnsignedDouble(0) :
                 pa.getNiceDouble(0);
             destinationFillValue = sourceFillValue * scaleFactor + addOffset;
-            if (destinationDataTypeClass == String.class ||
-                destinationDataTypeClass == char.class) {
+            if (destinationDataPAType == PAType.STRING ||
+                destinationDataPAType == PAType.CHAR) {
                 stringFillValue = String2.canonical(
                     stringFillValue == null? "" : stringFillValue);
                 combinedAttributes.remove("_FillValue");
             } else {
+                //trouble: needs support for PAType.LONG and PAType.ULONG 
                 stringFillValue = "";
-                PrimitiveArray pa2 = PrimitiveArray.factory(destinationDataTypeClass, 1, false);
+                PrimitiveArray pa2 = PrimitiveArray.factory(destinationDataPAType, 1, false);
                 pa2.addDouble(destinationFillValue);
                 combinedAttributes.set("_FillValue", pa2);
                 //String2.log(">>EDV " + tSourceName + " _FillValue pa2=" + pa2.toString());
@@ -407,8 +409,12 @@ public class EDV {
         }
         safeDestinationMissingValue = Double.isNaN(destinationFillValue)? //fill has precedence
             destinationMissingValue : destinationFillValue;
+        //String2.log(">> EDV destName=" + destinationName + " safeDestinationMissingValue=" + safeDestinationMissingValue);
         safeStringMissingValue = String2.isSomething(stringFillValue)?
             stringFillValue : stringMissingValue;
+
+        //call after 'safe' values set
+        suggestAddFillValue(tDatasetID);
 
         //after extractScaleAddOffset, adjust valid_range
         PrimitiveArray vr = combinedAttributes.remove("unpacked_valid_range"); 
@@ -418,8 +424,8 @@ public class EDV {
                 //adjust valid_range
                 //attributes are supposed to be unsigned if _Unsigned=true, but sometimes aren't
                 if (sourceIsUnsigned)
-                    vr = PrimitiveArray.unsignedFactory(destinationDataTypeClass, vr);
-                vr = vr.scaleAddOffset(destinationDataTypeClass, scaleFactor, addOffset);
+                    vr = vr.makeUnsignedPA();
+                vr = vr.scaleAddOffset(destinationDataPAType, scaleFactor, addOffset);
                 combinedAttributes.set("valid_range", vr);
             }
         } else {
@@ -430,17 +436,18 @@ public class EDV {
         PrimitiveArray vMin = combinedAttributes.get("valid_min"); //attributes are never unsigned
         if (vMin != null) {
             if (sourceIsUnsigned)
-                vMin = PrimitiveArray.unsignedFactory(destinationDataTypeClass, vMin);
-            vMin = vMin.scaleAddOffset(destinationDataTypeClass, scaleFactor, addOffset);
+                vMin = vMin.makeUnsignedPA();
+            vMin = vMin.scaleAddOffset(destinationDataPAType, scaleFactor, addOffset);
             combinedAttributes.set("valid_min", vMin);
         }
         PrimitiveArray vMax = combinedAttributes.get("valid_max"); //attributes are never unsigned
         if (vMax != null) {
             if (sourceIsUnsigned)
-                vMax = PrimitiveArray.unsignedFactory(destinationDataTypeClass, vMax);
-            vMax = vMax.scaleAddOffset(destinationDataTypeClass, scaleFactor, addOffset);
+                vMax = vMax.makeUnsignedPA();
+            vMax = vMax.scaleAddOffset(destinationDataPAType, scaleFactor, addOffset);
             combinedAttributes.set("valid_max", vMax);
         }
+
 
     }
 
@@ -459,17 +466,18 @@ public class EDV {
      *
      * <p>See the other constructor for more information.
      */
-    public EDV(String tSourceName, String tDestinationName,
+    public EDV(String tDatasetID, String tSourceName, String tDestinationName,
         Attributes tSourceAttributes, Attributes tAddAttributes, 
         String tSourceDataType) 
         throws Throwable {
 
-        this(tSourceName, tDestinationName, 
+        this(tDatasetID, tSourceName, tDestinationName, 
             tSourceAttributes, tAddAttributes, tSourceDataType,
-            Double.NaN, Double.NaN);
+            PAOne.fromDouble(Double.NaN),  //it's NaN, so type doesn't matter
+            PAOne.fromDouble(Double.NaN));
 
         //min max  from actual_range, actual_min, actual_max, data_min, or data_max
-        double mm[] = extractActualRange();  //may be low,high or high,low
+        PAOne mm[] = extractActualRange();  //may be low,high or high,low,   or nulls
         setDestinationMinMax(mm[0], mm[1]); 
     }
 
@@ -515,7 +523,7 @@ public class EDV {
      * This tries to extract scale_factor and add_offset attributes values from combinedAttributes
      * and set scaleAddOffset accordingly.
      * This removes the scale and addOffset attributes from source- add- and combinedAttributes.
-     * This sets destinationDataType and destinationDataTypeClass.
+     * This sets destinationDataType and destinationDataPAType.
      *
      */
     protected void extractScaleAddOffset() {
@@ -524,7 +532,7 @@ public class EDV {
         PrimitiveArray ao = combinedAttributes.remove("add_offset");
         if (sf == null && ao == null) {
             destinationDataType = sourceDataType;
-            destinationDataTypeClass = sourceDataTypeClass;
+            destinationDataPAType = sourceDataPAType;
             return;
         }
 
@@ -533,28 +541,28 @@ public class EDV {
         PrimitiveArray un = combinedAttributes.remove("_Unsigned");
         sourceIsUnsigned = 
             un != null && "true".equals(un.toString()) &&
-            PrimitiveArray.isIntegerType(sourceDataTypeClass);
+            PAType.isIntegerType(sourceDataPAType);
 
         if (sf != null) {
             scaleFactor = sf.getNiceDouble(0);
             if (Double.isNaN(scaleFactor))
                 scaleFactor = 1;
-            destinationDataType = sf.elementClassString();
-            destinationDataTypeClass = sf.elementClass();
+            destinationDataType = sf.elementTypeString();
+            destinationDataPAType = sf.elementType();
         }
         if (ao != null) {
             addOffset = ao.getNiceDouble(0);
             if (Double.isNaN(addOffset))
                 addOffset = 0;
-            destinationDataType = ao.elementClassString();
-            destinationDataTypeClass = ao.elementClass();
+            destinationDataType = ao.elementTypeString();
+            destinationDataPAType = ao.elementType();
         }
         if (scaleFactor == 1 && addOffset == 0) {
             scaleAddOffset = false;
             sourceIsUnsigned = false;
             if (un != null && "true".equals(un.toString()) &&
                 //if floating type, '_Unsigned'=true is nonsense
-                PrimitiveArray.isIntegerType(sourceDataTypeClass)) 
+                PAType.isIntegerType(sourceDataPAType)) 
                 combinedAttributes.set("_Unsigned", un); //re-set it
             //but destinationDataType(Class) is left as new data type
         }
@@ -570,62 +578,60 @@ public class EDV {
      * data_min, or data_max attribute values from combinedAttributes.
      * This removes the actual_range, data_min, or data_max attribute from source- add- and combinedAttributes.
      *
-     * @return a double[2] (always) with sourceMin and sourceMax values from 
-     *    actual_range, data_min, or data_max metadata (or NaNs).
+     * @return a PAOne[2] (always) with sourceMin and sourceMax values from 
+     *    actual_range, data_min, or data_max metadata (or null's).
      *    NOTE: for EDVGridAxis this indicates order or storage, so may be low,high or high,low.
      */
-    protected double[] extractActualRange() {
+    protected PAOne[] extractActualRange() {
 
         //if any are specified, they must be the same data type as destinationClass.
-        Class destClass = destinationDataTypeClass();
+        PAType destPAType = destinationDataPAType();
         PrimitiveArray pa;
         String msg = 
             String2.ERROR + " for data variable=" + destinationName() +  
             ": If actual_min, actual_max, data_min, data_max, or actual_range are specified " +
             "when add_offset!=0.0 or scale_factor!=1.0, " +
             "they must be the same dataType as the variable's destination dataType " +
-            "or float(s) or double(s). destClass=" +
-            PrimitiveArray.elementClassToString(destClass) + ".";
+            "or float(s) or double(s). destPAType=" + destPAType + ".";
         boolean willChange = sourceIsUnsigned || scaleAddOffset;
 
         //always remove
-        double amm[] = {combinedAttributes.getNiceDouble("actual_min"),   //NaN if not found
-                        combinedAttributes.getNiceDouble("actual_max")};
+        PAOne amm[] = {combinedAttributes.getPAOne("actual_min"),   //null if not found
+                       combinedAttributes.getPAOne("actual_max")};
         pa = combinedAttributes.remove("actual_min");
-        if (pa != null && pa.elementClass() != destClass &&
+        if (pa != null && pa.elementType() != destPAType &&
             willChange && !pa.isFloatingPointType())
             throw new RuntimeException(msg); 
         pa = combinedAttributes.remove("actual_max");
-        if (pa != null && pa.elementClass() != destClass &&
+        if (pa != null && pa.elementType() != destPAType &&
             willChange && !pa.isFloatingPointType())
             throw new RuntimeException(msg); 
 
         //always remove
-        double dmm[] = {combinedAttributes.getNiceDouble("data_min"),   //NaN if not found
-                        combinedAttributes.getNiceDouble("data_max")};
+        PAOne dmm[] = {combinedAttributes.getPAOne("data_min"),   //NaN if not found
+                       combinedAttributes.getPAOne("data_max")};
         pa = combinedAttributes.remove("data_min");
-        if (pa != null && pa.elementClass() != destClass &&
+        if (pa != null && pa.elementType() != destPAType &&
             willChange && !pa.isFloatingPointType())
             throw new RuntimeException(msg); 
         pa = combinedAttributes.remove("data_max");
-        if (pa != null && pa.elementClass() != destClass &&
+        if (pa != null && pa.elementType() != destPAType &&
             willChange && !pa.isFloatingPointType())
             throw new RuntimeException(msg); 
 
         //priority to actual_range
         pa = combinedAttributes.remove("actual_range"); //always remove
-        if (pa != null && pa.elementClass() != destClass &&
+        if (pa != null && pa.elementType() != destPAType &&
             willChange && !pa.isFloatingPointType())
             throw new RuntimeException(msg); 
         if (pa != null && pa.size() == 2) {
             if (reallyVerbose) String2.log("  actual_range metadata for " + destinationName + ": " + pa);
-            return new double[] {pa.getNiceDouble(0),
-                                 pa.getNiceDouble(1)};
+            return new PAOne[] {new PAOne(pa, 0), new PAOne(pa, 1)};
         }
 
         //2nd priority to actual_min actual_max
-        if (Double.isFinite(amm[0]) ||
-            Double.isFinite(amm[1]))
+        if (amm[0] != null ||
+            amm[1] != null)
             return amm;
 
         //3rd to data_min data_max
@@ -635,27 +641,39 @@ public class EDV {
     /** 
      * This sets the actual_range attribute in addAttributes and combinedAttributes
      * based on the destinationMin and destinationMax value.
-     * destinationDataTypeClass must be already set correctly.
+     * destinationDataPAType must be already set correctly.
      * This is now defined in CF-1.7, with unpacked values, smallest and largest.
      *
      * <p>EDVGridAxis overwrites this to use firstDestinationValue and lastDestinationValue.
      */
     public void setActualRangeFromDestinationMinMax() {
-
+/* 
+actual_range and =NaN fixedValue variables:
+Technically, if a variable has a fixedValue, then the actual_range should be determined
+from that fixedValue. However, it is sometimes useful (notably with EDDTableFromFileNames)
+to have dummy variable(s) (e.g., latitude, longitude, time) with fixed values of NaN, 
+but a valid actual_range (as set by the attribute). 
+Then, in Advanced Search a user can search for datasets
+which have data in a specific latitude, longitude, time range and this dataset
+will be able to say it does have the data (although all the actual rows of data
+will show NaN).
+*/
         //actual_range is useful information for .das and will be replaced by actual_range of data subset.
         combinedAttributes.remove("actual_min");
         combinedAttributes.remove("actual_max");
         combinedAttributes.remove("data_min");
         combinedAttributes.remove("data_max");
-        if (reallyVerbose) String2.log("  " + destinationName + " destinationMin=" + destinationMin + 
-            " max=" + destinationMax + " class=" + PrimitiveArray.elementClassToString(destinationDataTypeClass()));
-        if (Double.isNaN(destinationMin) && Double.isNaN(destinationMax)) {
+        if (destinationMin.isMissingValue() && destinationMax.isMissingValue()) {
             combinedAttributes.remove("actual_range");
         } else {
-            PrimitiveArray pa = PrimitiveArray.factory(destinationDataTypeClass(), 2, false);
-            pa.addDouble(destinationMin);
-            pa.addDouble(destinationMax);
+            PrimitiveArray pa = PrimitiveArray.factory(destinationDataPAType(), 2, false);
+            pa.addPAOne(destinationMin);
+            pa.addPAOne(destinationMax);
             combinedAttributes.set("actual_range", pa);
+            if (reallyVerbose) 
+                String2.log("  setActualRange " + destinationName + 
+                " destinationMin=" + destinationMin + " max=" + destinationMax + 
+                " paType=" + destinationDataPAType() + " " + pa.toString());
         }
     }
 
@@ -665,11 +683,24 @@ public class EDV {
      * This must be done after scaleFactor and addOffset have be determined.
      */
     public void extractAndSetActualRange() {
-        double mm[] = extractActualRange(); 
+        PAOne mm[] = extractActualRange(); 
         setDestinationMinMax(mm[0], mm[1]);
         setActualRangeFromDestinationMinMax();
     }
 
+    /**
+     * This returns true if the destination is an integer or char type with a 
+     * defined _FillValue or missing_value, so that (as with PrimitiveArray.maxIsMV)
+     * the max value (e.g., 127 for bytes) should be interpreted
+     * as a missing value when the missing values are standardized.
+     *
+     * @return true if the destination is an integer or char type with a 
+     * defined _FillValue or missing_value.
+     */
+    public boolean destinationMaxIsMV() {
+        return !Double.isNaN(safeDestinationMissingValue) &&
+            (PAType.isIntegerType(destinationDataPAType) || destinationDataPAType == PAType.CHAR);
+    }
 
     /**
      * This is used by the EDD constructor to determine if this
@@ -683,7 +714,7 @@ public class EDV {
     public void ensureValid(String errorInMethod) throws Throwable {
         errorInMethod += "\ndatasets.xml/EDV.ensureValid error for variable destinationName=" + 
             destinationName + ":\n";
-        Test.ensureSomethingUnicode(sourceName,      errorInMethod + "sourceName");
+        Test.ensureSomethingUnicode(sourceName,   errorInMethod + "sourceName");
         Test.ensureFileNameSafe( destinationName, errorInMethod + "destinationName");
         if (destinationName.indexOf(".") >= 0 || destinationName.indexOf("-") >= 0)
             throw new IllegalArgumentException(errorInMethod + 
@@ -693,25 +724,25 @@ public class EDV {
             //so valid variable name in Matlab and ...
         } else throw new IllegalArgumentException(errorInMethod + 
             "destinationName=\"" + destinationName + "\" must start with a letter (A-Z, a-z).");
-        Test.ensureSomethingUnicode(longName,        errorInMethod + "longName");
+        Test.ensureSomethingUnicode(longName, errorInMethod + "longName");
         try {
             //should already by set, but ensure consistent and valid
-            sourceDataTypeClass = PrimitiveArray.elementStringToClass(sourceDataType); 
+            sourceDataPAType = PAType.fromCohortString(sourceDataType); 
         } catch (Throwable t) {
             throw new IllegalArgumentException(errorInMethod + 
                 "sourceDataType=" + sourceDataType + " isn't supported.");
         }
         try {
             //should already by set, but ensure consistent and valid
-            destinationDataTypeClass = PrimitiveArray.elementStringToClass(destinationDataType); 
+            destinationDataPAType = PAType.fromCohortString(destinationDataType); 
         } catch (Throwable t) {
             throw new IllegalArgumentException(errorInMethod + 
                 "destinationDataType=" + destinationDataType + " isn't supported.");
         }
         //units may be null
 
-        if ((destinationDataTypeClass == float.class ||
-             destinationDataTypeClass == double.class) &&
+        if ((destinationDataPAType == PAType.FLOAT ||
+             destinationDataPAType == PAType.DOUBLE) &&
             decimal_digits >= 0 && decimal_digits < Math2.Ten.length) {
             //okay
         } else { 
@@ -726,13 +757,13 @@ public class EDV {
                 errorInMethod + "ioos_category=\"" + ic + "\" isn't a valid category.");
         }
 
-        //Don't test Test.ensureSomethingUnicode(sourceAttributes,    errorInMethod + "sourceAttributes");
-        //Admin can't control source and addAttributes may overwrite offending characters.
-        Test.ensureSomethingUnicode(addAttributes,       errorInMethod + "addAttributes");
+        //Don't test Test.ensureSomethingUnicode(sourceAttributes, errorInMethod + "sourceAttributes");
+        //Admin can't control source. addAttributes may overwrite offending characters.
+        Test.ensureSomethingUnicode(addAttributes, errorInMethod + "addAttributes");
         EDStatic.updateUrls(null, combinedAttributes);
         Test.ensureSomethingUnicode(combinedAttributes,  
             errorInMethod + "combinedAttributes (but probably caused by the source attributes)");
-        if (scaleAddOffset && destinationDataTypeClass == String.class)
+        if (scaleAddOffset && destinationDataPAType == PAType.STRING)
             throw new IllegalArgumentException(errorInMethod +
                 "scale_factor and add_offset can't be active for String variables.");
 
@@ -873,36 +904,52 @@ public class EDV {
 
     /**
      * This is used by constructors to set the sourceName and fixedValue
-     * (if souceName starts with "=".
+     * (if souceName starts with "=" and contains a single number or a single
+     * Json-like string).
      *
      * @param tSourceName
      * @throws Throwable if trouble (e.g., if fixed value parses to NaN).
      */
     protected void setSourceName(String tSourceName) throws Throwable {
         sourceName = tSourceName;
-        if (sourceName != null && sourceName.length() >= 2 &&
-            sourceName.charAt(0) == '=') {
-
-            fixedValue = extractFixedValue(sourceName);
-        }
+        fixedValue = extractFixedValue(tSourceName);
     }
 
     /**
-     * This extracts the fixedValue from a sourceName that starts with "=".
+     * This tries to extract a fixedValue from a sourceName that starts with "=" and just has a single number or string.
+     * A fixedValue is a single number or a single String (which must be Json-encoded
+     * in the sourceName).
      *
-     * @param sourceName
-     * @return the numeric source fixed value after "="
-     * @throws Throwable if name isn't of correct format or fixed value parses to NaN.
+     * @param sourceName  
+     * @return the fixed value (or null if not a fixed value)
      */
     public static String extractFixedValue(String sourceName) throws Throwable {
-        if (sourceName != null && sourceName.length() >= 2 &&
-            sourceName.charAt(0) == '=') {
-            
-            return sourceName.substring(1);
+        if (sourceName == null || sourceName.length() < 2 ||
+            sourceName.charAt(0) != '=') 
+            return null;
+
+        String tfv = sourceName.substring(1);
+        if (String2.isNumber(tfv)) {
+            //a single number
+            if (reallyVerbose) String2.log("  " + sourceName + " is a fixedValue=" + tfv);
+            return tfv;
         }
-        throw new IllegalArgumentException( 
-            "datasets.xml error in EDV.extractFixedValue:\n" +
-            "Invalid sourceName=" + sourceName);
+
+        if (tfv.length() >= 2 && tfv.startsWith("\"") && tfv.endsWith("\"")) {
+            //is it a single, double-quoted string?
+            //try removing firt and last quotes
+            String test = tfv.substring(1, tfv.length() - 1);
+            //then changing internal quotes to nothing
+            test = String2.replaceAll(test, "\\\"", "");
+            //if there are no remaining quotes, then it is fixed value
+            if (test.indexOf('\"') < 0) {
+                if (reallyVerbose) String2.log("  " + sourceName + " is a fixedValue=" + String2.fromJson(tfv));
+                //String2.pressEnterToContinue(">>test=" + test + "\n" + MustBe.stackTrace());
+                return String2.fromJson(tfv);
+            }
+        }
+
+        return null; //not a fixedValue
     }
 
     /**
@@ -951,7 +998,7 @@ public class EDV {
         if ("\u0000".equals(ucumUnits)) {
             if ("UDUNITS".equals(EDStatic.units_standard)) {
                 try {
-                    ucumUnits = EDUnits.udunitsToUcum(units()); //null returns null
+                    ucumUnits = Units2.udunitsToUcum(units()); //null returns null
                 } catch (Throwable t) {
                     String2.log(String2.ERROR + " while converting udunits=" + units() + " to ucum:\n" +
                         MustBe.throwableToString(t));
@@ -996,12 +1043,12 @@ public class EDV {
      * The source Java data type class for this variable.
      * The destination data type is the same as the source data type 
      * in all cases except time variables, where the destination type is always
-     * double.class.
+     * PAType.DOUBLE.
      * 
-     * @return the source Java data type class for this variable (e.g., float.class 
-     *    or String.class).
+     * @return the source Java data PAType for this variable (e.g., PAType.FLOAT 
+     *    or PAType.STRING).
      */
-    public Class sourceDataTypeClass() {return sourceDataTypeClass; }
+    public PAType sourceDataPAType() {return sourceDataPAType; }
 
     /**
      * The destination Java data type for this variable.
@@ -1018,43 +1065,43 @@ public class EDV {
      * The destination Java data type class for this variable.
      * The destination data type class is different than the source data type class
      * for time variables (where the destination type is always
-     * "double.class" internally and for some fileTypes, and "String.class" for other fileTypes)
+     * "PAType.DOUBLE" internally and for some fileTypes, and "PAType.STRING" for other fileTypes)
      * and if scaleAddOffset is true.
      * 
-     * @return the destination Java data type class for this variable (e.g., float.class 
-     *    or String.class).
+     * @return the destination Java data type class for this variable (e.g., PAType.FLOAT 
+     *    or PAType.STRING).
      */
-    public Class destinationDataTypeClass() {return destinationDataTypeClass; }
+    public PAType destinationDataPAType() {return destinationDataPAType; }
 
     /**
      * The number of bytes per element of source data (Strings arbitrarily return 20).
      * 
      * @return the number of bytes per element of source data (Strings arbitrarily return 20)
      */
-    public int sourceBytesPerElement() {return PrimitiveArray.elementSize(sourceDataTypeClass);}
+    public int sourceBytesPerElement() {return PAType.elementSize(sourceDataPAType);}
 
     /**
      * The number of bytes per element of destination data (Strings arbitrarily return 20).
      * 
      * @return the number of bytes per element of destination data (Strings arbitrarily return 20)
      */
-    public int destinationBytesPerElement() {return PrimitiveArray.elementSize(destinationDataTypeClass);}
+    public int destinationBytesPerElement() {return PAType.elementSize(destinationDataPAType);}
 
     /** 
      * This returns true if this is a fixedValue variable.
      * 
      * @return true if this is a fixedValue variable.
      */
-    public boolean isFixedValue() {return fixedValue.length() > 0;}
+    public boolean isFixedValue() {return fixedValue != null;}
 
     /** 
-     * This returns a non "" value if the
+     * This returns a non-null value if the
      * axis isn't in the data source and so is represented by 
      * a fixed value. 
      * This is always defined so source = destination
      * (if time, this is epochSeconds).
      * 
-     * @return the fixedValue for this axis (or "" if not fixed).
+     * @return the fixedValue for this axis (or null if not fixed).
      */
     public String fixedValue() {return fixedValue;}
 
@@ -1063,10 +1110,42 @@ public class EDV {
      * altitude values are in meters, positive=up 
      * and time values are in seconds since 1970-01-01T00:00:00Z).
      * scaleFactor() and addOffset() have been applied.
+     * !DON'T CHANGE THE VALUE!
      * 
      * @return the cleaned up destinationMin value for this axis.
      */
-    public double destinationMin() {return destinationMin;}
+    public PAOne destinationMin() {
+        //if (destinationName.equals("status"))
+        //    String2.pressEnterToContinue(">> destinationMin for " + destinationName + " = " + destinationMin.paType() + " " + destinationMin.toString());
+        return destinationMin;
+    }
+
+    /** 
+     * This returns the destinationMax value (in standardized units) for this axis (e.g., 
+     * altitude values are in meters, positive=up 
+     * and time values are in seconds since 1970-01-01).
+     * scaleFactor() and addOffset() have been applied.
+     * !DON'T CHANGE THE VALUE!
+     *
+     * <p>For time in near-real-time EDDTable datasets, destinationMax should be NaN 
+     * to indicate that the roughly NOW.  For example, see cwwcNDBCMet: data is from files,
+     * but presumption is data in files may change before next time file is read.
+     * 
+     * @return the cleaned up destinationMax value for this axis.
+     */
+    public PAOne destinationMax() {
+        return destinationMax;
+    }
+
+    /** 
+     * This returns the destinationMin value (in standardized units) for this axis (e.g., 
+     * altitude values are in meters, positive=up 
+     * and time values are in seconds since 1970-01-01T00:00:00Z).
+     * scaleFactor() and addOffset() have been applied.
+     * 
+     * @return the "nice" destinationMin value for this axis.
+     */
+    public double destinationMinDouble() {return destinationMin.getNiceDouble();}
 
     /** 
      * This returns the destinationMax value (in standardized units) for this axis (e.g., 
@@ -1080,16 +1159,16 @@ public class EDV {
      * 
      * @return the cleaned up destinationMax value for this axis.
      */
-    public double destinationMax() {return destinationMax;}
+    public double destinationMaxDouble() {return destinationMax.getNiceDouble();}
 
     /** This is used with the actual (possibly unpacked) source values are known,
      * e.g., from the data files. 
      */
-    public void setDestinationMinMaxFromSource(double sourceMin, double sourceMax) {
+    public void setDestinationMinMaxFromSource(PAOne sourceMin, PAOne sourceMax) {
         if (scaleAddOffset) 
             setDestinationMinMax(
-                sourceMin * scaleFactor + addOffset,
-                sourceMax * scaleFactor + addOffset);
+                PAOne.fromDouble(sourceMin.getDouble() * scaleFactor + addOffset),
+                PAOne.fromDouble(sourceMax.getDouble() * scaleFactor + addOffset));
         else setDestinationMinMax(sourceMin, sourceMax);
     }
 
@@ -1097,39 +1176,38 @@ public class EDV {
      * This lets you setDestinationMin and setDestinationMax in one step.
      * If tMin &gt; tMax, this will swap them.
      */
-    public void setDestinationMinMax(double tMin, double tMax) {
-        if (!Double.isFinite(tMin) &&
-            !Double.isFinite(tMax))
+    public void setDestinationMinMax(PAOne tMin, PAOne tMax) {
+        if (tMin == null && tMax == null) 
             return;
-        if (tMin > tMax) { //if either is NaN, result in Java is false
-            double d = tMin; tMin = tMax; tMax = d;}
+        if (tMin == null)
+            tMin = new PAOne(tMax.paType(), "");  //same type, but mv
+        if (tMax == null)
+            tMax = new PAOne(tMin.paType(), "");
+        if (tMin.isMissingValue() && tMax.isMissingValue())
+            return;
+        if (tMin.compareTo(tMax) > 0) { //if either is NaN, result in Java is false
+            PAOne d = tMin; tMin = tMax; tMax = d;}
         setDestinationMin(tMin);
         setDestinationMax(tMax);
     }
 
-    public void setDestinationMin(double tMin) {
-        destinationMin = destinationDataTypeClass() == float.class?
-            Math2.floatToDouble(tMin) : tMin;  //store unbruised
+    public void setDestinationMin(PAOne tMin) {
+        if (tMin != null)
+            destinationMin = tMin;
     }
 
-    public void setDestinationMax(double tMax) {
-        destinationMax = destinationDataTypeClass() == float.class?
-            Math2.floatToDouble(tMax) : tMax;  //store unbruised
+    public void setDestinationMax(PAOne tMax) {
+        if (tMax != null)
+            destinationMax = tMax;
     }
 
     /** 
      * This is the destinationMin value (time overwrites this to format as ISO string).  
      *
-     * @return the destinationMin (or "" if unknown)
+     * @return the destinationMin (or "" if unknown, NaN, or CoHort mv)
      */
     public String destinationMinString() {
-        return Double.isNaN(destinationMin)? "" : 
-            destinationDataTypeClass == float.class? "" + (float)destinationMin :
-            destinationDataTypeClass == double.class?
-                "" + Math2.niceDouble(destinationMin, 15) :  //was "" + destinationMin
-            destinationDataTypeClass == char.class?
-                String2.toJson("" + Math2.roundToChar(destinationMin), 65536) :
-                "" + Math2.roundToLong(destinationMin);  //ints are nicer without trailing ".0"
+        return destinationMin.getString();
     }
 
     /** 
@@ -1138,13 +1216,7 @@ public class EDV {
      * @return the destinationMax  (or "" if unknown or time=~now)
      */
     public String destinationMaxString() {
-        return Double.isNaN(destinationMax)? "" : 
-            destinationDataTypeClass == float.class? "" + (float)destinationMax :
-            destinationDataTypeClass == double.class?
-                "" + Math2.niceDouble(destinationMax, 15) :
-            destinationDataTypeClass == char.class?
-                String2.toJson("" + Math2.roundToChar(destinationMax), 65536) :
-                "" + Math2.roundToLong(destinationMax);  //ints are nicer without trailing ".0"
+        return destinationMax.getString();
     }
 
     /** 
@@ -1194,17 +1266,14 @@ public class EDV {
      */
     public double addOffset() {return addOffset;}
 
-    /** This returns the value of drawLandMask (false=under, true=over)
+    /** This returns the value of drawLandMask ("over", "under", "outline", or "off")
      * for this variable 
      * (or eddDefaultDrawLandMask if drawLandMask not specified in combinedAttributes).
      */
-    public boolean drawLandMask(boolean eddDefaultDrawLandMask) {
+    public String drawLandMask(String eddDefaultDrawLandMask) {
         String dlm = combinedAttributes().getString("drawLandMask"); 
-        if (dlm != null) {
-            if (dlm.equals("under")) return false;
-            if (dlm.equals("over"))  return true;
-        }
-        return eddDefaultDrawLandMask;
+        int which = String2.indexOf(SgtMap.drawLandMask_OPTIONS, dlm);
+        return which < 1? eddDefaultDrawLandMask : dlm; 
     }
 
     /**
@@ -1216,26 +1285,31 @@ public class EDV {
      * Some subclasses overwrite this.   (Time variables will return a DoubleArray.)
      * 
      * @param source
-     * @return a PrimitiveArray with destinationDataTypeClass
+     * @return a PrimitiveArray with destinationDataPAType
      *   (the same Primitive array if the data type wasn't changed)
      *   with source values converted to destinationValues.
      */
     public PrimitiveArray toDestination(PrimitiveArray source) {
         
         //convert String mv and fv to ""
-        if (destinationDataTypeClass == String.class) {
+        if (destinationDataPAType == PAType.STRING) {
             if (String2.isSomething(stringMissingValue))
                 source.switchFromTo(stringMissingValue, "");
             if (String2.isSomething(stringFillValue) && 
                 !stringMissingValue.equals(stringFillValue))
                 source.switchFromTo(stringFillValue, "");
+        } else if (destinationDataPAType == PAType.CHAR) {
+            //do something?
+        } else if (setSourceMaxIsMV) {
+            source.setMaxIsMV(true);
         }
 
         //change to destType and scaleAddOffset if needed
-        return scaleAddOffset?
-            source.scaleAddOffset(sourceIsUnsigned, destinationDataTypeClass,
+        PrimitiveArray pa = scaleAddOffset?
+            source.scaleAddOffset(sourceIsUnsigned, destinationDataPAType,
                 scaleFactor, addOffset):
-            PrimitiveArray.factory(destinationDataTypeClass, source); 
+            PrimitiveArray.factory(destinationDataPAType, source); //if already correct type, maxIsMV setting won't be changed
+        return pa; 
     }
 
     /**
@@ -1254,12 +1328,12 @@ public class EDV {
     public PrimitiveArray toSource(PrimitiveArray destination) {
 
         //convert String mv and fv to ""
-        if (destinationDataTypeClass == String.class) 
+        if (destinationDataPAType == PAType.STRING) 
             destination.switchFromTo("", safeStringMissingValue);
 
         return scaleAddOffset?
 //sourceIsUnsigned?
-            destination.addOffsetScale(sourceDataTypeClass, -addOffset, 1/scaleFactor): //note different method
+            destination.addOffsetScale(sourceDataPAType, -addOffset, 1/scaleFactor): //note different method
             destination;        
     }
 
@@ -1281,11 +1355,11 @@ public class EDV {
         //else make it
         try {
             boolean isTimeStamp = false; //EDVTimeStamp overwrites this method
-            double tMin = destinationMin;
-            double tMax = destinationMax;
+            double tMin = destinationMinDouble();
+            double tMax = destinationMaxDouble();
             if (!Double.isFinite(tMin)) return null;  //quick rejection is important
             if (!Double.isFinite(tMax)) return null;
-            boolean isFloat = destinationDataTypeClass == float.class;
+            boolean isFloat = destinationDataPAType == PAType.FLOAT;
             double dVal;
             String sVal;
 
@@ -1379,8 +1453,8 @@ public class EDV {
      */
     public int closestSliderPosition(double destinationValue) {
 
-        double tMin = destinationMin;
-        double tMax = destinationMax;
+        double tMin = destinationMinDouble();
+        double tMax = destinationMaxDouble();
         if (!Double.isFinite(destinationValue)) return -1;
         if (!Double.isFinite(tMin)) return -1;
         if (!Double.isFinite(tMax)) {
@@ -1472,6 +1546,83 @@ public class EDV {
      */
     public double safeDestinationMissingValue() {return safeDestinationMissingValue;}
 
+    /**
+     * This indicates if the variable may have missing values.
+     * Call this after safeDestinationMissingValue has been set.
+     * Added 2020-09-07 
+     * 
+     * <p>For integer (in the math sense) and CHAR variables, 
+     * if no missing_value or _FillValue attribute was been specified
+     * in the sourceAttributes or addAttributes,
+     * ERDDAP has always assumed that there is still an implied missing value: 
+     * the maximum value of the data type, e.g., 127 for BYTE variables.
+     * Now, if you want to specify that ERDDAP must not treat any value as
+     * a missing value, you can specify 
+     * &lt;att name="mayHaveMissingValues"&gt;false&lt;/att&gt; (the default is "true").
+     * This is rarely needed, but is essential for variables where
+     * every possible value is valid and where there can never be any missing values.
+     * From now on, for integer and char variables where 
+     * <kbd>mayHaveMissingValues</kbd> hasn't been set to "false",
+     * ERDDAP will now add the appropriate "missing_value" attribute to the
+     * dataset when it instantiates the dataset.
+     *
+     * <p>Results PrimitiveArrays with integerType and char data from this var should
+     * use setMaxIsMV(hasMv()).
+     *
+     * @param tDatasetID for diagnostic messages
+     */
+    public void suggestAddFillValue(String tDatasetID) {
+
+        //AxisVariables can't have missing values
+        if (this instanceof EDVGridAxis) {
+            for (int i = 0; i < 2; i++) {
+                String attName = i == 0? "_FillValue" : "missing_value";
+                //just look at combinedAtts because addAtts may have e.g., _FillValue=null to cancel erroneous sourceAtts attribute
+                if (String2.isSomething(combinedAttributes.getString(attName)))
+                throw new IllegalArgumentException(
+                    String2.ERROR + " in datasets.xml for datasetID=\"" + tDatasetID + 
+                    "\": axisVariable sourceName=" + String2.toJson(sourceName) + 
+                    " has a " + attName + " attribute!  AxisVariables can't have fill or missing values. If there actually " +
+                    "are fill or missing values, you need to fix that problem; " +
+                    "otherwise, in the variable's <addAttributes>, add <att name=\"" + attName + "\">null</att> .");
+            }
+            return;
+        }
+
+        //char, String, double and float types never need _FillValue attributes
+        if (!PAType.isIntegerType(sourceDataPAType)) 
+            return;
+
+        //now just integer source types
+//String2.pressEnterToContinue(">> sourceName=" + sourceName + 
+//    " destFV=" + destinationFillValue + " destMV=" + destinationMissingValue + 
+//    " safeDestMV=" + safeDestinationMissingValue);
+
+        //The default for all PrimitiveArray's is maxIsMV=false.
+        //If source mv or fv is defined, then set maxIsMV=true in toDestination(sourcePA).
+        setSourceMaxIsMV = !Double.isNaN(sourceMissingValue) || !Double.isNaN(sourceFillValue);
+
+        //if it has mv or fv, source or add attributes (even if "null"), we're done
+        if (String2.isSomething(sourceAttributes.getString("_FillValue"))    ||
+            String2.isSomething(   addAttributes.getString("_FillValue"))    ||  //"null" is okay - it shows admin is aware of issue
+            String2.isSomething(sourceAttributes.getString("missing_value")) ||
+            String2.isSomething(   addAttributes.getString("missing_value"))) {  //"null" is okay - it shows admin is aware of issue
+            return;
+        }
+
+        //suggest adding it to the variable's addAttributes
+        PAOne tmv = PrimitiveArray.factory(sourceDataPAType, 1, false).missingValue();
+        EDStatic.suggestAddFillValueCSV.append(
+            String2.toJson(tDatasetID) + "," +
+            String2.toJson(sourceName) + "," +
+            String2.toJson("<att name=\"_FillValue\" type=\"" + tmv.pa().elementTypeString() + "\">" + tmv.toString() + "</att>") + "\n");
+        String2.log("Add _FillValue Attribute?  " + //This exact message is noted in setupDatasetsXml.html
+            "If appropriate, in datasets.xml for datasetID=\"" + tDatasetID + 
+            "\", for the variable with sourceName=" + String2.toJson(sourceName) + 
+            ", in the <addAttributes> section, add <att name=\"_FillValue\" type=\"" + 
+            tmv.pa().elementTypeString() + "\">" + tmv.toString() + "</att> .");
+
+    }
 
     /** 
      * This returns true if the variable has valid combinedAttributes for 
@@ -1571,6 +1722,8 @@ public class EDV {
             tName.indexOf("longitude") >= 0 ||
             tName.equals("x") ||
             tName.equals("xax")) &&  
+           !tName.startsWith("lone") &&
+           !tName.startsWith("longl") &&
            couldBeLonUnits(tUnits);
     }
 
@@ -1587,6 +1740,12 @@ public class EDV {
             tName.indexOf("latitude") >= 0 ||
             tName.equals("y") ||
             tName.equals("yax")) &&  
+           !tName.startsWith("latin") && //e.g., latin_name_species
+           !tName.startsWith("lata") &&
+           !tName.startsWith("late") &&
+           !tName.startsWith("lath") &&
+           !tName.startsWith("lato") &&
+           !tName.startsWith("latt") &&
            couldBeLatUnits(tUnits);
     }
 
@@ -1633,7 +1792,7 @@ public class EDV {
      * This tests the methods of this class.
      * @throws Throwable if trouble.
      */
-    public static void test() throws Throwable {
+    public static void basicTest() throws Throwable {
         String2.log("\n*** EDV.test()");
         Test.ensureEqual(toDecimalDegrees("1.1W"), -1.1, "");
         Test.ensureEqual(toDecimalDegrees("2.2E"), 2.2, "");
@@ -1650,4 +1809,47 @@ public class EDV {
         Test.ensureEqual(suggestLongName("RealTimeTemp",   "rt", null), "Real Time Temp", "");
         Test.ensureEqual(suggestLongName(null, "rhum", null), "Relative Humidity", "");
     }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDV.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
+
 }

@@ -5,8 +5,10 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.CharArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.Calendar2;
+import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
@@ -105,18 +107,18 @@ public class TableWriterEsriCsv extends TableWriter {
         //do firstTime stuff
         if (firstTime) {
             //write the header
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.ISO_8859_1), String2.ISO_8859_1));
+            writer = String2.getBufferedOutputStreamWriter88591(
+                outputStreamSource.outputStream(String2.ISO_8859_1));
 
             //write the column names   
             isFloat        = new boolean[nColumns];
             isCharOrString = new boolean[nColumns];
             isTimeStamp    = new boolean[nColumns];
             for (int col = 0; col < nColumns; col++) {
-                Class elementClass = pas[col].elementClass();
-                isFloat[       col] = (elementClass == float.class) || (elementClass == double.class);
-                isCharOrString[col] = elementClass == char.class ||
-                                      elementClass == String.class;
+                PAType elementPAType = pas[col].elementType();
+                isFloat[       col] = (elementPAType == PAType.FLOAT) || (elementPAType == PAType.DOUBLE);
+                isCharOrString[col] = elementPAType == PAType.CHAR ||
+                                      elementPAType == PAType.STRING;
                 String u = table.columnAttributes(col).getString("units");
                 isTimeStamp[col] = u != null && 
                     (u.equals(EDV.TIME_UNITS) || u.equals(EDV.TIME_UCUM_UNITS));
@@ -150,8 +152,9 @@ public class TableWriterEsriCsv extends TableWriter {
 
         //avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
         int nRows = table.nRows();
+        boolean flushAfterward = totalNRows == 0; //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
-        EDStatic.ensureArraySizeOkay(totalNRows, "ESRI CSV");
+        Math2.ensureArraySizeOkay(totalNRows, "ESRI CSV");
 
         //write the data
         for (int row = 0; row < nRows; row++) {
@@ -185,8 +188,7 @@ public class TableWriterEsriCsv extends TableWriter {
             }
         }       
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward)
             writer.flush(); 
     }
 

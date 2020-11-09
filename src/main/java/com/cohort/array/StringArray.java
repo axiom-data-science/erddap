@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.RandomAccessFile;
 import java.io.Writer;
+import java.math.BigInteger;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -47,6 +48,56 @@ public class StringArray extends PrimitiveArray {
 
     static StringHolderComparator           stringHolderComparator           = new StringHolderComparator();
     static StringHolderComparatorIgnoreCase stringHolderComparatorIgnoreCase = new StringHolderComparatorIgnoreCase();
+
+    /**
+     * This returns the number of bytes per element for this PrimitiveArray.
+     * The value for "String" isn't a constant, so this returns 20 (a crude estimate).
+     *
+     * @return the number of bytes per element for this PrimitiveArray.
+     * The value for "String" isn't a constant, so this returns 20 (a crude estimate).
+     */
+    public int elementSize() {
+        return 20;
+    }
+
+    /** 
+     * This returns for cohort missing value for this class (e.g., Integer.MAX_VALUE), 
+     * expressed as a double. FloatArray and StringArray return Double.NaN. 
+     */
+    public double missingValueAsDouble() {
+        return Double.MAX_VALUE;
+    }
+
+    /**
+     * This tests if the value at the specified index equals the data type's MAX_VALUE 
+     * (for integerTypes, which may or may not indicate a missing value,
+     * depending on maxIsMV), NaN (for Float and Double), \\uffff (for CharArray),
+     * or "" (for StringArray).
+     *
+     * @param index The index in question
+     * @return true if the value is a missing value.
+     */
+    public boolean isMaxValue(int index) {
+        if (index >= size)
+            throw new IllegalArgumentException(String2.ERROR + " in StringArray.isMaxValue: index (" + 
+                index + ") >= size (" + size + ").");
+        StringHolder sh = array[index];
+        if (sh == null)
+            return true;
+        char car[] = sh.charArray();
+        return car == null || car.length == 0;
+    }
+
+    /**
+     * This tests if the value at the specified index is a missing value.
+     * For integerTypes, isMissingValue can only be true if maxIsMv is 'true'.
+     *
+     * @param index The index in question
+     * @return true if the value is a missing value.
+     */
+    public boolean isMissingValue(int index) {
+        return isMaxValue(index);
+    }
 
     /**
      * This is the main data structure.
@@ -308,8 +359,8 @@ public class StringArray extends PrimitiveArray {
             //open the file
             if (charset == null || charset.length() == 0)
                 charset = String2.ISO_8859_1;
-            bufferedWriter = new BufferedWriter(new OutputStreamWriter(
-                new BufferedOutputStream(new FileOutputStream(fileName, append)), charset));
+            bufferedWriter = String2.getBufferedOutputStreamWriter(
+                new FileOutputStream(fileName, append), charset);
                          
             //write the text to the file
             for (int i = 0; i < size; i++) {
@@ -339,12 +390,19 @@ public class StringArray extends PrimitiveArray {
     }
 
 
-    /** This returns the minimum value that can be held by this class. */
-    public String MINEST_VALUE() {return "\u0000";}
+    /** This returns a new PAOne with the minimum value that can be held by this class. 
+     *
+     * @return a new PAOne with the minimum value that can be held by this class, e.g., -128b for ByteArray. 
+     */
+    public PAOne MINEST_VALUE() {return PAOne.fromString("\u0000");}
 
-    /** This returns the maximum value that can be held by this class 
-        (not including the cohort missing value). */
-    public String MAXEST_VALUE() {return "\uFFFE";}
+    /** This returns a new PAOne with the maximum value that can be held by this class 
+     *   (not including the cohort missing value). 
+     *
+     * @return a new PAOne with the maximum value that can be held by this class, e.g., 126 for ByteArray. 
+     */
+    public PAOne MAXEST_VALUE() {return PAOne.fromString("\uFFFE");}
+
 
     /**
      * This returns the current capacity (number of elements) of the internal data array.
@@ -419,21 +477,23 @@ public class StringArray extends PrimitiveArray {
     }
 
     /**
-     * This returns the class (String.class) of the element type.
+     * This returns the PAType (PAType.STRING) of the element type.
      *
-     * @return the class (String.class) of the element type.
+     * @return the PAType (PAType.STRING) of the element type.
      */
-    public Class elementClass() {
-        return String.class;
+    public PAType elementType() {
+        return PAType.STRING;
     }
 
     /**
-     * This returns the class index (CLASS_INDEX_STRING) of the element type.
+     * This returns the minimum PAType needed to completely and precisely contain
+     * the values in this PA's PAType and tPAType (e.g., when merging two PrimitiveArrays).
      *
-     * @return the class index (CLASS_INDEX_STRING) of the element type.
+     * @return the minimum PAType needed to completely and precisely contain
+     * the values in this PA's PAType and tPAType (e.g., when merging two PrimitiveArrays).
      */
-    public int elementClassIndex() {
-        return CLASS_INDEX_STRING;
+    public PAType needPAType(PAType tPAType) {
+        return PAType.STRING;
     }
 
     /**
@@ -447,6 +507,16 @@ public class StringArray extends PrimitiveArray {
         array[size++] = value == null?        String2.STRING_HOLDER_NULL : //quick, saves time
                         value.length() == 0?  String2.STRING_HOLDER_ZERO :
                         String2.canonicalStringHolder(new StringHolder(value));
+    }
+
+    /**
+     * This adds an item to the array (increasing 'size' by 1).
+     *
+     * @param value the value to be added to the array.
+     *    This uses value.toString() (or "" if null).
+     */
+    public void addObject(Object value) {
+        add(value == null? "" : value.toString());
     }
 
     /* *   //CURRENTLY NOT NEEDED and because it is tightly coupled with how this class is currently implemented.
@@ -525,6 +595,37 @@ public class StringArray extends PrimitiveArray {
     }
 
     /**
+     * This appends _2, _3, ..., to strings as needed to make all of the strings unique.
+     * This will be slow if size is huge and many are duplicates. 
+     *
+     * @return the number of values changed
+     */
+    public int makeUnique() {
+        int n = size();
+        int nChanged = 0;
+        HashSet<String> hs = toHashSet();
+        for (int i = 0; i < n - 1; i++) {
+            String si = get(i);
+            int add = 2;
+
+            //see if there are any duplicates of si
+            for (int j = i + 1; j < n; j++) {
+                String sj = get(j);
+                if (!si.equals(sj))
+                    continue;
+
+                //find unique add number
+                while (!hs.add(sj + "_" + add))
+                    add++;
+                set(j, sj + "_" + add);
+                nChanged++;
+            }
+        }
+        return nChanged;
+    }
+
+
+    /**
      * This adds all the strings from sar.
      *
      * @param sar a String[]
@@ -583,6 +684,17 @@ public class StringArray extends PrimitiveArray {
     }
 
     /**
+     * This adds n PAOne's to the array.
+     *
+     * @param n the number of times 'value' should be added.
+     *    If less than 0, this throws Exception.
+     * @param value the value, as a PAOne (or null).
+     */
+    public void addNPAOnes(int n, PAOne value) {
+        addN(n, value == null? "" : value.getString());
+    }
+
+    /**
      * This adds n Strings to the array.
      *
      * @param n the number of times 'value' should be added.
@@ -596,28 +708,10 @@ public class StringArray extends PrimitiveArray {
     /**
      * This adds an element to the array.
      *
-     * @param value the value, as a String.
-     */
-    public void addString(String value) {
-        add(value);
-    }
-
-    /**
-     * This adds an element to the array.
-     *
      * @param value the float value
      */
-    public void addFloat(float value) {
-        add(Float.isFinite(value)? String.valueOf(value) : "");
-    }
-
-    /**
-     * This adds an element to the array.
-     *
-     * @param value the value, as a double.
-     */
-    public void addDouble(double value) {
-        add(Double.isFinite(value)? String.valueOf(value) : "");
+    public void addNFloats(int n, float value) {
+        addN(n, Float.isFinite(value)? String.valueOf(value) : "");
     }
 
     /**
@@ -632,31 +726,23 @@ public class StringArray extends PrimitiveArray {
     }
 
     /**
-     * This adds an element to the array.
-     *
-     * @param value the value, as an int.
-     */
-    public void addInt(int value) {
-        add(value == Integer.MAX_VALUE? "" : String.valueOf(value));
-    }
-
-    /**
      * This adds n ints to the array.
      *
      * @param n the number of times 'value' should be added
-     * @param value the value, as an int.
+     * @param value the value, as an int.  Integer.MAX_VALUE is added as is, not "".
      */
     public void addNInts(int n, int value) {
-        addN(n, value == Integer.MAX_VALUE? "" : String.valueOf(value));
+        addN(n, String.valueOf(value));
     }
 
     /**
-     * This adds an element to the array.
+     * This adds n longs to the array.
      *
-     * @param value the value, as a long.
+     * @param n the number of times 'value' should be added
+     * @param value the value, as a long.  Long.MAX_VALUE is added as is, not "".
      */
-    public void addLong(long value) {
-        add(value == Long.MAX_VALUE? "" : String.valueOf(value));
+    public void addNLongs(int n, long value) {
+        addN(n, String.valueOf(value));
     }
 
     /**
@@ -670,7 +756,7 @@ public class StringArray extends PrimitiveArray {
     public PrimitiveArray addFromPA(PrimitiveArray otherPA, int otherIndex, int nValues) {
 
         //add from same type
-        if (otherPA.elementClass() == elementClass()) {
+        if (otherPA.elementType() == elementType()) {
             if (otherIndex + nValues > otherPA.size)
                 throw new IllegalArgumentException(String2.ERROR + 
                     " in StringArray.addFromPA: otherIndex=" + otherIndex + 
@@ -684,7 +770,7 @@ public class StringArray extends PrimitiveArray {
 
         //add from different type
         for (int i = 0; i < nValues; i++)
-            add(otherPA.getString(otherIndex++)); //does error checking
+            add(otherPA.getString(otherIndex++)); //does error checking and handles maxIsMV
         return this;
     }
 
@@ -692,8 +778,8 @@ public class StringArray extends PrimitiveArray {
      * This sets an element from another PrimitiveArray.
      *
      * @param index the index to be set
-     * @param otherPA
-     * @param otherIndex
+     * @param otherPA the other PrimitiveArray
+     * @param otherIndex the index of the item in otherPA
      */
     public void setFromPA(int index, PrimitiveArray otherPA, int otherIndex) {
         set(index, otherPA.getString(otherIndex));
@@ -835,7 +921,7 @@ public class StringArray extends PrimitiveArray {
      * Rows that aren't kept are removed.
      * The resulting PrimitiveArray is compacted (i.e., it has a smaller size()).
      *
-     * @param bitset
+     * @param bitset The BitSet indicating which rows (indices) should be kept.
      */
     public void justKeep(BitSet bitset) {
         int newSize = 0;
@@ -871,6 +957,8 @@ public class StringArray extends PrimitiveArray {
      * This returns an array (perhaps 'array') which has 'size' elements.
      *
      * @return an array (perhaps 'array') which has 'size' elements.
+     *   Unsigned integer types will return an array with their storage type
+     *   e.g., ULongArray returns a long[].
      */
     public String[] toArray() {
         Math2.ensureMemoryAvailable(8L * size, "StringArray.toArray"); //8L is guess
@@ -885,6 +973,8 @@ public class StringArray extends PrimitiveArray {
      * elements.
      *
      * @return a primitive[] (perhaps 'array') which has 'size' elements.
+     *   Unsigned integer types will return an array with their storage type
+     *   e.g., ULongArray returns a long[].
      */
     public Object toObjectArray() {
         return toArray();
@@ -917,12 +1007,26 @@ public class StringArray extends PrimitiveArray {
      * This gets a specified element.
      *
      * @param index 0 ... size-1
+     * @return the specified element
      */
     public String get(int index) {
         if (index >= size)
             throw new IllegalArgumentException(String2.ERROR + " in StringArray.get: index (" + 
                 index + ") >= size (" + size + ").");
         return array[index].string();
+    }
+
+    /**
+     * This gets a specified element.
+     *
+     * @param index 0 ... size-1
+     * @return the specified element
+     */
+    public StringHolder getStringHolder(int index) {
+        if (index >= size)
+            throw new IllegalArgumentException(String2.ERROR + " in StringArray.getStringHolder: index (" + 
+                index + ") >= size (" + size + ").");
+        return array[index];
     }
 
     /**
@@ -958,7 +1062,7 @@ public class StringArray extends PrimitiveArray {
      * @param i the value. 
      */
     public void setInt(int index, int i) {
-        set(index, i == Integer.MAX_VALUE? "" : String.valueOf(i));
+        set(index, String.valueOf(i));
     }
 
     /**
@@ -978,7 +1082,29 @@ public class StringArray extends PrimitiveArray {
      * @param i the value. 
      */
     public void setLong(int index, long i) {
-        set(index, i == Long.MAX_VALUE? "" : String.valueOf(i));
+        set(index, String.valueOf(i));
+    }
+
+    /**
+     * Return a value from the array as a ulong.
+     * 
+     * @param index the index number 0 ... size-1
+     * @return the value as a ulong. 
+     *   Trouble (e.g., "") is returned as null.
+     */
+    public BigInteger getULong(int index) {
+        return String2.parseULongObject(get(index));
+    }
+
+    /**
+     * Set a value in the array as a ulong.
+     * 
+     * @param index the index number 0 .. size-1
+     * @param i the value. For numeric PrimitiveArray's, it is narrowed 
+     *   if needed by methods like Math2.narrowToByte(long).
+     */
+    public void setULong(int index, BigInteger i) {
+        set(index, i == null? "" : i.toString());
     }
 
 
@@ -1027,10 +1153,12 @@ public class StringArray extends PrimitiveArray {
     }
 
     /**
-     * Return a value from the array as a String.
+     * Return a value from the array as a String (where the cohort missing value
+     * appears as "", not a value).
      * 
      * @param index the index number 0 .. 
      * @return For numeric types, this returns array[index].
+     *   If this PA is unsigned, this method returns the unsigned value.
      */
     public String getString(int index) {
         return get(index);
@@ -1062,7 +1190,7 @@ public class StringArray extends PrimitiveArray {
 
     /**
      * Return a value from the array as a String suitable for the data section 
-     * of an tsv file, e.g., z \t \u0000 , \".
+     * of an ASCII tsv file, e.g., z \t \u0000 , \".
      * 
      * @param index the index number 0 ... size-1 
      * @return For numeric types, this returns ("" + ar[index]), or "" if NaN or infinity.
@@ -1073,6 +1201,22 @@ public class StringArray extends PrimitiveArray {
         if (s == null)
             return String2.EMPTY_STRING;
         s = String2.toJson(s);
+        return s.substring(1, s.length() - 1); //remove enclosing quotes
+    }
+
+    /**
+     * Return a value from the array as a String suitable for the data section 
+     * of a UTF-8 tsv file, e.g., z \t \u0000 , \".
+     * 
+     * @param index the index number 0 ... size-1 
+     * @return For numeric types, this returns ("" + ar[index]), or "" if NaN or infinity.
+     *   CharArray and StringArray overwrite this.
+     */
+    public String getUtf8TsvString(int index) {
+        String s = get(index);
+        if (s == null)
+            return String2.EMPTY_STRING;
+        s = String2.toJson65536(s);
         return s.substring(1, s.length() - 1); //remove enclosing quotes
     }
 
@@ -1182,11 +1326,20 @@ public class StringArray extends PrimitiveArray {
         start[1] = -1;
         return start;
     }
+
     /**
      * A simpler form of indexWith that finds the first matching line.
      */
     public int lineContaining(String lookFor) {
-        return indexWith(lookFor, new int[]{0, 0})[0];
+        return lineContaining(lookFor, 0);
+    }
+
+    /**
+     * A simpler form of indexWith that finds the first matching line, starting
+     * the search on startLine (0..).
+     */
+    public int lineContaining(String lookFor, int startLine) {
+        return indexWith(lookFor, new int[]{startLine, 0})[0];
     }
 
 
@@ -1205,19 +1358,11 @@ public class StringArray extends PrimitiveArray {
     /**
      * Test if o is an StringArray with the same size and values.
      *
-     * @param o
+     * @param o the object that will be compared to this StringArray
      * @return true if equal.  o=null returns false.
      */
     public boolean equals(Object o) {
-        if (!(o instanceof StringArray)) //handles o==null
-            return false;
-        StringArray other = (StringArray)o;
-        if (other.size() != size)
-            return false;
-        for (int i = 0; i < size; i++)
-            if (!array[i].equals(other.array[i])) //could use == if assume canonical
-                return false;
-        return true;
+        return testEquals(o).length() == 0;
     }
 
     /**
@@ -1226,12 +1371,11 @@ public class StringArray extends PrimitiveArray {
      *
      * @param o
      * @return a String describing the difference (or "" if equal).
-     *   o=null throws an exception.
      */
     public String testEquals(Object o) {
         if (!(o instanceof StringArray))
             return "The two objects aren't equal: this object is a StringArray; the other is a " + 
-                o.getClass().getName() + ".";
+                (o == null? "null" : o.getClass().getName()) + ".";
         StringArray other = (StringArray)o;
         if (other.size() != size)
             return "The two StringArrays aren't equal: one has " + size + 
@@ -1303,42 +1447,47 @@ public class StringArray extends PrimitiveArray {
     }
 
     /**
-     * This compares the values in row1 and row2 for SortComparator,
+     * This compares the values in this.row1 and otherPA.row2
      * and returns a negative integer, zero, or a positive integer if the 
      * value at index1 is less than, equal to, or greater than 
      * the value at index2.
-     * Currently, this does not checking of the range of index1 and index2,
+     * Currently, this does not range check index1 and index2,
      * so the caller should be careful.
      * Currently this uses String.compareTo, which may not be the desired comparison,
      * but which is easy to mimic in other situations.
      *
      * @param index1 an index number 0 ... size-1
+     * @param otherPA the other PrimitiveArray which must be the same (or close) PAType.
      * @param index2 an index number 0 ... size-1
      * @return returns a negative integer, zero, or a positive integer if the 
      *   value at index1 is less than, equal to, or greater than 
      *   the value at index2.  
      *   Think "array[index1] - array[index2]".
      */
-    public int compare(int index1, int index2) {
-        return array[index1].compareTo(array[index2]);
+    public int compare(int index1, PrimitiveArray otherPA, int index2) {
+        StringHolder otherSH = otherPA.elementType() == PAType.STRING?
+            ((StringArray)otherPA).getStringHolder(index2) :
+            new StringHolder(otherPA.getString(index2));
+
+        return stringHolderComparator.compare(getStringHolder(index1), otherSH);
     }
 
     /**
-     * This is like compare(), except for StringArray it is caseInsensitive.
+     * This is like compare(), except for CharArray and StringArray it is fancy caseInsensitive.
      *
      * @param index1 an index number 0 ... size-1
+     * @param otherPA the other PrimitiveArray which must be the same (or close) PAType.
      * @param index2 an index number 0 ... size-1
      * @return  a negative integer, zero, or a positive integer if the 
      * value at index1 is less than, equal to, or greater than 
      * the value at index2.
      */
-    public int compareIgnoreCase(int index1, int index2) {
-        StringHolder s1 = array[index1];
-        StringHolder s2 = array[index2];
-        int c = s1.compareToIgnoreCase(s2);
-        if (c != 0) 
-            return c;
-        return s1.compareTo(s2);
+    public int compareIgnoreCase(int index1, PrimitiveArray otherPA, int index2) {
+        StringHolder sh2 = otherPA.elementType() == PAType.STRING?
+            ((StringArray)otherPA).getStringHolder(index2) :
+            new StringHolder(otherPA.getString(index2));
+
+        return array[index1].compareToIgnoreCase(sh2);
     }
 
 
@@ -1435,7 +1584,7 @@ public class StringArray extends PrimitiveArray {
      */
 /* project not finished or tested
     public void writeNccsvDos(DataOutputStream dos) throws Exception {
-        dos.writeShort(elementClassIndex()); 
+        dos.writeShort(elementTypeIndex()); 
         dos.writeInt(size);
         for (int i = 0; i < size; i++) 
             String2.writeNccsvDos(dos, get(i));
@@ -1530,6 +1679,28 @@ public class StringArray extends PrimitiveArray {
             while (nChar++ % 4 != 0)
                 dis.readByte();
         }
+    }
+
+    /** 
+     * This writes array[index] to a randomAccessFile at the current position.
+     *
+     * @param raf the RandomAccessFile
+     * @param index
+     * @throws Exception if trouble
+     */
+    public void writeToRAF(RandomAccessFile raf, int index) throws Exception {
+        throw new RuntimeException(String2.ERROR + ": StringArray doesn't support writeToRAF().");
+    }
+
+    /** 
+     * This reads one value from a randomAccessFile at the current position
+     * and adds it to the PrimitiveArraay.
+     *
+     * @param raf the RandomAccessFile
+     * @throws Exception if trouble
+     */
+    public void readFromRAF(RandomAccessFile raf) throws Exception {
+        throw new RuntimeException(String2.ERROR + ": StringArray doesn't support readFromRAF().");        
     }
 
     /**
@@ -1785,7 +1956,7 @@ public class StringArray extends PrimitiveArray {
      * <br>"" becomes sa.length() == 0.
      * <br>" " becomes sa.length() == 1.
      *
-     * @param searchFor
+     * @param searchFor the comma-separated-value string
      * @return a StringArray with the words and double-quoted phrases from searchFor.
      *    The items are trim'd.
      */
@@ -1858,25 +2029,32 @@ public class StringArray extends PrimitiveArray {
      * This variant of arrayFromCSV lets you specify the separator chars (e.g., "," or
      * ",;") and whether to trim the strings, and whether to keep "" elements.
      *
+     * <p>The double-quoted phrases can have internal double quotes encoded as "" or \".
+     * <br>null becomes sa.length() == 0.
+     * <br>"" becomes sa.length() == 0.
+     * <br>" " becomes sa.length() == 1.
+     *
      * @param trim If true, each results string is trimmed.
      */
     public static String[] arrayFromCSV(String searchFor, String separatorChars,
         boolean trim, boolean keepNothing) {
-        if (searchFor == null)
+        if (searchFor == null || searchFor.length() == 0)
             return new String[0];
         //String2.log(">> arrayFrom s=" + String2.annotatedString(searchFor));
         ArrayList<String> al = new ArrayList();
         int po = 0; //next char to be looked at
         StringBuilder word = new StringBuilder();
         int n = searchFor.length();
-        while (po < n) {
+        boolean isQuoted = false; //is this item quoted?
+        while (po <= n) {  //==n closes things out
             //String2.log(">> arrayFrom po=" + po + " al.size=" + al.size() + " word=" + word);
-            char ch = searchFor.charAt(po++);
+            char ch = po == n? '\uffff' : searchFor.charAt(po);  //n char doesn't matter as long as it isn't "
+            po++;
 
             if (ch == '"') {
-                //a quoted string
-                if (word.length() == 0)
-                    word.append('\u0000'); //indicate there is something; it will be trimmed later
+                //it is a quoted string
+                isQuoted = true;
+                word.setLength(0); //throw out any previous char (hopefully just whitespace)
 
                 int start = po;
                 if (po < n) {
@@ -1929,32 +2107,21 @@ public class StringArray extends PrimitiveArray {
                 }
 
             //end of word?
-            } else if (separatorChars.indexOf(ch) >= 0) { //e.g., comma or semicolon
+            } else if (po == n+1 || separatorChars.indexOf(ch) >= 0) { //e.g., comma or semicolon
                 String s = word.toString();
-                if (trim) {
+                if (trim && !isQuoted) 
                     s = s.trim();  //trim gets rid of all whitespace, including \n and \\u0000
-                } else {
-                    s = String2.replaceAll(s, "\u0000", "");
-                }
-                if (s.length() > 0 || keepNothing)
+                if (s.length() > 0 || keepNothing || isQuoted)
                     al.add(s); 
                 word.setLength(0);
-                word.append('\u0000'); //indicate there is something
+                isQuoted = false;
+                if (po == n+1)
+                    break;
 
             //a character
-            } else {
+            } else if (!isQuoted) {
                 word.append(ch);
             }
-        }
-        if (word.length() > 0) {
-            String s = word.toString();
-            if (trim) {
-                s = s.trim();  //trim gets rid of all whitespace, including \n and \\u0000
-            } else {
-                s = String2.replaceAll(s, "\u0000", "");
-            }
-            if (s.length() > 0 || keepNothing)
-                al.add(s); 
         }
         return al.toArray(new String[0]);
     }
@@ -2184,7 +2351,7 @@ public class StringArray extends PrimitiveArray {
         if (size == 0)
             return "";
         String s = get(0);
-        if (s == null) 
+        if (s == null) //other classes test isMissingValue. StringArray's behavior is intentionally a little different.
             return MessageFormat.format(ArrayNotAscending, getClass().getSimpleName(),
                 "[0]=null");
         for (int i = 1; i < size; i++) {
@@ -2214,7 +2381,7 @@ public class StringArray extends PrimitiveArray {
         if (size == 0)
             return "";
         String s = get(0);
-        if (s == null) 
+        if (s == null) //other classes test isMissingValue. StringArray's behavior is intentionally a little different.
             return MessageFormat.format(ArrayNotDescending, getClass().getSimpleName(), 
                 "[0]=null");
         for (int i = 1; i < size; i++) {
@@ -2370,10 +2537,37 @@ public class StringArray extends PrimitiveArray {
      * This adds the values in hs to this StringArray and returns this StringArray for convenience.
      * The order of the elements in this StringArray is not specified.
      */
-    public StringArray addHashSet(HashSet hs) {
+    public StringArray addSet(Set hs) {
+        ensureCapacity(size + (long)hs.size());
         for (Object o : hs)
             add(o.toString());
         return this;
+    }
+
+    /**
+     * This returns the index of the first value that matches the regex.
+     *
+     * @param regex
+     * @return the index of the first value that matches the regex, or -1 if none matches.
+     * @throws RuntimeException if regex won't compile.
+     */
+    public int firstMatch(String regex) {
+        return firstMatch(Pattern.compile(regex));
+    }
+
+    /**
+     * This returns the index of the first value that matches the regex pattern p.
+     *
+     * @param p
+     * @return the index of the first value that matches the regex pattern p, or -1 if none matches.
+     */
+    public int firstMatch(Pattern p) {
+        for (int i = 0; i < size; i++) {
+            String s = get(i);
+            if (s != null && p.matcher(s).matches())
+                return i;                
+        }
+        return -1;
     }
 
     /**
@@ -2426,9 +2620,8 @@ public class StringArray extends PrimitiveArray {
      *
      * @throws Throwable if trouble.
      */
-    public static void test() throws Throwable{
-        String2.log("*** Testing StringArray");
-/* for releases, this line should have open/close comment */
+    public static void basicTest() throws Throwable{
+        String2.log("*** StringArray.basicTest");
         String sar[];
         StringArray anArray = new StringArray();
 
@@ -2440,7 +2633,7 @@ public class StringArray extends PrimitiveArray {
 
         //** test default constructor and many of the methods
         Test.ensureEqual(anArray.isIntegerType(), false, "");
-        Test.ensureEqual(anArray.missingValue(), Double.NaN, "");
+        Test.ensureEqual(anArray.missingValue().getRawDouble(), Double.NaN, "");
         anArray.addString("");
         Test.ensureEqual(anArray.get(0),               "", "");
         Test.ensureEqual(anArray.getRawInt(0),         Integer.MAX_VALUE, "");
@@ -2453,40 +2646,6 @@ public class StringArray extends PrimitiveArray {
         Test.ensureEqual(anArray.getString(0), "", "");
         anArray.clear();
 
-        //unsignedFactory, which uses unsignedAppend
-        anArray = (StringArray)unsignedFactory(String.class, 
-            new ByteArray(new byte[] {0, 1, Byte.MAX_VALUE, Byte.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), "0.0, 1.0, 127.0, 128.0, 255.0", "");
-        anArray.clear();        
-
-        anArray = (StringArray)unsignedFactory(String.class, 
-            new CharArray(new char[] {(char)0, (char)1, '\u7FFF', '\u8000', '\uFFFF'}));
-        Test.ensureEqual(anArray.toString(), "0.0, 1.0, 32767.0, 32768.0, 65535.0", "");
-        anArray.clear();        
-
-        anArray = (StringArray)unsignedFactory(String.class, 
-            new ShortArray(new short[] {0, 1, Short.MAX_VALUE, Short.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), "0.0, 1.0, 32767.0, 32768.0, 65535.0", "");
-        anArray.clear();        
-
-        anArray = (StringArray)unsignedFactory(String.class, 
-            new IntArray(new int[] {0, 1, Integer.MAX_VALUE, Integer.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), 
-            // 0, 1,    2147483647,    2147483648,    4294967295
-            "0.0, 1.0, 2.147483647E9, 2.147483648E9, 4.294967295E9", ""); //precise
-        anArray.clear();        
-
-        anArray = (StringArray)unsignedFactory(String.class, 
-            new LongArray(new long[] {0, 1, Long.MAX_VALUE, Long.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), 
-            "0.0, 1.0, 9.223372036854776E18, 9.223372036854776E18, 1.8446744073709552E19", ""); //rounded/imprecise
-        anArray.clear();        
-
-        anArray = (StringArray)unsignedFactory(String.class, 
-            new FloatArray(new float[] {0, 1, Float.MAX_VALUE, -Float.MAX_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), 
-            "0.0, 1.0, 3.4028235E38, -3.4028235E38, -1.0", ""); 
-        anArray.clear();        
 
         Test.ensureEqual(anArray.size(), 0, "");
         anArray.add("1234.5");
@@ -2496,7 +2655,7 @@ public class StringArray extends PrimitiveArray {
         Test.ensureEqual(anArray.getFloat(0), 1234.5f, "");
         Test.ensureEqual(anArray.getDouble(0), 1234.5, "");
         Test.ensureEqual(anArray.getString(0), "1234.5", "");
-        Test.ensureEqual(anArray.elementClass(), String.class, "");
+        Test.ensureEqual(anArray.elementType(), PAType.STRING, "");
         String tArray[] = anArray.toArray();
         Test.ensureEqual(tArray, new String[]{"1234.5"}, "");
 
@@ -2608,7 +2767,8 @@ public class StringArray extends PrimitiveArray {
         Test.ensureEqual(anArray.compare(3, 1),  4, "");
 
         //test compareIgnoreCase
-        StringArray cic = fromCSV("A, a, ABE, abe");
+        StringArray cic = fromCSV(       "A, a, ABE, abe");
+        Test.ensureEqual(cic.toString(), "A, a, ABE, abe", "");
         Test.ensureEqual(cic.compare(0, 1), -32, "");
         Test.ensureEqual(cic.compare(1, 2), 32, "");
         Test.ensureEqual(cic.compare(2, 3), -32, "");
@@ -2692,6 +2852,8 @@ public class StringArray extends PrimitiveArray {
         //test equals
         StringArray anArray2 = new StringArray();
         anArray2.add("0"); 
+        Test.ensureEqual(anArray.testEquals(null), 
+            "The two objects aren't equal: this object is a StringArray; the other is a null.", "");
         Test.ensureEqual(anArray.testEquals("A String"), 
             "The two objects aren't equal: this object is a StringArray; the other is a java.lang.String.", "");
         Test.ensureEqual(anArray.testEquals(anArray2), 
@@ -2833,11 +2995,11 @@ public class StringArray extends PrimitiveArray {
         Test.ensureEqual(fromCSV(" , ").toString(), ", ", "");
         anArray = fromCSV(" a,\"b\"\"b\",c "); Test.ensureEqual(anArray.get(1), "b\"b", ""); //internal quotes
         anArray = fromCSV(" a,\"b\\\"b\",c "); Test.ensureEqual(anArray.get(1), "b\"b", ""); //internal quotes
-        anArray = fromCSV(" a,\"b\\tb\",c ");  Test.ensureEqual(anArray.get(1), "b\tb", ""); //internal quotes
+        anArray = fromCSV(" a, \"b\\tb\" ,c ");  Test.ensureEqual(anArray.get(1), "b\tb", ""); //internal quotes
         anArray = fromCSV(" a,\"b\\nb\",c ");  Test.ensureEqual(anArray.get(1), "b\nb", ""); //internal quotes
         anArray = fromCSV(" a,\"b\\'b\",c ");  Test.ensureEqual(anArray.get(1), "b\'b", ""); //internal quotes
         anArray = fromCSV(" a,\"b\\\"b\",c "); Test.ensureEqual(anArray.get(1), "b\"b", ""); //internal quotes
-        anArray = fromCSV(" a \"b\"\"b\" c "); Test.ensureEqual(anArray.get(0), "a b\"b c", ""); //internal quotes
+        anArray = fromCSV(" a \"b\"\"b\" c "); Test.ensureEqual(anArray.get(0), "b\"b", ""); //internal quotes, only the quoted string is saved
 
         //evenlySpaced
         anArray = new StringArray(new String[] {"10","20","30"});
@@ -2846,8 +3008,8 @@ public class StringArray extends PrimitiveArray {
         Test.ensureEqual(anArray.isEvenlySpaced(), 
             "StringArray isn't evenly spaced: [0]=10.0, [1]=20.0, spacing=10.0, average spacing=10.05.", "");
         Test.ensureEqual(anArray.smallestBiggestSpacing(),
-            "  smallest spacing=10.0: [0]=10.0, [1]=20.0\n" +
-            "  biggest  spacing=10.100000000000001: [1]=20.0, [2]=30.1", "");
+            "    smallest spacing=10.0: [0]=10.0, [1]=20.0\n" +
+            "    biggest  spacing=10.100000000000001: [1]=20.0, [2]=30.1", "");
 
         //fromCSV
         Test.ensureEqual(fromCSV(null).toString(), "", "");
@@ -2861,9 +3023,10 @@ public class StringArray extends PrimitiveArray {
         Test.ensureEqual(fromCSV(",a,bb, c ,").toString(), ", a, bb, c, ", "");
         Test.ensureEqual(fromCSV(" a,\"b b\",c ").toString(), "a, b b, c", "");
         Test.ensureEqual(fromCSV(" a,\"b b").toString(), "a, b b", ""); //no error for missing "
-        Test.ensureEqual(fromCSV(" a,\"b \"\"\"\"b\"junk,c ").toString(), "a, \"b \"\"\"\"bjunk\", c", "");
-        Test.ensureEqual(fromCSV(" a,\"b \"\"\"\"b\"junk,c ").get(1), "b \"\"bjunk", "");
-        Test.ensureEqual(fromCSV(" a,\"b,b\"junk").toString(), "a, \"b,bjunk\"", "");
+         //only the part in quotes is saved
+        Test.ensureEqual(fromCSV(" a,junk\"b \"\"\"\"b\"junk,c ").toString(), "a, \"b \"\"\"\"b\", c", "");
+        Test.ensureEqual(fromCSV(" a,junk\"b \"\"\"\"b\"junk,c ").get(1), "b \"\"b", ""); 
+        Test.ensureEqual(fromCSV(" a,junk\"b,b\"junk").toString(), "a, \"b,b\"", "");   
 
         //isAscending
         anArray = new StringArray(new String[] {"go","go","hi"});
@@ -2934,11 +3097,12 @@ public class StringArray extends PrimitiveArray {
 
         //min max
         anArray = new StringArray();
-        anArray.addString(anArray.MINEST_VALUE());
-        anArray.addString(anArray.MAXEST_VALUE());
-        Test.ensureEqual(anArray.getString(0), anArray.MINEST_VALUE(), "");
+        anArray.addPAOne(anArray.MINEST_VALUE());
+        anArray.addPAOne(anArray.MAXEST_VALUE());
+        Test.ensureEqual(anArray.getString(0), anArray.MINEST_VALUE().getString(), "");  //trouble: toString vs getString
         Test.ensureEqual(anArray.getString(0), "\u0000", "");
-        Test.ensureEqual(anArray.getString(1), anArray.MAXEST_VALUE(), "");
+        Test.ensureEqual(anArray.getString(1), anArray.MAXEST_VALUE().getString(), "");  //trouble: toString vs getString
+        Test.ensureEqual(anArray.getString(1), "\uFFFE", "");
 
         //sort
         anArray = fromCSV("AB, AB, Ab, Ab, ABC, ABc, AbC, aB, aB, ab, ab");
@@ -2960,21 +3124,21 @@ public class StringArray extends PrimitiveArray {
 
         //arrayFromCSV, test with unquoted internal strings
         //outside of a quoted string \\u20ac is backslash+...
-        sar = arrayFromCSV(" ab , \n\t\\\u00c3\u20ac , \\n\\u20ac , ",                   ",", true); //trim?
+        sar = arrayFromCSV(" ab , \n\t\\\u00c3\u20ac , \n\u20ac , ",                 ",", true);  //trim?
         Test.ensureEqual(String2.annotatedString(String2.toCSVString(sar)), 
-            "ab,\\[195][8364],\\n\\u20ac,[end]", "");
-        sar = arrayFromCSV(" ab , \n\t\\\u00c3\u20ac , \\n\\u20ac , ",                   ",", false); //trim?
-        Test.ensureEqual(String2.annotatedString(String2.toCSVString(sar)), 
-            " ab , [10]\n[9]\\[195][8364] , \\n\\u20ac , [end]", "");
+            "ab,\"\\\\\\u00c3\\u20ac\",[8364],[end]", "");  //spaces, \n, \\t are trimmed
+        sar = arrayFromCSV(" ab , \n\t\\\u00c3\u20ac , \n\u20ac , ",                 ",", false); //trim?
+        Test.ensureEqual(String2.toCSVString(sar), 
+            "\" ab \",\" \\n\\t\\\\\\u00c3\\u20ac \",\" \\n\\u20ac \",\" \"", "");
 
         //arrayFromCSV, test with quoted internal strings
         //inside of a quoted string \\u20ac is Euro
-        sar = arrayFromCSV("\" ab \",\" \n\t\\\u00c3\u20ac \",\" \\n\\u20ac \",\" \"",   ",", true); //trim?
-        Test.ensureEqual(String2.annotatedString(String2.toCSVString(sar)), 
-            "ab,\\[195][8364],[8364],[end]", "");
-        sar = arrayFromCSV("\" ab \",\" \n\t\\\u00c3\u20ac \",\" \\n\\u20ac \",\" \"",   ",", false); //trim?
-        Test.ensureEqual(String2.annotatedString(String2.toCSVString(sar)),
-            " ab , [10]\n[9]\\[195][8364] , [10]\n[8364] , [end]", "");
+        sar = arrayFromCSV(" ab , \" \n\t\\\u00c3\u20ac \", \" \n\u20ac \" , ",      ",", true);  //trim?
+        Test.ensureEqual(String2.toCSVString(sar), 
+            "ab,\" \\n\\t\\\\\\u00c3\\u20ac \",\" \\n\\u20ac \",", "");
+        sar = arrayFromCSV(" ab , \" \n\t\\\u00c3\u20ac \", \" \n\u20ac \", \" \"",  ",", false); //trim?
+        Test.ensureEqual(String2.toCSVString(sar),
+            "\" ab \",\" \\n\\t\\\\\\u00c3\\u20ac \",\" \\n\\u20ac \",\" \"", "");
 
         //inCommon
         anArray  = fromCSV("a, b, d");
@@ -3028,7 +3192,7 @@ public class StringArray extends PrimitiveArray {
         //toHashSet   addHashSet
         anArray = fromCSV("a, e, i, o, uu");
         HashSet hs = anArray.toHashSet();
-        anArray2 = (new StringArray()).addHashSet(hs);
+        anArray2 = (new StringArray()).addSet(hs);
         anArray2.sort();
         Test.ensureEqual(anArray.toArray(), anArray2.toArray(), "");
 
@@ -3147,13 +3311,58 @@ public class StringArray extends PrimitiveArray {
         }
         Test.ensureEqual(s, "com.cohort.util.SimpleException: A string in the JSON array lacks a closing double quote.", "");
 
+        //makeUnique
+        anArray = fromCSV("a_3, a, b_2, b, b, a, a_2, a");
+        Test.ensureEqual(anArray.makeUnique(), 3, "");
+        Test.ensureEqual(anArray.toString(), "a_3, a, b_2, b, b_3, a_4, a_2, a_5", "");
 
         //tryToFindNumericMissingValue() 
-        Test.ensureEqual((new StringArray(new String[] {                  })).tryToFindNumericMissingValue(), Double.NaN, "");
-        Test.ensureEqual((new StringArray(new String[] {""                })).tryToFindNumericMissingValue(), Double.NaN, "");
-        Test.ensureEqual((new StringArray(new String[] {"a", "", "1", "2" })).tryToFindNumericMissingValue(), Double.NaN, "");
-        Test.ensureEqual((new StringArray(new String[] {"a", "", "1", "99"})).tryToFindNumericMissingValue(), Double.NaN, ""); //doesn't catch 99, would be nice if it did?
+        Test.ensureEqual((new StringArray(new String[] {                  })).tryToFindNumericMissingValue(), null, "");
+        Test.ensureEqual((new StringArray(new String[] {""                })).tryToFindNumericMissingValue(), null, "");
+        Test.ensureEqual((new StringArray(new String[] {"a", "", "1", "2" })).tryToFindNumericMissingValue(), null, "");
+        Test.ensureEqual((new StringArray(new String[] {"a", "", "1", "99"})).tryToFindNumericMissingValue(), null, ""); //doesn't catch 99. Should it?
 
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ StringArray.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

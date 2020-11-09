@@ -5,8 +5,10 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.Calendar2;
+import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
@@ -93,8 +95,8 @@ public class TableWriterDataTable extends TableWriter {
         //do firstTime stuff
 
         if (firstTime) {
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.UTF_8), String2.UTF_8));
+            writer = String2.getBufferedOutputStreamWriterUtf8(
+                outputStreamSource.outputStream(String2.UTF_8));
             writer.write("{\"cols\":[");
             isTimeStamp = new boolean[nColumns];
             isCharOrString = new boolean[nColumns];
@@ -106,8 +108,8 @@ public class TableWriterDataTable extends TableWriter {
                 String u = catts.getString("units");
                 isTimeStamp[col] = u != null &&
                     (u.equals(EDV.TIME_UNITS) || u.equals(EDV.TIME_UCUM_UNITS));
-                isCharOrString[col] = pas[col].elementClass() == char.class ||
-                                      pas[col].elementClass() == String.class;
+                isCharOrString[col] = pas[col].elementType() == PAType.CHAR ||
+                                      pas[col].elementType() == PAType.STRING;
                 if (isTimeStamp[col]) {
                     //just keep time_precision if it includes fractional seconds 
                     String tp = catts.getString(EDV.TIME_PRECISION);
@@ -119,7 +121,7 @@ public class TableWriterDataTable extends TableWriter {
 
             for (int col = 0; col < nColumns; col++) {
                 Attributes catts = table.columnAttributes(col);
-                Class type = pas[col].elementClass();
+                PAType type = pas[col].elementType();
                 String name = table.getColumnName(col);
                 String u = catts.getString("units");
                 if ( col > 0 ) {
@@ -129,7 +131,7 @@ public class TableWriterDataTable extends TableWriter {
                     writer.write("{\"id\":\""+name+"\",\"label\":\""+name+
                         "\",\"pattern\":\"\",\"type\":\"datetime\"}");
                 } else {
-                    if (type == String.class) {
+                    if (type == PAType.STRING) {
                         if ( writeUnits && u != null ) {
                             writer.write("{\"id\":\""+name+"\",\"label\":\""+name+
                                 " (" + u + ") " + "\",\"pattern\":\"\",\"type\":\"string\"}");
@@ -137,7 +139,7 @@ public class TableWriterDataTable extends TableWriter {
                             writer.write("{\"id\":\""+name+"\",\"label\":\""+name+ 
                                 "\",\"pattern\":\"\",\"type\":\"string\"}");
                         }
-                    } else if (type == float.class) {
+                    } else if (type == PAType.FLOAT) {
                         if ( writeUnits && u != null) {
                             writer.write("{\"id\":\""+name+"\",\"label\":\""+name+
                                 " (" + u + ") " + "\",\"pattern\":\"\",\"type\":\"number\"}");
@@ -145,7 +147,7 @@ public class TableWriterDataTable extends TableWriter {
                             writer.write("{\"id\":\""+name+"\",\"label\":\""+name+
                                 "\",\"pattern\":\"\",\"type\":\"number\"}");
                         }
-                    } else if (type == double.class) {
+                    } else if (type == PAType.DOUBLE) {
                         if ( writeUnits && u != null ) {
                             writer.write("{\"id\":\""+name+"\",\"label\":\""+name+
                                 " (" + u + ") " + "\",\"pattern\":\"\",\"type\":\"number\"}");
@@ -172,8 +174,9 @@ public class TableWriterDataTable extends TableWriter {
 
         //avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
         int nRows = table.nRows();
+        boolean flushAfterward = totalNRows == 0; //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
-        EDStatic.ensureArraySizeOkay(totalNRows, "json");
+        Math2.ensureArraySizeOkay(totalNRows, "json");
 
         if ( rowsWritten ) {
             // Some rows already written. Need a comma.
@@ -207,14 +210,14 @@ public class TableWriterDataTable extends TableWriter {
 
                     } else {
                         String s = pas[col].getString(row);
-                        writeNumber(s, pas[col].elementClass());
+                        writeNumber(s, pas[col].elementType());
                     }
                 } else if (isCharOrString[col]) {
                     String value = pas[col].getString(row);
                     writer.write("{\"v\":\""+value+"\",\"f\":null}");
                 } else {
                     String s = pas[col].getString(row);
-                    writeNumber(s, pas[col].elementClass());
+                    writeNumber(s, pas[col].elementType());
                 }
             }
             if ( row < nRows-1 ) {
@@ -225,10 +228,8 @@ public class TableWriterDataTable extends TableWriter {
         }
         if (nRows > 0) rowsWritten = true;
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward)
             writer.flush();
-
     }
 
     /**
@@ -273,17 +274,17 @@ public class TableWriterDataTable extends TableWriter {
     }
 
 
-    protected void writeNumber(String s, Class elementClass) throws IOException {
+    protected void writeNumber(String s, PAType elementPAType) throws IOException {
         if ( s.length() == 0 ) {
             writer.write("{\"v\":null,\"f\":null}");
         } else {
-            if ( elementClass == double.class ) {
+            if ( elementPAType == PAType.DOUBLE ) {
                 double dv = Double.valueOf(s).doubleValue();
                 writer.write("{\"v\":"+dv+",\"f\":null}");
-            } else if ( elementClass == float.class ) {
+            } else if ( elementPAType == PAType.FLOAT ) {
                 float f = Float.valueOf(s).floatValue();
                 writer.write("{\"v\":"+f+",\"f\":null}");
-            } else if ( elementClass == long.class ) {
+            } else if ( elementPAType == PAType.LONG ) {
                 long f = Long.valueOf(s).longValue();
                 writer.write("{\"v\":"+f+",\"f\":null}");
             } else {

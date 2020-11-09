@@ -8,6 +8,7 @@ import com.cohort.array.IntArray;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Math2;
+import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
 
@@ -31,7 +32,15 @@ public class Tally  {
     protected ConcurrentHashMap mainHashMap = new ConcurrentHashMap(); 
 
     /**
-     * This adds a tally mark.
+     * This adds 1 tally mark.
+     */
+    public void add(String categoryName, String attributeName) {
+        add(categoryName, attributeName, 1);
+    }
+
+        
+    /**
+     * This adds n tally marks.
      * If categoryName or attributeName is null, it is treated as "".
      *
      * @param categoryName If no such category exists, one will be created.
@@ -39,8 +48,9 @@ public class Tally  {
      * @param attributeName If no such attribute exists, one will be created.
      *    Case sensitive.  If attributeName is null, it is logged as "(null)".
      *    AttributeName="" is valid.
+     * @param nMarks The number of tally marks to add for this category, almost always 1.
      */
-    public void add(String categoryName, String attributeName) {
+    public void add(String categoryName, String attributeName, int nTimes) {
         if (categoryName == null || categoryName.length() == 0) {
             String2.log(String2.ERROR + " in Tally.add: categoryName not specified.");
             return;
@@ -58,8 +68,8 @@ public class Tally  {
         //get the attribute's intObject
         IntObject intObject = (IntObject)hashMap.get(attributeName);
         if (intObject == null)
-            hashMap.put(attributeName, new IntObject(1));
-        else intObject.i++;
+            hashMap.put(attributeName, new IntObject(nTimes));
+        else intObject.i += nTimes;
 
     }
 
@@ -198,8 +208,7 @@ public class Tally  {
      * This tests Tally.
      * @throws Exception if trouble
      */
-    public static void test() {
-/* for releases, this line should have open/close comment */
+    public static void basicTest() {
         Tally tally = new Tally();
         tally.add("cat a", "att 2");
         tally.add("cat a", "att 2");
@@ -222,4 +231,46 @@ public class Tally  {
             "    att 3: 1  (100%)\n" +
             "\n", "");
     }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ Tally.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
 }

@@ -14,6 +14,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.FileSystems;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -272,7 +275,9 @@ public class File2 {
                         return result;
                     }
                     String2.log("WARNING #" + attempt + 
-                        ": File2.delete is having trouble. It will try again to delete " + fullName);
+                        ": File2.delete is having trouble. It will try again to delete " + fullName 
+                        //+ "\n" + MustBe.stackTrace()
+                        );
                     if (attempt % 4 == 1)
                         Math2.gcAndWait(); //wait before retry delete. By experiment, gc works better than sleep.
                     else Math2.sleep(1000);
@@ -403,12 +408,12 @@ public class File2 {
             int nDeleted = files.length - nDir + nRemain;
             if (nDir != 0 || nDeleted != 0 || nRemain != 0) 
                 String2.log("File2.deleteIfOld(" + 
-                    String2.left(dir + 
-                        (time == Long.MAX_VALUE? "" : 
-                            ", " + Calendar2.safeEpochSecondsToIsoStringTZ(time / 1000.0, "" + time)), 50) +
-                    ") nDir=" +    String2.right("" + nDir, 2) + 
+                    String2.left(dir, 55) +
+                    (time == Long.MAX_VALUE? "" : 
+                            ", " + Calendar2.safeEpochSecondsToIsoStringTZ(time / 1000.0, "" + time)) +
+                    ") nDir=" +    String2.right("" + nDir, 4) + 
                     " nDeleted=" + String2.right("" + nDeleted, 4) + 
-                    " nRemain=" +  String2.right(nRemain < 0? String2.ERROR : "" + nRemain, 2));
+                    " nRemain=" +  String2.right(nRemain < 0? String2.ERROR : "" + nRemain, 4));
             return nRemain;
         } catch (Exception e3) {
             String2.log(MustBe.throwable(String2.ERROR + " in File2.deleteIfOld(" + 
@@ -687,13 +692,13 @@ public class File2 {
      *
      * @param fullName the full name of the file.
      *   It can have forward or backslashes.
-     * @return the directory (or currentDirectory if none)
+     * @return the directory (or "" if none; 2020-01-10 was currentDirectory)
      */
     public static String getDirectory(String fullName) {
         int po = fullName.lastIndexOf('/');
         if (po < 0)
             po = fullName.lastIndexOf('\\');
-        return po > 0? fullName.substring(0, po + 1) : getCurrentDirectory();
+        return po > 0? fullName.substring(0, po + 1) : "";
     }
 
     /**
@@ -788,38 +793,19 @@ public class File2 {
      * This returns true if the file is compressed and decompressible via
      * getDecompressedInputStream.
      *
-     * @param fileName The file's name (with or without dir).
+     * @param ext The file's extension, e.g., .gz
      */
-    public static boolean isDecompressible(String fileName) {
-        String ext = getExtension(fileName); //if e.g., .tar.gz, this returns .gz
+    public static boolean isDecompressible(String ext) {
 
         //this exactly parallels getDecompressedInputStream
-
-        //handle .Z (capital Z) specially first
-        if (ext.equals(".Z")) 
-            return true;
-
-        //everything caught below has a z in ext
-        if (ext.indexOf('z') < 0) 
-            return false;
-
-        if (ext.equals(".tgz") || 
-            fileName.endsWith(".tar.gz") || 
-            fileName.endsWith(".tar.gzip")) 
-            return true;
-
-        if (ext.equals(".gz") || ext.equals(".gzip")) 
-            return true;
-
-        if (ext.equals(".zip")) 
-            return true;
-
-        if (ext.equals(".bz2")) 
-            return true;
-
-        //.7z is possible but different and harder
-
-        return false;
+        return 
+            ext.equals(".Z") ||
+            (ext.indexOf('z') >=0 && 
+                (ext.equals(".tgz") || 
+                 ext.equals(".gz")  ||   //includes .tar.gz
+                 ext.equals(".gzip") ||  //includes .tar.gzip
+                 ext.equals(".zip") || 
+                 ext.equals(".bz2")));
     }
 
 
@@ -839,6 +825,7 @@ public class File2 {
         InputStream is = new BufferedInputStream( //recommended by https://commons.apache.org/proper/commons-compress/examples.html
             new FileInputStream(fullFileName));  //1MB buffer makes no difference
 
+        // !!!!! IF CHANGE SUPPORTED COMPRESSION TYPES, CHANGE isDecompressible ABOVE !!!
 
         //handle .Z (capital Z) specially first
         if (ext.equals(".Z")) {
@@ -912,9 +899,48 @@ public class File2 {
         }
         //.7z is possible but different and harder
 
-        return new BufferedInputStream(is);
+        // !!!!! IF CHANGE SUPPORTED COMPRESSION TYPES, CHANGE isDecompressible ABOVE !!!
+
+        return is;
     }
 
+    /** 
+     * This creates a buffered, decompressed (e.g., from .gz file) FileReader. 
+     *
+     * @param fullFileName the full file name
+     * @return a buffered FileReader
+     * @throws Exception if trouble  
+     */
+    public static BufferedReader getDecompressedBufferedFileReader(String fullFileName, 
+        String charset) throws Exception {
+
+        /* new method (no evidence it is better) */
+        if (isDecompressible(getExtension(fullFileName))) { //if e.g., .tar.gz, this returns .gz
+            InputStream is = getDecompressedBufferedInputStream(fullFileName);
+            try {
+                return new BufferedReader(new InputStreamReader(is,  
+                    String2.isSomething(charset)? charset : String2.ISO_8859_1)); //invalid charset throws exception
+            } catch (Exception e) {
+                try {if (is != null) is.close();} catch (Exception e2) {}
+                throw e;
+            }
+        } else {
+            return Files.newBufferedReader(FileSystems.getDefault().getPath(fullFileName), 
+                String2.isSomething(charset)? Charset.forName(charset) : String2.ISO_8859_1_CHARSET);
+        }
+        /* */
+
+        /* old method 
+        InputStream is = getDecompressedBufferedInputStream(fullFileName);
+        try {
+            return new BufferedReader(new InputStreamReader(is,  
+                String2.isSomething(charset)? charset : String2.ISO_8859_1)); //invalid charset throws exception
+        } catch (Exception e) {
+            try {if (is != null) is.close();} catch (Exception e2) {}
+            throw e;
+        }
+        /* */
+    }
 
     /**
      * This generates a hex dump of the first nBytes of the file.
@@ -925,9 +951,9 @@ public class File2 {
      * @throws Exception if trouble
      */
     public static String hexDump(String fullFileName, int nBytes) throws Exception {
-        InputStream fis = File2.getDecompressedBufferedInputStream(fullFileName);
+        InputStream fis = getDecompressedBufferedInputStream(fullFileName);
         try {
-            nBytes = Math.min(nBytes, fis.available());
+            nBytes = Math.min(nBytes, Math2.narrowToInt(length(fullFileName))); //max 2GB
             byte ba[] = new byte[nBytes];
             int bytesRead = 0;
             while (bytesRead < nBytes)
@@ -1034,9 +1060,51 @@ public class File2 {
         return success;
     }
 
+
     /** A variant that copies the entire source. */
     public static boolean copy(String source, OutputStream out) {
         return copy(source, out, 0, -1);
+    }
+
+    /**
+     * This is like copy(), but decompresses if the source is compressed
+     *
+     * @param source the full file name of the source file.
+     *   If compressed, this does decompress!
+     * @param destination the full file name of the destination file.
+     *   If the directory doesn't exist, it will be created.
+     *   It is closed at the end.
+     * @return true if successful. If not successful, the destination file
+     *   won't exist.
+     */
+    public static boolean decompress(String source, String destination) {
+
+        if (source.equals(destination)) return false;
+        InputStream in = null;
+        OutputStream out = null;
+        boolean success = false;
+        try {
+            File dir = new File(getDirectory(destination));
+            if (!dir.isDirectory())
+                 dir.mkdirs();
+            in = getDecompressedBufferedInputStream(source);
+            out = new BufferedOutputStream(new FileOutputStream(destination));
+            success = copy(in, out, 0, -1);
+        } catch (Exception e) {
+            String2.log(String2.ERROR + " in File2.copy source=" + source + "\n" + 
+                e.toString());
+        }
+        try { 
+            if (in != null) in.close();
+        } catch (Exception e) {}
+        try { 
+            if (out != null) out.close();
+        } catch (Exception e) {}
+
+        if (!success) 
+            delete(destination);
+
+        return success;
     }
 
     /**
@@ -1236,28 +1304,6 @@ public class File2 {
         char slash = po < 0? '/' : dir.charAt(po);
         return dir + slash;
     }
-
-
-    /** 
-     * This creates a buffered, decompressed (e.g., from .gz file) FileReader. 
-     *
-     * @param fullFileName the full file name
-     * @return a buffered FileReader
-     * @throws Exception if trouble  
-     */
-    public static BufferedReader getDecompressedBufferedFileReader(String fullFileName, 
-        String charset) throws Exception {
-
-        InputStream is = getDecompressedBufferedInputStream(fullFileName);
-        try {
-            return new BufferedReader(new InputStreamReader(is,  
-                String2.isSomething(charset)? charset : String2.ISO_8859_1)); //invalid charset throws exception
-        } catch (Exception e) {
-            try {if (is != null) is.close();} catch (Exception e2) {}
-            throw e;
-        }
-    }
-
 
 }
 

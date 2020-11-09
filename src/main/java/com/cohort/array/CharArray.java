@@ -11,6 +11,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.math.BigInteger;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -22,7 +23,8 @@ import java.util.Set;
  * CharArray is a thin shell over a char[] with methods like ArrayList's 
  * methods; it extends PrimitiveArray.
  *
- * <p>This class uses Char.MAX_VALUE to represent a missing value (NaN).
+ * <p>Unicode \\uffff (65535) means "not a character". 
+ * This class always uses maxIsMV=true, so Character.MAX_VALUE always represents a missing value (NaN).
  */
 public class CharArray extends PrimitiveArray {
 
@@ -40,14 +42,50 @@ public class CharArray extends PrimitiveArray {
      */
     public CharArray() {
         array = new char[8];
+        maxIsMV = true; //always true for CharArray, so users shouldn't ever need to test it 
+    }
+
+    /**
+     * This returns the number of bytes per element for this PrimitiveArray.
+     * The value for "String" isn't a constant, so this returns 20.
+     *
+     * @return the number of bytes per element for this PrimitiveArray.
+     * The value for "String" isn't a constant, so this returns 20.
+     */
+    public int elementSize() {
+        return 2;
     }
 
     /** 
      * This returns for cohort missing value for this class (e.g., Integer.MAX_VALUE), 
      * expressed as a double. FloatArray and StringArray return Double.NaN. 
      */
-    public double missingValue() {
+    public double missingValueAsDouble() {
         return Character.MAX_VALUE;
+    }
+
+    /**
+     * This tests if the value at the specified index equals the data type's MAX_VALUE 
+     * (for integerTypes, which may or may not indicate a missing value,
+     * depending on maxIsMV), NaN (for Float and Double), \\uffff (for CharArray),
+     * or "" (for StringArray).
+     *
+     * @param index The index in question
+     * @return true if the value is a missing value.
+     */
+    public boolean isMaxValue(int index) {
+        return get(index) == Character.MAX_VALUE;
+    }
+
+    /**
+     * This tests if the value at the specified index is a missing value.
+     * For integerTypes, isMissingValue can only be true if maxIsMv is 'true'.
+     *
+     * @param index The index in question
+     * @return true if the value is a missing value.
+     */
+    public boolean isMissingValue(int index) {
+        return isMaxValue(index);
     }
 
     /**
@@ -58,6 +96,7 @@ public class CharArray extends PrimitiveArray {
      */
     public CharArray(PrimitiveArray primitiveArray) {
         array = new char[primitiveArray.size()]; //exact size
+        maxIsMV = true; //always true for CharArray, so users shouldn't ever need to test it 
         append(primitiveArray);
     }
 
@@ -71,6 +110,7 @@ public class CharArray extends PrimitiveArray {
     public CharArray(int capacity, boolean active) {
         Math2.ensureMemoryAvailable(2L * capacity, "CharArray");
         array = new char[capacity];
+        maxIsMV = true; //always true for CharArray, so users shouldn't ever need to test it 
         if (active) 
             size = capacity;
     }
@@ -83,7 +123,22 @@ public class CharArray extends PrimitiveArray {
      */
     public CharArray(char[] anArray) {
         array = anArray;
+        maxIsMV = true; //always true for CharArray, so users shouldn't ever need to test it 
         size = anArray.length;
+    }
+
+    /**
+     * This makes a CharArray from the comma-separated values.
+     * <br>null becomes pa.length() == 0.
+     * <br>"" becomes pa.length() == 0.
+     * <br>" " becomes pa.length() == 1.
+     * <br>See also PrimitiveArray.csvFactory(paType, csv);
+     *
+     * @param csv the comma-separated-value string
+     * @return a CharArray from the comma-separated values.
+     */
+    public static CharArray fromCSV(String csv) {
+        return (CharArray)PrimitiveArray.csvFactory(PAType.CHAR, csv);
     }
 
     /**
@@ -110,6 +165,7 @@ public class CharArray extends PrimitiveArray {
     public CharArray(short[] shortArray) {
         size = shortArray.length;
         array = new char[size];
+        maxIsMV = true; //always true for CharArray, so users shouldn't ever need to test it 
         for (int i = 0; i < size; i++)
             array[i] = (char)shortArray[i];
     }
@@ -138,18 +194,26 @@ public class CharArray extends PrimitiveArray {
 
     /**
      * This is an alternative way to convert a String to a char:
-     * by getting the first char (else Character.MAX_VALUE)
+     * by getting the first char (else Character.MAX_VALUE).
+     * BEWARE: using this loses the distinction between "" becoming missing value
+     * and "" becoming \\uffff!
      */
     public static char firstChar(String s) {
         return s == null || s.length() == 0? Character.MAX_VALUE : s.charAt(0);
     }
 
-    /** This returns the minimum value that can be held by this class. */
-    public String MINEST_VALUE() {return "\u0000";}
+    /** This returns a new PAOne with the minimum value that can be held by this class.      
+     *
+     * @return a new PAOne with the minimum value that can be held by this class, e.g., -128b for ByteArray. 
+     */
+    public PAOne MINEST_VALUE() {return new PAOne(PAType.CHAR).setString("\u0000");}
 
-    /** This returns the maximum value that can be held by this class 
-        (not including the cohort missing value). */
-    public String MAXEST_VALUE() {return "\uFFFE";}
+    /** This returns a new PAOne with the maximum value that can be held by this class 
+     *   (not including the cohort missing value). 
+     *
+     * @return a new PAOne with the maximum value that can be held by this class, e.g., 126 for ByteArray. 
+     */
+    public PAOne MAXEST_VALUE() {return new PAOne(PAType.CHAR).setString("\uFFFE");}
 
     /**
      * This returns the current capacity (number of elements) of the internal data array.
@@ -162,11 +226,11 @@ public class CharArray extends PrimitiveArray {
 
    
     /**
-     * This returns the hashcode for this byteArray (dependent only on values,
+     * This returns the hashcode for this charArray (dependent only on values,
      * not capacity).
      * WARNING: the algorithm used may change in future versions.
      *
-     * @return the hashcode for this byteArray (dependent only on values,
+     * @return the hashcode for this charArray (dependent only on values,
      * not capacity)
      */
     public int hashCode() {
@@ -202,7 +266,7 @@ public class CharArray extends PrimitiveArray {
         if (stopIndex >= size)
             stopIndex = size - 1;
         if (stopIndex < startIndex)
-            return pa == null? new CharArray(new char[0]) : pa;
+            return pa == null? new CharArray(new char[0]) : pa;  
 
         int willFind = strideWillFind(stopIndex - startIndex + 1, stride);
         CharArray ca = null;
@@ -225,21 +289,27 @@ public class CharArray extends PrimitiveArray {
     }
 
     /**
-     * This returns the class (char.class) of the element type.
+     * This returns the PAType (PAType.CHAR) of the element type.
      *
-     * @return the class (char.class) of the element type.
+     * @return the PAType (PAType.CHAR) of the element type.
      */
-    public Class elementClass() {
-        return char.class;
+    public PAType elementType() {
+        return PAType.CHAR;
     }
 
     /**
-     * This returns the class index (CLASS_INDEX_CHAR of the element type.
+     * This returns the minimum PAType needed to completely and precisely contain
+     * the values in this PA's PAType and tPAType (e.g., when merging two PrimitiveArrays).
      *
-     * @return the class index (CLASS_INDEX_CHAR) of the element type.
+     * @return the minimum PAType needed to completely and precisely contain
+     * the values in this PA's PAType and tPAType (e.g., when merging two PrimitiveArrays).
      */
-    public int elementClassIndex() {
-        return CLASS_INDEX_CHAR;
+    public PAType needPAType(PAType tPAType) {
+        //if tPAType is smaller or same, return this.PAType
+        if (tPAType == PAType.CHAR)  return PAType.CHAR;
+
+        //if sideways
+        return PAType.STRING;
     }
 
     /**
@@ -252,6 +322,19 @@ public class CharArray extends PrimitiveArray {
             ensureCapacity(size + 1L);
         array[size++] = value;
     }
+
+    /**
+     * This adds an item to the array (increasing 'size' by 1).
+     *
+     * @param value the value to be added to the array.
+     *    This uses value.toString().charAt(0) (or Character.MAX_VALUE if trouble).
+     */
+    public void addObject(Object value) {
+        //double is good intermediate because it has the idea of NaN
+        addDouble(value != null && value instanceof Number?
+            ((Number)value).doubleValue() : Double.NaN); 
+    }
+
 
     /**
      * This adds all the values from ar.
@@ -308,7 +391,25 @@ public class CharArray extends PrimitiveArray {
      * @param value the value, as a String.
      */
     public void atInsertString(int index, String value) {
-        atInsert(index, firstChar(value));
+        int ti = String2.parseInt(value); //NaN -> Integer.MAX_VALUE
+        atInsert(index, ti < Character.MIN_VALUE || ti > Character.MAX_VALUE? 
+            Character.MAX_VALUE : (char)ti);
+    }
+
+    /**
+     * This adds n PAOne's to the array.
+     *
+     * @param n the number of times 'value' should be added.
+     *    If less than 0, this throws Exception.
+     * @param value the value, as a PAOne (or null).
+     */
+    public void addNPAOnes(int n, PAOne value) {
+        if (value == null) {
+            addNInts(n, Integer.MAX_VALUE);
+        } else {
+            String s = value.getString();
+            addN(n, s.length() == 0? Character.MAX_VALUE: s.charAt(0));
+        }
     }
 
     /**
@@ -319,34 +420,19 @@ public class CharArray extends PrimitiveArray {
      * @param value the value, as a String.
      */
     public void addNStrings(int n, String value) {
-        addN(n, firstChar(value));
+        addN(n, value == null || value.length() == 0? 
+            Character.MAX_VALUE: value.charAt(0));
     }
 
     /**
-     * This adds an element to the array.
+     * This adds n floats to the array.
      *
-     * @param value the value, as a String.
+     * @param n the number of times 'value' should be added.
+     *    If less than 0, this throws Exception.
+     * @param value the value, as a float.
      */
-    public void addString(String value) {
-        add(firstChar(value));
-    }
-
-    /**
-     * This adds an element to the array.
-     *
-     * @param value the float value
-     */
-    public void addFloat(float value) {
-        add(Math2.roundToChar(value));
-    }
-
-    /**
-     * This adds an element to the array.
-     *
-     * @param value the value, as a double.
-     */
-    public void addDouble(double value) {
-        add(Math2.roundToChar(value));
+    public void addNFloats(int n, float value) {
+        addN(n, Math2.roundToChar(value));
     }
 
     /**
@@ -361,31 +447,25 @@ public class CharArray extends PrimitiveArray {
     }
 
     /**
-     * This adds an element to the array.
-     *
-     * @param value the value, as an int.
-     */
-    public void addInt(int value) {
-        add(Math2.narrowToChar(value));
-    }
-
-    /**
      * This adds n ints to the array.
      *
      * @param n the number of times 'value' should be added
      * @param value the value, as an int.
      */
     public void addNInts(int n, int value) {
-        addN(n, Math2.narrowToChar(value));
+         addN(n, value < Character.MIN_VALUE || value > Character.MAX_VALUE?
+             Character.MAX_VALUE : (char)value);
     }
 
     /**
-     * This adds an element to the array.
+     * This adds n longs to the array.
      *
-     * @param value the value, as a long.
+     * @param n the number of times 'value' should be added
+     * @param value the value, as an int.
      */
-    public void addLong(long value) {
-        add(Math2.narrowToChar(value));
+    public void addNLongs(int n, long value) {
+        addN(n, value < Character.MIN_VALUE || value > Character.MAX_VALUE?
+            Character.MAX_VALUE : (char)value);
     }
 
     /**
@@ -399,7 +479,7 @@ public class CharArray extends PrimitiveArray {
     public PrimitiveArray addFromPA(PrimitiveArray otherPA, int otherIndex, int nValues) {
 
         //add from same type
-        if (otherPA.elementClass() == elementClass()) {
+        if (otherPA.elementType() == elementType()) {
             if (otherIndex + nValues > otherPA.size)
                 throw new IllegalArgumentException(String2.ERROR + 
                     " in CharArray.addFromPA: otherIndex=" + otherIndex + 
@@ -410,13 +490,13 @@ public class CharArray extends PrimitiveArray {
             size += nValues;
 
         //add from different type
-        } else if (otherPA.elementClass() == String.class) {
+        } else if (otherPA.elementType() == PAType.STRING) {
             for (int i = 0; i < nValues; i++)
-                addString(otherPA.getString(otherIndex++)); //add and get do checking
+                addString(otherPA.getString(otherIndex++)); //add and get do checking and handle maxIsMV
 
         } else {
             for (int i = 0; i < nValues; i++)
-                addInt(otherPA.getInt(otherIndex++)); //add and get do checking
+                addInt(otherPA.getInt(otherIndex++)); //add and get do checking and handles maxIsMV
         }
         return this;
     }
@@ -425,13 +505,13 @@ public class CharArray extends PrimitiveArray {
      * This sets an element from another PrimitiveArray.
      *
      * @param index the index to be set
-     * @param otherPA
-     * @param otherIndex
+     * @param otherPA the other PrimitiveArray
+     * @param otherIndex the index of the item in otherPA
      */
     public void setFromPA(int index, PrimitiveArray otherPA, int otherIndex) {
-        if (otherPA.elementClass() == String.class) 
-            set(index, firstChar(otherPA.getString(otherIndex))); //add and get do checking
-        else setInt(index, otherPA.getInt(otherIndex));
+        if (otherPA.elementType() == PAType.STRING) 
+            setString(index, otherPA.getString(otherIndex)); //add and do checking of maxIsMV
+        else setInt(index, otherPA.getInt(otherIndex)); //handles maxIsMV
     }
 
     /**
@@ -531,7 +611,7 @@ public class CharArray extends PrimitiveArray {
      * Rows that aren't kept are removed.
      * The resulting PrimitiveArray is compacted (i.e., it has a smaller size()).
      *
-     * @param bitset
+     * @param bitset The BitSet indicating which rows (indices) should be kept.
      */
     public void justKeep(BitSet bitset) {
         int newSize = 0;
@@ -567,6 +647,8 @@ public class CharArray extends PrimitiveArray {
      * This returns an array (perhaps 'array') which has 'size' elements.
      *
      * @return an array (perhaps 'array') which has 'size' elements.
+     *   Unsigned integer types will return an array with their storage type
+     *   e.g., ULongArray returns a long[].
      */
     public char[] toArray() {
         if (array.length == size)
@@ -582,6 +664,8 @@ public class CharArray extends PrimitiveArray {
      * elements.
      *
      * @return a primitive[] (perhaps 'array') which has 'size' elements.
+     *   Unsigned integer types will return an array with their storage type
+     *   e.g., ULongArray returns a long[].
      */
     public Object toObjectArray() {
         return toArray();
@@ -614,7 +698,7 @@ public class CharArray extends PrimitiveArray {
         Math2.ensureMemoryAvailable(6L * size, "CharArray.toStringArray"); 
         String sar[] = new String[size];
         for (int i = 0; i < size; i++) 
-            sar[i] = getString(i);
+            sar[i] = getString(i);  
         return sar;
     }
 
@@ -622,6 +706,7 @@ public class CharArray extends PrimitiveArray {
      * This gets a specified element.
      *
      * @param index 0 ... size-1
+     * @return the specified element
      */
     public char get(int index) {
         if (index >= size)
@@ -659,7 +744,7 @@ public class CharArray extends PrimitiveArray {
     /**
      * Return a value from the array as an int.
      * This "raw" variant leaves missingValue from smaller data types 
-     * (e.g., ByteArray missingValue=127) AS IS.
+     * (e.g., ByteArray missingValue=127) AS IS (even if maxIsMV=true).
      * Floating point values are rounded.
      * 
      * @param index the index number 0 ... size-1
@@ -678,7 +763,8 @@ public class CharArray extends PrimitiveArray {
      *   if needed by methods like Math2.narrowToChar(i).
      */
     public void setInt(int index, int i) {
-        set(index, Math2.narrowToChar(i));
+        set(index, i < Character.MIN_VALUE || i > Character.MAX_VALUE?
+            Character.MAX_VALUE : (char)i); 
     }
 
     /**
@@ -701,7 +787,31 @@ public class CharArray extends PrimitiveArray {
      *   if needed by methods like Math2.narrowToChar(long).
      */
     public void setLong(int index, long i) {
-        set(index, Math2.narrowToChar(i));
+        set(index, i < Character.MIN_VALUE || i > Character.MAX_VALUE?
+            Character.MAX_VALUE : (char)i); 
+    }
+
+    /**
+     * Return a value from the array as a ulong.
+     * 
+     * @param index the index number 0 ... size-1
+     * @return the value as a ulong. 
+     *   If maxIsMV, MAX_VALUE is returned as null.
+     */
+    public BigInteger getULong(int index) {
+        char b = get(index);
+        return b == Character.MAX_VALUE? null : new BigInteger("" + (int)b);
+    }
+
+    /**
+     * Set a value in the array as a ulong.
+     * 
+     * @param index the index number 0 .. size-1
+     * @param i the value. For numeric PrimitiveArray's, it is narrowed 
+     *   if needed by methods like Math2.narrowToByte(long).
+     */
+    public void setULong(int index, BigInteger i) {
+        setDouble(index, i == null? Double.NaN : i.doubleValue()); //easier to work with. handles NaN. wide range
     }
 
     /**
@@ -744,7 +854,8 @@ public class CharArray extends PrimitiveArray {
     /**
      * Return a value from the array as a double.
      * FloatArray converts float to double in a simplistic way.
-     * For this variant: Integer source values will be treated as unsigned.
+     * For this variant: Integer source values will be treated as unsigned
+     * (e.g., a ByteArray with -1 returns 255).
      * 
      * @param index the index number 0 ... size-1
      * @return the value as a double. String values are parsed
@@ -757,7 +868,7 @@ public class CharArray extends PrimitiveArray {
     /**
      * Return a value from the array as a double.
      * This "raw" variant leaves missingValue from integer data types
-     * (e.g., ByteArray missingValue=127) AS IS.
+     * (e.g., ByteArray missingValue=127) AS IS (even if maxIsMV=true).
      *
      * <p>All integerTypes overwrite this.
      * 
@@ -781,10 +892,12 @@ public class CharArray extends PrimitiveArray {
     }
 
     /**
-     * Return a value from the array as a String.
+     * Return a value from the array as a String (where the cohort missing value
+     * appears as "", not a value).
      * 
      * @param index the index number 0 .. 
      * @return This returns (int)(ar[index]), or "" for NaN or infinity.
+     *   If this PA is unsigned, this method returns the unsigned value.
      */
     public String getString(int index) {
         char ch = get(index);
@@ -821,7 +934,7 @@ public class CharArray extends PrimitiveArray {
 
     /**
      * Return a value from the array as a String suitable for the data section 
-     * of an tsv file, e.g., z \t \u0000 , \".
+     * of an ASCII tsv file, e.g., z \t \u0000 , \".
      * 
      * @param index the index number 0 ... size-1 
      * @return For numeric types, this returns ("" + ar[index]), or "" if NaN or infinity.
@@ -832,6 +945,22 @@ public class CharArray extends PrimitiveArray {
         if (ch == '\uFFFF')
             return "";
         String s = String2.toJson("" + ch);
+        return s.substring(1, s.length() - 1); //remove enclosing quotes
+    }
+
+    /**
+     * Return a value from the array as a String suitable for the data section 
+     * of a UTF-8 tsv file, e.g., z \t \u0000 , \".
+     * 
+     * @param index the index number 0 ... size-1 
+     * @return For numeric types, this returns ("" + ar[index]), or "" if NaN or infinity.
+     *   CharArray and StringArray overwrite this.
+     */
+    public String getUtf8TsvString(int index) {
+        char ch = get(index);
+        if (ch == '\uFFFF')
+            return "";
+        String s = String2.toJson65536("" + ch);
         return s.substring(1, s.length() - 1); //remove enclosing quotes
     }
 
@@ -855,7 +984,7 @@ public class CharArray extends PrimitiveArray {
     /**
      * Return a value from the array as a String.
      * This "raw" variant leaves missingValue from integer data types 
-     * (e.g., ByteArray missingValue=127) AS IS.
+     * (e.g., ByteArray missingValue=127) AS IS, regardless of maxIsMV.
      * FloatArray and DoubleArray return "" if the stored value is NaN. 
      *
      * <p>All integerTypes overwrite this.
@@ -876,7 +1005,8 @@ public class CharArray extends PrimitiveArray {
      *   with String2.parseInt and narrowed by Math2.narrowToChar(i).
      */
     public void setString(int index, String s) {
-        set(index, firstChar(s));
+        set(index, s == null || s.length() == 0?
+            Character.MAX_VALUE : s.charAt(0));
     }
 
     /**
@@ -906,7 +1036,6 @@ public class CharArray extends PrimitiveArray {
 
     /**
      * This finds the first value which equals 'lookFor' starting at index 'startIndex'.
-     * Here char is treated as an insigned short, so lookFor could be e.g., "65".
      *
      * @param lookFor the value to be looked for
      * @param startIndex 0 ... size-1
@@ -937,7 +1066,6 @@ public class CharArray extends PrimitiveArray {
 
     /**
      * This finds the last value which equals 'lookFor' starting at index 'startIndex'.
-     * Here char is treated as an insigned short, so lookFor could be e.g., "65".
      *
      * @param lookFor the value to be looked for
      * @param startIndex 0 ... size-1. The search progresses towards 0.
@@ -958,19 +1086,11 @@ public class CharArray extends PrimitiveArray {
     /**
      * Test if o is an CharArray with the same size and values.
      *
-     * @param o
+     * @param o the object that will be compared to this CharArray
      * @return true if equal.  o=null returns false.
      */
     public boolean equals(Object o) {
-        if (!(o instanceof CharArray)) //handles o==null
-            return false;
-        CharArray other = (CharArray)o;
-        if (other.size() != size)
-            return false;
-        for (int i = 0; i < size; i++)
-            if (array[i] != other.array[i])
-                return false;
-        return true;
+        return testEquals(o).length() == 0;
     }
 
     /**
@@ -979,18 +1099,18 @@ public class CharArray extends PrimitiveArray {
      *
      * @param o
      * @return a String describing the difference (or "" if equal).
-     *   o=null throws an exception.
+     *   o=null doesn't throw an exception.
      */
     public String testEquals(Object o) {
         if (!(o instanceof CharArray))
             return "The two objects aren't equal: this object is a CharArray; the other is a " + 
-                o.getClass().getName() + ".";
+                (o == null? "null" : o.getClass().getName()) + ".";
         CharArray other = (CharArray)o;
         if (other.size() != size)
             return "The two CharArrays aren't equal: one has " + size + 
                " value(s); the other has " + other.size() + " value(s).";
         for (int i = 0; i < size; i++)
-            if (array[i] != other.array[i])
+            if (getInt(i) != other.getInt(i)) //handles mv
                 return "The two CharArrays aren't equal: this[" + i + "]=" + 
                     getNccsvDataString(i) + //safe char to int type conversion
                                                      "; other[" + i + "]=" + 
@@ -1031,23 +1151,43 @@ public class CharArray extends PrimitiveArray {
 
 
     /**
-     * This compares the values in row1 and row2 for SortComparator,
+     * This compares the values in this.row1 and otherPA.row2
      * and returns a negative integer, zero, or a positive integer if the 
      * value at index1 is less than, equal to, or greater than 
      * the value at index2.
-     * Currently, this does not checking of the range of index1 and index2,
+     * The cohort missing value sorts highest.
+     * Currently, this does not range check index1 and index2,
      * so the caller should be careful.
      *
      * @param index1 an index number 0 ... size-1
+     * @param otherPA the other PrimitiveArray which must be the same (or close) PAType.
      * @param index2 an index number 0 ... size-1
      * @return returns a negative integer, zero, or a positive integer if the 
      *   value at index1 is less than, equal to, or greater than 
      *   the value at index2.  
      *   Think "array[index1] - array[index2]".
      */
-    public int compare(int index1, int index2) {
-        return array[index1] - array[index2];
+    public int compare(int index1, PrimitiveArray otherPA, int index2) {
+        //String2.log(">> compare a=" + String2.annotatedString(getString(index1)) + " b=" + String2.annotatedString(otherPA.getString(index2)));
+        return getString(index1).compareTo(otherPA.getString(index2)); //String handles maxIsMV
     }
+
+    /**
+     * This is like compare(), except for CharArray and StringArray it is caseInsensitive.
+     *
+     * @param index1 an index number 0 ... size-1
+     * @param otherPA the other PrimitiveArray which must be the same (or close) PAType.
+     * @param index2 an index number 0 ... size-1
+     * @return  a negative integer, zero, or a positive integer if the 
+     * value at index1 is less than, equal to, or greater than 
+     * the value at index2.
+     */
+    public int compareIgnoreCase(int index1, PrimitiveArray otherPA, int index2) {
+        return String2.STRING_COMPARATOR_IGNORE_CASE.compare(
+            getString(index1), otherPA.getString(index2));
+    }
+
+
 
     /**
      * This copies the value in row 'from' to row 'to'.
@@ -1206,57 +1346,32 @@ public class CharArray extends PrimitiveArray {
     }
 
     
-    /**
-     * This reads one value from a randomAccessFile.
+    /** 
+     * This writes array[index] to a randomAccessFile at the current position.
      *
      * @param raf the RandomAccessFile
-     * @param start the raf offset of the start of the array (nBytes)
-     * @param index the index of the desired value (0..)
-     * @return the requested value as a double
+     * @param index
      * @throws Exception if trouble
      */
-    public static double rafReadDouble(RandomAccessFile raf, long start, long index) 
-        throws Exception {
- 
-        raf.seek(start + 2*index);
-        char c = raf.readChar();
-        return c == Character.MAX_VALUE? Double.NaN : c;
+    public void writeToRAF(RandomAccessFile raf, int index) throws Exception {
+        raf.writeChar(get(index));
     }
 
-    /**
-     * This writes one value to a randomAccessFile at the current position.
+    /** 
+     * This reads one value from a randomAccessFile at the current position
+     * and adds it to the PrimitiveArraay.
      *
      * @param raf the RandomAccessFile
-     * @param value the value which will be converted to this PrimitiveArray's 
-     *    type and then stored
      * @throws Exception if trouble
      */
-    public static void rafWriteDouble(RandomAccessFile raf, double value) throws Exception {
-        raf.writeChar(Math2.roundToChar(value));
+    public void readFromRAF(RandomAccessFile raf) throws Exception {
+        add(raf.readChar());
     }
-
-    /**
-     * This writes one value to a randomAccessFile.
-     *
-     * @param raf the RandomAccessFile
-     * @param start the raf offset of the start of the array (nBytes)
-     * @param index the index of the desired value (0..)
-     * @param value the value which will be converted to this PrimitiveArray's 
-     *    type and then stored
-     * @throws Exception if trouble
-     */
-    public static void rafWriteDouble(RandomAccessFile raf, long start, long index,
-        double value) throws Exception {
- 
-        raf.seek(start + 2*index);
-        raf.writeChar(Math2.roundToChar(value));
-    }
-
 
     /**
      * This appends the data in another pa to the current data.
      * WARNING: information may be lost from the incoming pa if this
-     * primitiveArray is of a simpler type.
+     * primitiveArray is of a smaller type; see needPAType().
      *
      * @param pa pa must be the same or a narrower 
      *  data type, or the data will be narrowed with Math2.narrowToChar.
@@ -1266,14 +1381,14 @@ public class CharArray extends PrimitiveArray {
         ensureCapacity(size + (long)otherSize);
         if (pa instanceof CharArray) {
             System.arraycopy(((CharArray)pa).array, 0, array, size, otherSize);
-        } else if (pa instanceof StringArray) {
+            size += otherSize;
+        } else if (pa.elementType() == PAType.STRING) {
             for (int i = 0; i < otherSize; i++)
-                array[size + i] = firstChar(pa.getString(i)); 
+                addString(pa.getString(i)); 
         } else {
             for (int i = 0; i < otherSize; i++)
-                array[size + i] = Math2.narrowToChar(pa.getInt(i)); //this converts mv's
+                addInt(pa.getInt(i)); //this converts mv's and handles maxIsMV
         }
-        size += otherSize; //do last to minimize concurrency problems
     }    
 
     /**
@@ -1284,20 +1399,22 @@ public class CharArray extends PrimitiveArray {
      * primitiveArray is of a simpler type.
      *
      * @param pa if pa is a bigger data type, the data will be narrowed with Math2.narrowToChar.
+     *   If pa is numeric, the values are treated as character numbers.
      */
     public void rawAppend(PrimitiveArray pa) {
         int otherSize = pa.size(); 
         ensureCapacity(size + (long)otherSize);
         if (pa instanceof CharArray) {
             System.arraycopy(((CharArray)pa).array, 0, array, size, otherSize);
-        } else if (pa instanceof StringArray) {
+            size += otherSize; //do last to minimize concurrency problems
+        } else if (pa.elementType() == PAType.STRING) {
             for (int i = 0; i < otherSize; i++)
-                array[size + i] = firstChar(pa.getString(i)); 
+                addString(pa.getString(i)); //this DOES convert mv's
         } else {            
             for (int i = 0; i < otherSize; i++) 
                 array[size + i] = Math2.narrowToChar(pa.getRawInt(i)); //this DOESN'T convert mv's
+            size += otherSize; //do last to minimize concurrency problems
         }
-        size += otherSize; //do last to minimize concurrency problems
     }    
 
     /**
@@ -1387,12 +1504,13 @@ public class CharArray extends PrimitiveArray {
     /**
      * This changes all instances of the first value to the second value.
      *
-     * @param tFrom the original value (use "" or "NaN"  for standard missingValue)
-     * @param tTo   the new value (use "" or "NaN"  for standard missingValue)
+     * @param tFrom the original value (use "" for standard missingValue)
+     * @param tTo   the new value (use "" for standard missingValue)
      * @return the number of values switched
      */
     public int switchFromTo(String tFrom, String tTo) {
         char from = firstChar(tFrom);
+        boolean toIsMV = tTo.length() == 0;
         char to   = firstChar(tTo);
         if (from == to)
             return 0;
@@ -1427,7 +1545,7 @@ public class CharArray extends PrimitiveArray {
                     //safe char to int type conversion
             }
         }
-        if (array[size - 1] == Character.MAX_VALUE) 
+        if (isMissingValue(size - 1)) 
             return MessageFormat.format(ArrayNotAscending, getClass().getSimpleName(),
                  "[" + (size-1) + "]=(" + ArrayMissingValue + ")");
         return "";
@@ -1444,7 +1562,7 @@ public class CharArray extends PrimitiveArray {
     public String isDescending() {
         if (size == 0)
             return "";
-        if (array[0] == Character.MAX_VALUE) 
+        if (isMissingValue(0)) 
             return MessageFormat.format(ArrayNotDescending, getClass().getSimpleName(), 
                 "[0]=(" + ArrayMissingValue + ")");
         for (int i = 1; i < size; i++) {
@@ -1482,11 +1600,12 @@ public class CharArray extends PrimitiveArray {
      */
     public int[] getNMinMaxIndex() {
         int n = 0, tmini = -1, tmaxi = -1;
-        int tmin = Character.MAX_VALUE - 1;
+        int tmin = Character.MAX_VALUE;
         int tmax = 0;
         for (int i = 0; i < size; i++) {
             int v = array[i];
-            if (v != Character.MAX_VALUE) {
+            if (v == Character.MAX_VALUE) {
+            } else {
                 n++;
                 if (v <= tmin) {tmini = i; tmin = v; }
                 if (v >= tmax) {tmaxi = i; tmax = v; }
@@ -1500,14 +1619,17 @@ public class CharArray extends PrimitiveArray {
      *
      * @throws Throwable if trouble.
      */
-    public static void test() throws Throwable{
-        String2.log("*** Testing CharArray");
-/* for releases, this line should have open/close comment */
+    public static void basicTest() throws Throwable{
+        String2.log("*** CharArray.basicTest");
+
+        CharArray anArray = CharArray.fromCSV(       "\"\\t\", a, \"\\n\", \"\\u20AC\", ,  \"\\uffff\" ");
+        Test.ensureEqual(anArray.toString(),         "\\t, a, \\n, \\u20ac, \\uffff, \\uffff", "");
+        Test.ensureEqual(anArray.toNccsvAttString(), "\"'\\t'\",\"'a'\",\"'\\n'\",\"'\\u20ac'\",\"'\\uffff'\",\"'\\uffff'\"", "");
 
         //** test default constructor and many of the methods
-        CharArray anArray = new CharArray();
+        anArray = new CharArray();
         Test.ensureEqual(anArray.isIntegerType(), false, "");
-        Test.ensureEqual(anArray.missingValue(), 65535, "");
+        Test.ensureEqual(anArray.missingValue().getRawDouble(), 65535, "");
         anArray.addString("");
         Test.ensureEqual(anArray.get(0),               (char)65535, "");
         Test.ensureEqual(anArray.getRawInt(0),         65535, "");
@@ -1520,31 +1642,6 @@ public class CharArray extends PrimitiveArray {
         Test.ensureEqual(anArray.getString(0), "", "");
         anArray.clear();
 
-        //unsignedFactory, which uses unsignedAppend
-        anArray = (CharArray)unsignedFactory(char.class, 
-            new CharArray(new char[] {0, 1, 65, 252, Character.MAX_VALUE, Character.MIN_VALUE}));
-        Test.ensureEqual(anArray.toString(), 
-            "\\u0000, \\u0001, A, \\u00fc, \\uffff, \\u0000", ""); // -> mv
-        anArray.clear();        
-
-        anArray = (CharArray)unsignedFactory(char.class, 
-            new ByteArray(new byte[] {0, 1, 65, (byte)252, Byte.MAX_VALUE, Byte.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), 
-            "\\u0000, \\u0001, A, \\u00fc, \\u007f, \\u0080, \\u00ff", "");
-        anArray.clear();        
-
-        anArray = (CharArray)unsignedFactory(char.class, 
-            new ShortArray(new short[] {0, 1, 65, 252, Short.MAX_VALUE, Short.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), 
-            "\\u0000, \\u0001, A, \\u00fc, \\u7fff, \\u8000, \\uffff", "");
-        anArray.clear();        
-
-        anArray = (CharArray)unsignedFactory(char.class, 
-            new IntArray(new int[] {0, 1, 65, 252, Integer.MAX_VALUE, Integer.MIN_VALUE, -1}));
-        Test.ensureEqual(anArray.toString(), 
-            "\\u0000, \\u0001, A, \\u00fc, \\uffff, \\uffff, \\uffff", ""); // ->mv
-        anArray.clear();        
-
         Test.ensureEqual(anArray.size(), 0, "");
         anArray.add('z');
         Test.ensureEqual(anArray.size(), 1, "");
@@ -1553,7 +1650,7 @@ public class CharArray extends PrimitiveArray {
         Test.ensureEqual(anArray.getFloat(0), 122, "");
         Test.ensureEqual(anArray.getDouble(0), 122, "");
         Test.ensureEqual(anArray.getString(0), "z", "");
-        Test.ensureEqual(anArray.elementClass(), char.class, "");
+        Test.ensureEqual(anArray.elementType(), PAType.CHAR, "");
         char tArray[] = anArray.toArray();
         Test.ensureEqual(tArray, new char[]{'z'}, "");
 
@@ -1724,6 +1821,8 @@ public class CharArray extends PrimitiveArray {
         //test equals
         CharArray anArray2 = new CharArray();
         anArray2.add('a'); 
+        Test.ensureEqual(anArray.testEquals(null), 
+            "The two objects aren't equal: this object is a CharArray; the other is a null.", "");
         Test.ensureEqual(anArray.testEquals("A String"), 
             "The two objects aren't equal: this object is a CharArray; the other is a java.lang.String.", "");
         Test.ensureEqual(anArray.testEquals(anArray2), 
@@ -1756,6 +1855,8 @@ public class CharArray extends PrimitiveArray {
         anArray.append(new StringArray(new String[]{"", "9"}));
         Test.ensureEqual(anArray.toDoubleArray(), new double[]{1, 5, 2, Double.NaN, 57}, "");
         anArray2 = (CharArray)anArray.clone();
+        Test.ensureEqual(anArray.getMaxIsMV(), true, "");
+        Test.ensureEqual(anArray2.getMaxIsMV(), true, "");
         Test.ensureEqual(anArray2.toDoubleArray(), new double[]{1, 5, 2, Double.NaN, 57}, "");
 
         //test move
@@ -1839,13 +1940,15 @@ public class CharArray extends PrimitiveArray {
         Test.ensureEqual(anArray.isEvenlySpaced(), 
             "CharArray isn't evenly spaced: [0]=10.0, [1]=20.0, spacing=10.0, average spacing=10.5.", "");
         Test.ensureEqual(anArray.smallestBiggestSpacing(),
-            "  smallest spacing=10.0: [0]=10.0, [1]=20.0\n" +
-            "  biggest  spacing=11.0: [1]=20.0, [2]=31.0", "");
+            "    smallest spacing=10.0: [0]=10.0, [1]=20.0\n" +
+            "    biggest  spacing=11.0: [1]=20.0, [2]=31.0", "");
 
         //isAscending
         anArray = new CharArray(new char[] {10,10,30});
+        Test.ensureEqual(anArray.getMaxIsMV(), true, "");
         Test.ensureEqual(anArray.isAscending(), "", "");
         anArray.set(2, Character.MAX_VALUE);
+        Test.ensureEqual(anArray.getMaxIsMV(), true, "");
         Test.ensureEqual(anArray.isAscending(), 
             "CharArray isn't sorted in ascending order: [2]=(missing value).", "");
         anArray.set(1, (char)9);
@@ -1856,6 +1959,7 @@ public class CharArray extends PrimitiveArray {
         anArray = new CharArray(new char[] {30,10,10});
         Test.ensureEqual(anArray.isDescending(), "", "");
         anArray.set(2, Character.MAX_VALUE);
+        anArray.setMaxIsMV(true);
         Test.ensureEqual(anArray.isDescending(), 
             "CharArray isn't sorted in descending order: [1]=#10 < [2]=#65535.", "");
         anArray.set(1, (char)35);
@@ -1888,19 +1992,66 @@ public class CharArray extends PrimitiveArray {
 
         //min max
         anArray = new CharArray();
-        anArray.addString(anArray.MINEST_VALUE());
-        anArray.addString(anArray.MAXEST_VALUE());
+        anArray.addPAOne(anArray.MINEST_VALUE());
+        anArray.addPAOne(anArray.MAXEST_VALUE());
         anArray.addString("");
         Test.ensureEqual(anArray.getString(0), "\u0000", "");
         Test.ensureEqual(anArray.getString(1), "\uFFFE", "");
         Test.ensureEqual(anArray.getString(2), "", "");
 
         //tryToFindNumericMissingValue() 
-        Test.ensureEqual((new CharArray(new char[] {                   })).tryToFindNumericMissingValue(), Double.NaN, "");
-        Test.ensureEqual((new CharArray(new char[] {'1', '2'           })).tryToFindNumericMissingValue(), Double.NaN, "");
-        Test.ensureEqual((new CharArray(new char[] {Character.MIN_VALUE})).tryToFindNumericMissingValue(), Character.MIN_VALUE, "");
-        Test.ensureEqual((new CharArray(new char[] {Character.MAX_VALUE})).tryToFindNumericMissingValue(), Character.MAX_VALUE, "");
-        Test.ensureEqual((new CharArray(new char[] {'1', '\uffff'      })).tryToFindNumericMissingValue(), Double.NaN, "");
+        Test.ensureEqual((new CharArray(new char[] {                   })).tryToFindNumericMissingValue(), null, "");
+        Test.ensureEqual((new CharArray(new char[] {'1', '2'           })).tryToFindNumericMissingValue(), null, "");
+        Test.ensureEqual((new CharArray(new char[] {Character.MIN_VALUE})).tryToFindNumericMissingValue(), PAOne.fromChar(Character.MIN_VALUE), "");
+        anArray = new CharArray(new char[] {Character.MAX_VALUE});
+        Test.ensureEqual(anArray.getMaxIsMV(), true, "");
+        PAOne paOne1 = anArray.tryToFindNumericMissingValue();
+        Test.ensureEqual(paOne1.pa().getMaxIsMV(), true, "");
+        PAOne paOne2 = PAOne.fromChar(Character.MAX_VALUE);
+        Test.ensureEqual(paOne2.pa().getMaxIsMV(), true, "");
+        Test.ensureEqual(paOne1, paOne2, "");
+        Test.ensureEqual((new CharArray(new char[] {'1', '\uffff'      })).tryToFindNumericMissingValue(), paOne2, "");
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ CharArray.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

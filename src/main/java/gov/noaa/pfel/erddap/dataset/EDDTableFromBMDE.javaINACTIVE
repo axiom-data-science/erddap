@@ -95,6 +95,7 @@ public class EDDTableFromBMDE extends EDDTable{
         ArrayList tDataVariables = new ArrayList();
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -138,6 +139,8 @@ public class EDDTableFromBMDE extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -148,7 +151,7 @@ public class EDDTableFromBMDE extends EDDTable{
 
         return new EDDTableFromBMDE(tDatasetID, tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere, tGlobalAttributes,
             ttDataVariables, tReloadEveryNMinutes, tLocalSourceUrl, tSourceCode);
     }
 
@@ -214,7 +217,7 @@ public class EDDTableFromBMDE extends EDDTable{
      *      <li> a java.time.format.DateTimeFormatter string
      *        (which is compatible with java.text.SimpleDateFormat) describing how to interpret 
      *        string times  (e.g., the ISO8601TZ_FORMAT "yyyy-MM-dd'T'HH:mm:ssZ", see 
-     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/DateTimeFomatter.html or 
+     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/format/DateTimeFomatter.html or 
      *        https://docs.oracle.com/javase/8/docs/api/index.html?java/text/SimpleDateFormat.html)).
      *      </ul>
      * @param tReloadEveryNMinutes indicates how often the source should
@@ -230,7 +233,7 @@ public class EDDTableFromBMDE extends EDDTable{
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix;
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         Object tDataVariables[][],
         int tReloadEveryNMinutes,
@@ -399,14 +402,18 @@ public class EDDTableFromBMDE extends EDDTable{
             }
         }
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
-            (reallyVerbose? "\n" + toString() : "") +
+            (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableFromBMDE " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -444,7 +451,7 @@ public class EDDTableFromBMDE extends EDDTable{
             int dv = String2.indexOf(dataVariableSourceNames(), constraintVariable);
             EDV edv = dataVariables[dv];
 
-            if (edv.sourceDataTypeClass() == String.class &&
+            if (edv.sourceDataPAType() == PAType.STRING &&
                 String2.indexOf(GTLT_OPERATORS, constraintOps.get(c)) >= 0) {
                 //remove >, >=, <, <= ops for String variables
                 constraintVariables.remove(c);
@@ -667,7 +674,7 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
 "    Float64 Northernmost_Northing 38.5;\n" +
 "    String sourceUrl \"http://digir.prbo.org/digir/DiGIR.php\";\n" +
 "    Float64 Southernmost_Northing 36.5;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v29\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
 "    String summary \"Shorebird observation data from the Southeast Farallon Island from the PRBO Conservation Service.\n" +
 "\n" +
 "DiGIR is an engine which takes XML requests for data and returns a data\n" +
@@ -781,19 +788,47 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromBMDE.test()\n");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDTableFromBMDE.test(" + interactive + ") test=";
 
-        //usually run
-        testPrbo();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        //not usually run     see comments in testAllVars
-        //testAllVariables("http://digir.prbo.org/digir/DiGIR.php", "prbo05", "2002-07-01", "2002-09-01");
+                } else {
+                    if (test ==  0) testPrbo();
 
+                    //not usually run     see comments in testAllVars
+                    //if (test == 1000) testAllVariables("http://digir.prbo.org/digir/DiGIR.php", "prbo05", "2002-07-01", "2002-09-01");
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

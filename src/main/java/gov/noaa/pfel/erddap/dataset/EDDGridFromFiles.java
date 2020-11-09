@@ -9,6 +9,8 @@ import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.LongArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.ShortArray;
 import com.cohort.array.StringArray;
@@ -19,6 +21,7 @@ import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
+import com.cohort.util.Units2;
 
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.FileVisitorDNLS;
@@ -28,7 +31,6 @@ import gov.noaa.pfel.coastwatch.util.WatchDirectory;
 
 import gov.noaa.pfel.erddap.Erddap;
 import gov.noaa.pfel.erddap.util.EDStatic;
-import gov.noaa.pfel.erddap.util.EDUnits;
 import gov.noaa.pfel.erddap.variable.*;
 
 import java.io.FileWriter;
@@ -106,7 +108,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
     protected String   axis0TimeZoneString = null;
     protected TimeZone axis0TimeZone = null;
     protected DateTimeFormatter axis0DateTimeFormatter = null;  //java.time (was Joda)
-    protected Class    axis0Class = double.class; //the default
+    protected PAType    axis0PAType = PAType.DOUBLE; //the default
     protected String   axis0Regex = "(.*)";       //the default
     protected Pattern  axis0RegexPattern = null;  //from regex
     protected int      axis0CaptureGroup = 1;     //the default
@@ -182,7 +184,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         String tFileNameRegex = ".*";
         boolean tRecursive = false;
         String tPathRegex = ".*";
-        boolean tAccessibleViaFiles = false;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         String tMetadataFrom = MF_LAST;       
         int tMatchAxisNDigits = DEFAULT_MATCH_AXIS_N_DIGITS;
         String tDefaultDataQuery = null;
@@ -477,6 +479,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         matchAxisNDigits = tMatchAxisNDigits;
         int nav = tAxisVariables.length;
         int ndv = tDataVariables.length;
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles;
         nThreads = tnThreads; //interpret invalid values (like -1) as EDStatic.nGridThreads
         dimensionValuesInMemory = tDimensionValuesInMemory; 
 
@@ -553,8 +556,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                                     Calendar2.makeDateTimeFormatter(axis0TimeFormat, axis0TimeZoneString);
                                 tp = "double";
                             } //otherwise it should be a primitive type, e.g., double
-                            axis0Class = PrimitiveArray.elementStringToClass(tp);
-                            if (axis0Class == String.class)
+                            axis0PAType = PAType.fromCohortString(tp);
+                            if (axis0PAType == PAType.STRING)
                                 throw new IllegalArgumentException(
                                     "Axis variables can't be Strings.");
                         }
@@ -574,7 +577,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                         if (verbose)
                             String2.log("axis0 " + parts.get(0) + 
                                 " format=" + axis0TimeFormat +
-                                " class=" + axis0Class +
+                                " class=" + axis0PAType +
                                 " regex=" + axis0Regex +
                                 " captureGroup=" + axis0CaptureGroup);
                     } else {
@@ -694,8 +697,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         IntArray    ftStartIndex = (IntArray)   fileTable.getColumn(FT_START_INDEX_COL);
 
         //get sourceAxisValues and sourceAxisAttributes from an existing file (if any)
-        //first one (if any) should succeed
-        for (int i = 0; i < ftFileList.size(); i++) {
+        //Last one should succeed and has newest (most?) data variables.
+        for (int i = ftFileList.size() - 1; i >= 0; i--) {
             String tDir  = dirList.get(ftDirIndex.get(i));
             String tName = ftFileList.get(i);
 
@@ -711,12 +714,13 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     sourceAxisNames, sourceDataNames, sourceDataTypes,
                     tSourceGlobalAttributes, tSourceAxisAttributes, tSourceDataAttributes);
                 PrimitiveArray tSourceAxisValues[] = 
-                    getSourceAxisValues(tDir, tName, sourceAxisNames);
+                    getSourceAxisValues(tDir, tName, sourceAxisNames, sourceDataNames);
                 //sets haveValidSourceInfo=true if okay; throws Exception if not
                 validateCompareSet(tDir, tName,
                     tSourceGlobalAttributes, 
                     tSourceAxisAttributes, tSourceAxisValues,
                     tSourceDataAttributes); 
+                if (verbose) String2.log("got sample metadata from " + tDir + tName);
                 break; //successful, no need to continue
             } catch (Throwable t) {
                 String reason = MustBe.throwableToShortString(t); 
@@ -852,7 +856,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             elapsedTime = System.currentTimeMillis();
             fileTable.leftToRightSort(2);   //lexical sort so can walk through below
             tFileTable.leftToRightSort(2);  //lexical sort so can walk through below
-            if (verbose) String2.log("sortTime=" + (System.currentTimeMillis() - elapsedTime) + "ms");
+            if (reallyVerbose) String2.log("sortTime=" + (System.currentTimeMillis() - elapsedTime) + "ms");
 
             //remove any files in fileTable not in tFileTable  (i.e., the file was deleted)
             //I can step through fileTable and tFileTable since both sorted same way
@@ -1011,7 +1015,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     nReadFile++;
                     long rfcTime = System.currentTimeMillis();
                     PrimitiveArray[] tSourceAxisValues = getSourceAxisValues(
-                        dirList.get(tDirI), tFileS, sourceAxisNames);
+                        dirList.get(tDirI), tFileS, sourceAxisNames, sourceDataNames);
                     readFileCumTime += System.currentTimeMillis() - rfcTime;
 
                     //test that all axisVariable and dataVariable units are identical
@@ -1063,7 +1067,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             //sort fileTable by FT_MIN_COL
             elapsedTime = System.currentTimeMillis();
             fileTable.sort(new int[]{FT_MIN_COL}, new boolean[]{true});
-            if (verbose) String2.log("2nd sortTime=" + (System.currentTimeMillis() - elapsedTime) + "ms");
+            if (reallyVerbose) String2.log("2nd sortTime=" + (System.currentTimeMillis() - elapsedTime) + "ms");
 
             msg = "\n  tFileNamePA.size=" + tFileNamePA.size() + 
                 "\n  dirTable.nRows=" + dirTable.nRows() +
@@ -1086,7 +1090,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
 
         //finish up, validate, and (if !quickRestart) save dirTable, fileTable, badFileMap
         PrimitiveArray sourceAxisValues0 = PrimitiveArray.factory(
-            sourceAxisValues[0].elementClass(), 
+            sourceAxisValues[0].elementType(), 
             ftDirIndex.size(), //size is a guess: the minimum possible, but usually correct
             false); //not active
         updateValidateFileTable(dirList, ftDirIndex, ftFileList,
@@ -1165,9 +1169,9 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         if (timeIndex == 0) {
             EDVTimeGridAxis tga = (EDVTimeGridAxis)axisVariables[0];
             combinedGlobalAttributes.add("time_coverage_start", 
-                tga.destinationToString(tga.destinationMin()));
+                tga.destinationToString(tga.destinationMinDouble()));
             combinedGlobalAttributes.add("time_coverage_end", 
-                tga.destinationToString(tga.destinationMax()));
+                tga.destinationToString(tga.destinationMaxDouble()));
         }
 
         //make the dataVariables[]
@@ -1188,18 +1192,12 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 throw new RuntimeException(errorInMethod +
                     "No EDDGrid dataVariable may have destinationName=" + EDV.TIME_NAME);
             else if (EDVTime.hasTimeUnits(tSourceAtt, tAddAtt)) 
-                dataVariables[dv] = new EDVTimeStamp(tSourceName, tDestName,
+                dataVariables[dv] = new EDVTimeStamp(datasetID, tSourceName, tDestName,
                     tSourceAtt, tAddAtt, tSourceType);  
-            else dataVariables[dv] = new EDV(tSourceName, tDestName, 
-                tSourceAtt, tAddAtt, tSourceType, Double.NaN, Double.NaN); 
+            else dataVariables[dv] = new EDV(datasetID, tSourceName, tDestName, 
+                tSourceAtt, tAddAtt, tSourceType, 
+                PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
             dataVariables[dv].setActualRangeFromDestinationMinMax();
-        }
-
-        //accessibleViaFiles
-        if (EDStatic.filesActive && tAccessibleViaFiles) {
-            accessibleViaFilesDir = fileDir;
-            accessibleViaFilesRegex = fileNameRegex;
-            accessibleViaFilesRecursive = recursive;
         }
 
         //ensure the setup is valid
@@ -1228,10 +1226,11 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         }
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridFromFiles " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -1336,7 +1335,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 //be less strict?
                 PrimitiveArray exp = sourceAxisValues[av];
                 PrimitiveArray obs = tSourceAxisValues[av];
-                String eqError = exp.almostEqual(obs, matchAxisNDigits);
+                String eqError = obs.almostEqual(exp, matchAxisNDigits);
                 if (eqError.length() > 0)
                     throw new RuntimeException(
                         "axis[" + av + "]=" + sourceAxisNames.get(av) +
@@ -1350,7 +1349,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 Attributes  saAtt =  sourceAxisAttributes[avi];
                 String emsg2 = " for sourceName=" + sourceAxisNames.get(avi) + " are different.";
                 double d1, d2;
-                
+               
                 d1 = tsaAtt.getDouble("add_offset");
                 d2 =  saAtt.getDouble("add_offset");
                 Test.ensureEqual(Double.isNaN(d1)? 0: d1,
@@ -1373,7 +1372,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 
                 String observedUnits = tsaAtt.getString("units");
                 String expectedUnits =  saAtt.getString("units");
-                if (!EDUnits.udunitsAreEquivalent(observedUnits, expectedUnits))
+                if (!Units2.udunitsAreEquivalent(observedUnits, expectedUnits))
                     Test.ensureEqual(observedUnits, expectedUnits,
                         emsg1 + "units" + emsg2);
             }
@@ -1384,6 +1383,19 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 Attributes tsdAtt = tSourceDataAttributes[dvi];
                 Attributes  sdAtt =  sourceDataAttributes[dvi];
                 String emsg2 = " for sourceName=" + sourceDataNames.get(dvi) + " are different.";
+
+                //Deal with obs or exp file not having a variable, 
+                //  but I still want to allow this file in collection.
+                //A not perfect solution: if 0 attributes, assume no var in file.
+                //  So copy atts from other.
+                //  This way, a file missing a var can be first or subsequent file read.
+                int ntsdAtt = tsdAtt.size();
+                int  nsdAtt =  sdAtt.size();
+                if (ntsdAtt == 0 && nsdAtt > 0) 
+                     tsdAtt.set(     sdAtt);
+                else if (nsdAtt == 0 && ntsdAtt > 0) 
+                          sdAtt.set(     tsdAtt);
+
                 Test.ensureEqual(tsdAtt.getDouble("add_offset"),
                                   sdAtt.getDouble("add_offset"),
                     emsg1 + "add_offset"    + emsg2);
@@ -1398,7 +1410,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     emsg1 + "scale_factor"  + emsg2);
                 String observedUnits = tsdAtt.getString("units");
                 String expectedUnits =  sdAtt.getString("units");
-                if (!EDUnits.udunitsAreEquivalent(observedUnits, expectedUnits))
+                if (!Units2.udunitsAreEquivalent(observedUnits, expectedUnits))
                     Test.ensureEqual(observedUnits, expectedUnits,
                         emsg1 + "units" + emsg2);
             }
@@ -1554,7 +1566,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     getSourceMetadata(dirName, fileName,
                         sourceAxisNames, sourceDataNames, sourceDataTypes,
                         tSourceGlobalAttributes, tSourceAxisAttributes, tSourceDataAttributes);
-                    tSourceAxisValues = getSourceAxisValues(dirName, fileName, sourceAxisNames);
+                    tSourceAxisValues = getSourceAxisValues(dirName, fileName, 
+                        sourceAxisNames, sourceDataNames);
                     validateCompareSet( //throws Exception (with fileName) if not compatible
                         dirName, fileName,
                         tSourceGlobalAttributes,
@@ -1600,8 +1613,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     //Insert row in tFileTable for this valid file.
                     //Use exact binary search.  AlmostEquals isn't a problem. 
                     //  If file was in tFileTable, it is gone now (above).
-                    double tMin = tSourceAxisValues[0].getDouble(0);
-                    int fileListPo = ftMin.binaryFindFirstGE(0, ftMin.size() - 1, tMin); 
+                    int fileListPo = ftMin.binaryFindFirstGE(0, ftMin.size() - 1, 
+                        new PAOne(tSourceAxisValues[0], 0)); 
                     if (verbose)
                         String2.log(msg + 
                             (wasInFileTable? "updated a file in" : "added a file to") + 
@@ -1682,7 +1695,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             //first, change local info only
             //finish up, validate, and save dirTable, fileTable, badFileMap
             PrimitiveArray sourceAxisValues0 = PrimitiveArray.factory(
-                axisVariables[0].sourceValues().elementClass(), 
+                axisVariables[0].sourceValues().elementType(), 
                 ftDirIndex.size(), //size is a guess: the minimum possible, but usually correct
                 false); //not active
             updateValidateFileTable(dirList, ftDirIndex, ftFileList,
@@ -1727,6 +1740,33 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 " nChangesMade=" + nChanges + 
                 " time=" + (System.currentTimeMillis() - startLowUpdate) + "ms");
         return nChanges > 0;
+    }
+
+    /**
+     * This is the default implementation of getFileInfo, which
+     * gets file info from a locally accessible directory.
+     * This is called in the middle of the constructor.
+     * Some subclasses overwrite this.
+     *
+     * @param recursive true if the file search should also search subdirectories
+     * @return a table with columns with DIR, NAME, LASTMOD, and SIZE columns;
+     * @throws Throwable if trouble
+     */
+    public Table getFileInfo(String fileDir, String fileNameRegex, boolean recursive, 
+        String pathRegex) throws Throwable {
+        //String2.log("EDDTableFromFiles getFileInfo");
+
+        //if temporary cache system active, make it look like all remote files are in local dir
+        if (cacheFromUrl != null && cacheMaxSizeB > 0) {
+            Table table = FileVisitorDNLS.oneStepCache(cacheFromUrl, //throws IOException
+                fileDir, fileNameRegex, recursive, pathRegex, false); //dirsToo
+            if (table.nRows() == 0) 
+                throw new Exception("No matching files at " + cacheFromUrl);
+            return table;
+        }
+         
+        return FileVisitorDNLS.oneStep(fileDir, fileNameRegex, recursive, pathRegex,
+            false); //dirsToo
     }
 
     /** 
@@ -1777,33 +1817,6 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         return tFileTable;
     }
 
-    /**
-     * This is the default implementation of getFileInfo, which
-     * gets file info from a locally accessible directory.
-     * This is called in the middle of the constructor.
-     * Some subclasses overwrite this.
-     *
-     * @param recursive true if the file search should also search subdirectories
-     * @return a table with columns with DIR, NAME, LASTMOD, and SIZE columns;
-     * @throws Throwable if trouble
-     */
-    public Table getFileInfo(String fileDir, String fileNameRegex, boolean recursive, 
-        String pathRegex) throws Throwable {
-        //String2.log("EDDTableFromFiles getFileInfo");
-
-        //if temporary cache system active, make it look like all remote files are in local dir
-        if (cacheFromUrl != null && cacheMaxSizeB > 0) {
-            Table table = FileVisitorDNLS.oneStepCache(cacheFromUrl, //throws IOException
-                fileDir, fileNameRegex, recursive, pathRegex, false); //dirsToo
-            if (table.nRows() == 0) 
-                throw new Exception("No matching files at " + cacheFromUrl);
-            return table;
-        }
-         
-        return FileVisitorDNLS.oneStep(fileDir, fileNameRegex, recursive, pathRegex,
-            false); //dirsToo
-    }
-
     /** 
      * Try to load the dirTable or fileTable.
      *
@@ -1835,19 +1848,22 @@ public abstract class EDDGridFromFiles extends EDDGrid{
     }
 
     /** 
-     * This returns a fileTable (formatted like 
-     * FileVisitorDNLS.oneStep(tDirectoriesToo=false, size is LongArray,
-     * and last_mod is LongArray of epochMillis)
+     * This returns a fileTable
      * with valid files (or null if unavailable or any trouble).
      * This is a copy of any internal data, so client can modify the contents.
      *
      * @param nextPath is the partial path (with trailing slash) to be appended 
      *   onto the local fileDir (or wherever files are, even url).
      * @return null if trouble,
-     *   or Object[2] where [0] is a sorted DNLS table which just has files in fileDir + nextPath and 
-     *   [1] is a sorted String[] with the short names of directories that are 1 level lower.
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
      */
     public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
         try {
             //get a copy of the source file information
             Table tDirTable  = getDirTableCopy(); 
@@ -1867,7 +1883,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
 
             //remove files other than fileDir+nextPath and generate array of immediate subDir names
             String subDirs[] = FileVisitorDNLS.reduceDnlsTableToOneDir(dnlsTable, fileDir + nextPath);
-            return new Object[]{dnlsTable, subDirs};
+            accessibleViaFilesMakeReadyForUser(dnlsTable);
+            return new Object[]{dnlsTable, subDirs, fileDir + nextPath};
 
         } catch (Exception e) {
             String2.log(MustBe.throwableToString(e));
@@ -1875,6 +1892,53 @@ public abstract class EDDGridFromFiles extends EDDGrid{
         }
     }
 
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+     public String accessibleViaFilesGetLocal(String relativeFileName) {
+        //identical code in EDDGridFromFiles and EDDTableFromFiles
+        if (!accessibleViaFiles)
+             return null;
+        String msg = datasetID() + " accessibleViaFilesGetLocal(" + relativeFileName + "): ";
+
+        try {
+            String fullName = fileDir + relativeFileName;
+            String localDir   = File2.getDirectory(fullName);
+            String nameAndExt = File2.getNameAndExtension(fullName);
+
+            //ensure that fullName is in file list
+
+            //get dir index
+            Table dirTable  = getDirTable();  //no need to get copy since not changing it
+            Table fileTable = getFileTable(); //no need to get copy since not changing it 
+            PrimitiveArray dirNames = dirTable.getColumn(0); //the only column
+            int dirIndex = dirNames.indexOf(localDir);
+            if (dirIndex < 0) {
+                String2.log(msg + "localDir=" + localDir + " not in dirTable.");
+                return null;
+            }
+
+            //get file index
+            ShortArray  dirIndexCol = (ShortArray)fileTable.getColumn(FT_DIR_INDEX_COL);
+            StringArray fileNameCol = (StringArray)fileTable.getColumn(FT_FILE_LIST_COL);
+            int n = dirIndexCol.size();
+            for (int i = 0; i < n; i++) {
+                if (dirIndexCol.get(i) == dirIndex &&
+                    fileNameCol.get(i).equals(nameAndExt))
+                    return fullName; //it's a valid file in the fileTable
+            }                   
+            String2.log(msg + "fullName=" + localDir + " not in dirTable+fileTable.");
+            return null;
+        } catch (Exception e) {
+            String2.log(msg + "\n" +
+                MustBe.throwableToString(e));
+            return null;
+        }
+     }
 
     /**
      * If using temporary cache system, this ensure file is in cache or throws Exception.
@@ -2008,6 +2072,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      * @param tFileName
      * @param sourceAxisNames the names of the desired source axis variables.
      *   If there is a special axis0, this will still be the full list.
+     * @param sourceDataNames When there are unnamed dimensions, this is
+     *   to find out the shape of the variable to make index values 0, 1, size-1.
      * @return a PrimitiveArray[] with the results (with the requested sourceDataTypes).
      *   It needn't set sourceGlobalAttributes or sourceDataAttributes
      *   (but see getSourceMetadata).
@@ -2015,7 +2081,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      *   If there is trouble, this doesn't call addBadFile or requestReloadASAP().
      */
     public PrimitiveArray[] getSourceAxisValues(String tFileDir, String tFileName, 
-        StringArray sourceAxisNames) throws Throwable {
+        StringArray sourceAxisNames, StringArray sourceDataNames) throws Throwable {
 
 
         //common case: nothing special
@@ -2025,7 +2091,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             String decompFullName = FileVisitorDNLS.decompressIfNeeded(
                 tFileDir + tFileName, fileDir, decompressedDirectory(), 
                 EDStatic.decompressedCacheMaxGB, true); //reuseExisting
-            return lowGetSourceAxisValues(decompFullName, sourceAxisNames);
+            return lowGetSourceAxisValues(decompFullName, sourceAxisNames, sourceDataNames);
         }
         
         //special axis0?  ***fileName,       timeFormat=YYYYMMDD, regex, captureGroup
@@ -2038,7 +2104,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
 
             int nAxes = sourceAxisNames.size();
             PrimitiveArray nsav[] = new PrimitiveArray[nAxes];
-            nsav[0] = PrimitiveArray.factory(axis0Class, 1, false);
+            nsav[0] = PrimitiveArray.factory(axis0PAType, 1, false);
 
             //special case: don't read the file! 
             if (matchAxisNDigits == 0 &&
@@ -2061,7 +2127,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     tFileDir + tFileName, fileDir, decompressedDirectory(), 
                     EDStatic.decompressedCacheMaxGB, true); //reuseExisting
                 PrimitiveArray tsav[] = lowGetSourceAxisValues(decompFullName, 
-                    sourceAxisNamesNoAxis0);
+                    sourceAxisNamesNoAxis0, sourceDataNames);
                 System.arraycopy(tsav, 0, nsav, 1, nAxes - 1);            
             }
 
@@ -2108,9 +2174,11 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      *
      * @param tFullName the name of the decompressed data file
      * @param sourceAxisNames If there is a special axis0, this will not include axis0's name.
+     * @param sourceDataNames When there are unnamed dimensions, this is
+     *   to find out the shape of the variable to make index values 0, 1, size-1.
      */
     public abstract PrimitiveArray[] lowGetSourceAxisValues(String tFullName, 
-        StringArray sourceAxisNames) throws Throwable;
+        StringArray sourceAxisNames, StringArray sourceDataNames) throws Throwable;
 
     /**
      * This gets source data from one file.
@@ -2123,8 +2191,8 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      *   have been customized for this file.
      * @return a PrimitiveArray[] with an element for each tDataVariable with the dataValues.
      *   <br>The dataValues are straight from the source, not modified.
-     *   <br>The primitiveArray dataTypes are usually the sourceDataTypeClass,
-     *     but can be any type. EDDGridFromFiles will convert to the sourceDataTypeClass.
+     *   <br>The primitiveArray dataTypes are usually the sourceDataPAType,
+     *     but can be any type. EDDGridFromFiles will convert to the sourceDataPAType.
      *   <br>Note the lack of axisVariable values!
      * @throws Throwable if trouble (e.g., invalid file).
      *   If there is trouble, this doesn't call addBadFile or requestReloadASAP().
@@ -2180,7 +2248,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
      *   AxisVariables are counted left to right, e.g., sst[0=time][1=lat][2=lon].
      * @return a PrimitiveArray[] where the first axisVariables.length elements
      *   are the axisValues and the next tDataVariables.length elements
-     *   are the dataValues (using the sourceDataTypeClass).
+     *   are the dataValues (using the sourceDataPAType).
      *   Both the axisValues and dataValues are straight from the source,
      *   not modified.
      * @throws Throwable if trouble (notably, WaitThenTryAgainException)
@@ -2222,9 +2290,9 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 tConstraints.get(avi*3 + 1),
                 tConstraints.get(avi*3 + 2));
         for (int dvi = 0; dvi < ndv; dvi++) {
-            //String2.log("!dvi#" + dvi + " " + tDataVariables[dvi].destinationName() + " " + tDataVariables[dvi].sourceDataTypeClass().toString());
+            //String2.log("!dvi#" + dvi + " " + tDataVariables[dvi].destinationName() + " " + tDataVariables[dvi].sourceDataPAType().toString());
             results[nav + dvi] = PrimitiveArray.factory(
-                tDataVariables[dvi].sourceDataTypeClass(), 64, false);
+                tDataVariables[dvi].sourceDataPAType(), 64, false);
         }
         IntArray ttConstraints = (IntArray)tConstraints.clone();
         int nFiles = ftStartIndex.size();
@@ -2238,7 +2306,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                     EDStatic.caughtInterrupted);
 
             //find next relevant file
-            ftRow = ftStartIndex.binaryFindLastLE(ftRow, nFiles - 1, axis0Start);
+            ftRow = ftStartIndex.binaryFindLastLE(ftRow, nFiles - 1, PAOne.fromInt(axis0Start));
             int tNValues = ftNValues.get(ftRow);
             int tStart = axis0Start - ftStartIndex.get(ftRow);
             int tStop = tStart;
@@ -2268,9 +2336,10 @@ public abstract class EDDGridFromFiles extends EDDGrid{
             } catch (Throwable t) {
                 EDStatic.rethrowClientAbortException(t);  //first thing in catch{}
 
-                //if too much data, rethrow t
+                //if OutOfMemory or too much data, rethrow t so request fails
                 String tToString = t.toString();
-                if (tToString.indexOf(Math2.memoryTooMuchData) >= 0)
+                if (t instanceof java.lang.OutOfMemoryError ||
+                    tToString.indexOf(Math2.memoryTooMuchData) >= 0)
                     throw t;
 
                 //sleep and give it one more try
@@ -2291,7 +2360,7 @@ public abstract class EDDGridFromFiles extends EDDGrid{
                 }
             }
 
-            //merge dataVariables   (converting to sourceDataTypeClass if needed)
+            //merge dataVariables   (converting to sourceDataPAType if needed)
             for (int dv = 0; dv < ndv; dv++) 
                 results[nav + dv].append(tResults[dv]);
             //String2.log("!merged tResults[1stDV]=" + results[nav].toString());

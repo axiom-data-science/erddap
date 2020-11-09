@@ -7,6 +7,8 @@ package gov.noaa.pfel.erddap.variable;
 import com.cohort.array.Attributes;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -74,12 +76,12 @@ public class EDVGridAxis extends EDV {
         PrimitiveArray tSourceValues) 
         throws Throwable {
 
-        super(tSourceName, tDestinationName,
+        super(tParentDatasetID, tSourceName, tDestinationName,
             tSourceAttributes, tAddAttributes, 
-            tSourceValues.elementClassString(), 
-            Math.min(tSourceValues.getNiceDouble(0), tSourceValues.getNiceDouble(tSourceValues.size() - 1)),
-            Math.max(tSourceValues.getNiceDouble(0), tSourceValues.getNiceDouble(tSourceValues.size() - 1)));
-        
+            tSourceValues.elementTypeString(), 
+            new PAOne(tSourceValues, 0).min(new PAOne(tSourceValues, tSourceValues.size() - 1)),
+            new PAOne(tSourceValues, 0).max(new PAOne(tSourceValues, tSourceValues.size() - 1)));
+      
         parentDatasetID = tParentDatasetID;
         sourceValues = tSourceValues;  //but continue to work with stable tSourceValues
         setActualRangeFromDestinationMinMax();
@@ -135,10 +137,10 @@ public class EDVGridAxis extends EDV {
             rough = Math.abs(averageSpacing) / 2;
         } else {
             //avoid single value e.g., .01, fails to match .01000000001
-            rough = Math.max(Math.abs(destinationMin) / 100, 0.01); //very arbitrary
+            rough = Math.max(Math.abs(destinationMinDouble()) / 100, 0.01); //very arbitrary
         }
-        destinationCoarseMin = destinationMin - rough;   
-        destinationCoarseMax = destinationMax + rough;
+        destinationCoarseMin = destinationMinDouble() - rough;   
+        destinationCoarseMax = destinationMaxDouble() + rough;
     }
 
     /** 
@@ -152,7 +154,7 @@ public class EDVGridAxis extends EDV {
         combinedAttributes.remove("actual_max");
         combinedAttributes.remove("data_min");
         combinedAttributes.remove("data_max");
-        PrimitiveArray pa = PrimitiveArray.factory(destinationDataTypeClass(), 2, false);
+        PrimitiveArray pa = PrimitiveArray.factory(destinationDataPAType(), 2, false);
         pa.addDouble(Math.min(firstDestinationValue(), lastDestinationValue()));
         pa.addDouble(Math.max(firstDestinationValue(), lastDestinationValue()));
         combinedAttributes.set("actual_range", pa);
@@ -221,7 +223,7 @@ public class EDVGridAxis extends EDV {
                 parentDatasetID + " variable=" + destinationName);
         StringArray varsRead = new StringArray();
         try {
-            PrimitiveArray pas[] = NcHelper.readPAsInNc(
+            PrimitiveArray pas[] = NcHelper.readPAsInNc3(
                 EDD.datasetDir(parentDatasetID) + EDD.DIMENSION_VALUES_FILENAME, 
                 new String[]{destinationName}, varsRead);
             if (varsRead.size() != 1 || !varsRead.get(0).equals(destinationName))
@@ -267,7 +269,7 @@ public class EDVGridAxis extends EDV {
      * This relies on alt and time overriding toDestination().
      */
     public PrimitiveArray destinationValue(int which) {
-        PrimitiveArray sourceVal = PrimitiveArray.factory(destinationDataTypeClass, 1, false);
+        PrimitiveArray sourceVal = PrimitiveArray.factory(destinationDataPAType, 1, false);
 
         sourceVal.addDouble(sourceValues().getNiceDouble(which)); 
         return toDestination(sourceVal); 
@@ -281,9 +283,9 @@ public class EDVGridAxis extends EDV {
         PrimitiveArray tSourceValues = sourceValues(); //work with stable local reference
         if (scaleAddOffset) {
             double d = tSourceValues.getNiceDouble(which) * scaleFactor + addOffset;
-            if (destinationDataTypeClass == double.class)
+            if (destinationDataPAType == PAType.DOUBLE)
                 return d;
-            if (destinationDataTypeClass == float.class)
+            if (destinationDataPAType == PAType.FLOAT)
                 return Math2.doubleToFloatNaN(d);
             //int type
             return Math2.roundToInt(d);
@@ -301,9 +303,9 @@ public class EDVGridAxis extends EDV {
         PrimitiveArray tSourceValues = sourceValues(); //work with stable local reference
         if (scaleAddOffset) {
             double d = tSourceValues.getNiceDouble(which) * scaleFactor + addOffset;
-            if (destinationDataTypeClass == double.class)
+            if (destinationDataPAType == PAType.DOUBLE)
                 return "" + d;
-            if (destinationDataTypeClass == float.class)
+            if (destinationDataPAType == PAType.FLOAT)
                 return "" + Math2.doubleToFloatNaN(d);
             //int type
             return "" + Math2.roundToInt(d);
@@ -352,10 +354,10 @@ public class EDVGridAxis extends EDV {
                 //make evenly spaced nice numbers (like EDV.sliderCsvValues()), 
                 //  then find closest actual values.
                 //Dealing with indices (later sorted) works regardless of isAscending.
-                double values[] = Calendar2.getNEvenlySpaced(destinationMin, 
-                    destinationMax, SLIDER_MAX_NVALUES);
+                double values[] = Calendar2.getNEvenlySpaced(destinationMinDouble(), 
+                    destinationMaxDouble(), SLIDER_MAX_NVALUES);
                 for (int i = 0; i < values.length; i++) 
-                    sliderIndices.add(destinationToClosestSourceIndex(values[i]));
+                    sliderIndices.add(destinationToClosestIndex(values[i]));
 
                 //add last index
                 sliderIndices.add(nSourceValues - 1);  
@@ -365,12 +367,13 @@ public class EDVGridAxis extends EDV {
                 //  then find closest actual values.
                 //Work from destMin to destMax.  
                 //  Dealing with indices (later sorted) works regardless of isAscending.
-                double stride = Math2.suggestMaxDivisions(destinationMax - destinationMin,
+                double stride = Math2.suggestMaxDivisions(destinationMaxDouble() - destinationMinDouble(),
                     SLIDER_MAX_NVALUES);    
-                int nDiv = Math2.roundToInt(Math.abs((destinationMax - destinationMin) / stride));
-                double base = Math.floor(destinationMin / stride) * stride;
+                int nDiv = Math2.roundToInt(Math.abs(
+                    (destinationMaxDouble() - destinationMinDouble()) / stride));
+                double base = Math.floor(destinationMinDouble() / stride) * stride;
                 for (int i = 0; i < nDiv; i++) 
-                    sliderIndices.add(destinationToClosestSourceIndex(base + i * stride));
+                    sliderIndices.add(destinationToClosestIndex(base + i * stride));
 
                 //add last index
                 sliderIndices.add(nSourceValues - 1);  
@@ -424,7 +427,7 @@ public class EDVGridAxis extends EDV {
      *   (or -1 if trouble, e.g., sliderCsvValues can't be constructed (e.g., no min + max values)).
      */
     public int closestSliderPosition(double destinationValue) {
-        int index = destinationToClosestSourceIndex(destinationValue);
+        int index = destinationToClosestIndex(destinationValue);
         if (index == -1)
             return index;
 
@@ -443,9 +446,9 @@ public class EDVGridAxis extends EDV {
      */
     public String destinationToString(double destD) {
         if (Double.isNaN(destD)) return "";
-        //destinationDataTypeClass won't be String.class
-        if (destinationDataTypeClass == double.class)  return "" + destD;
-        if (destinationDataTypeClass == float.class)   return "" + (float)destD;
+        //destinationDataPAType won't be PAType.STRING
+        if (destinationDataPAType == PAType.DOUBLE)  return "" + destD;
+        if (destinationDataPAType == PAType.FLOAT)   return "" + (float)destD;
         return "" + Math.rint(destD);  //ints are nicer without trailing ".0"
     }
 
@@ -592,13 +595,79 @@ public class EDVGridAxis extends EDV {
      * @param destinationD
      * @return the closest source index
      */
-    public int destinationToClosestSourceIndex(double destinationD) {
+    public int destinationToClosestIndex(double destinationD) {
         if (Double.isNaN(destinationD))
             return -1;
 
         DoubleArray destDA = new DoubleArray(new double[]{destinationD});
         PrimitiveArray sourcePA = toSource(destDA);
-        return sourceToClosestSourceIndex(sourcePA.getNiceDouble(0)); //all grid sources are numeric
+        return sourceToClosestIndex(sourcePA.getNiceDouble(0)); //all grid sources are numeric
+    }
+
+    /**
+     * This is like destinationToClosestIndex but returns
+     * a double as if the index numbers where a continuous line,
+     * e.g., 2.25 indicates the dest value is 1/4 of the way between the data 
+     * values for [2] and [3].
+     *
+     * <p>Out of range values are converted to closest source index, first or last (even if way off).
+     * NaN returns -1.
+     * This works whether isAscending or not.
+     * (!!!If there are ties, this wouldn't specify which of the tied values would be found,
+     *   which is part of why EDVGridAxis doesn't allow ties).
+     *
+     * @param destinationD
+     * @return the closest source index as a continuous value
+     */
+    public double destinationToDoubleIndex(double destinationD) {
+        //thankfully, there can't be any tied values
+        int closest = sourceToClosestIndex(destinationD);
+
+        //is it an exact match?
+        double dClosest = destinationDouble(closest);
+        if (dClosest == destinationD)
+            return closest;
+        boolean isLess = destinationD < dClosest;
+
+        //there are more concise ways to code this (^), but this is the easiest to read
+        double tdClosest;
+        if (isAscending) {
+            if (isLess) {
+                //look at closest - 1
+                if (closest == 0) {
+                    return closest;
+                } else {
+                    tdClosest = destinationDouble(closest - 1);        
+                    return (closest-1) + (destinationD - tdClosest) / (dClosest - tdClosest);
+                }
+            } else {
+                //look at closest + 1
+                if (closest == sourceValues.size() - 1) {
+                    return closest;
+                } else {
+                    tdClosest = destinationDouble(closest + 1);        
+                    return closest + (destinationD - dClosest) / (tdClosest - dClosest);
+                }
+            }
+        } else {  //descending
+            if (isLess) {
+                //look at closest + 1
+                if (closest == sourceValues.size() - 1) {
+                    return closest;
+                } else {
+                    tdClosest = destinationDouble(closest + 1);        
+                    return closest + (destinationD - dClosest) / (tdClosest - dClosest);
+                }
+            } else {
+                //look at closest - 1
+                if (closest == 0) {
+                    return closest;
+                } else {
+                    tdClosest = destinationDouble(closest - 1);        
+                    return (closest-1) + (destinationD - tdClosest) / (dClosest - tdClosest);
+                }
+            }
+        }
     }
 
     /**
@@ -610,7 +679,7 @@ public class EDVGridAxis extends EDV {
      * @param sourceD  A number that is way out of range will catch one of the end indices.
      * @return the closest source index
      */
-    public int sourceToClosestSourceIndex(double sourceD) {
+    public int sourceToClosestIndex(double sourceD) {
         if (Double.isNaN(sourceD))
             return -1;
 

@@ -74,6 +74,7 @@ public class EDDGridFromBinaryFile extends EDDGrid {
         String tFileName = null;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        int tnThreads = -1; //interpret invalid values (like -1) as EDStatic.nGridThreads
 /*
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -93,7 +94,7 @@ public class EDDGridFromBinaryFile extends EDDGrid {
 //            -180, 180, //these settings are specific for the ETOPO1 file
 //            -90, 90,  
 //            21601, 10801,
-//and read data as int.class
+//and read data as PAType.INT
 
             //try to make the tag names as consistent, descriptive and readable as possible
             if (localTags.equals("<addAttributes>"))
@@ -124,6 +125,8 @@ public class EDDGridFromBinaryFile extends EDDGrid {
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<nThreads>")) {}
+            else if (localTags.equals("</nThreads>")) tnThreads = String2.parseInt(content); 
 
             else xmlReader.unexpectedTagException();
         }
@@ -144,7 +147,7 @@ public class EDDGridFromBinaryFile extends EDDGrid {
             tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
             new Object[1][3], new Object[1][3], //ttAxisVariables, ttDataVariables,
             tReloadEveryNMinutes,
-            tFileName);
+            tFileName, tnThreads, tCacheFromUrl, tCacheSizeGB);
     }
 
     /**
@@ -178,7 +181,9 @@ public class EDDGridFromBinaryFile extends EDDGrid {
         Object tAxisVariables[][],
         Object tDataVariables[][],
         int tReloadEveryNMinutes,
-        String tFileName) throws Throwable {
+        String tFileName, int tnThreads, 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
+        throws Throwable {
 
   /*      if (verbose) String2.log(
             "\n*** constructing EDDGridFromBinaryFile " + tDatasetID); 
@@ -247,20 +252,21 @@ public class EDDGridFromBinaryFile extends EDDGrid {
         else if (EDVTime.hasTimeUnits(tSourceAttributes, tAddAttributes)) 
             dataVariables[0] = new EDVTimeStamp(tSourceName, tDestinationName,
                 tSourceAttributes, tAddAttributes,
-                ???int.class);  
+                ???PAType.INT);  
         else dataVariables[0] = new EDV(tSourceName, tDestinationName,
             tSourceAttributes, tAddAttributes,
-            ???int.class);  
+            ???PAType.INT);  
         dataVariables[0].setActualRangeFromDestinationMinMax();
 
         //ensure the setup is valid
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
-            (reallyVerbose? "\n" + toString() : "") +
+            (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridFromBinaryFile " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 */
     }
 
@@ -283,6 +289,8 @@ public class EDDGridFromBinaryFile extends EDDGrid {
      * full user's request, but will be a partial request (for less than
      * EDStatic.partialRequestMaxBytes).
      * 
+     * @param tDirTable If EDDGridFromFiles, this MAY be the dirTable, else null. 
+     * @param tFileTable If EDDGridFromFiles, this MAY be the fileTable, else null. 
      * @param tDataVariables EDV[] with just the requested data variables
      * @param tConstraints  int[nAxisVariables*3] 
      *   where av*3+0=startIndex, av*3+1=stride, av*3+2=stopIndex.
@@ -294,7 +302,8 @@ public class EDDGridFromBinaryFile extends EDDGrid {
      *   not modified.
      * @throws Throwable if trouble (notably, WaitThenTryAgainException)
      */
-    public PrimitiveArray[] getSourceData(EDV tDataVariables[], IntArray tConstraints) 
+    public PrimitiveArray[] getSourceData(Table tDirTable, Table tFileTable,
+        EDV tDataVariables[], IntArray tConstraints) 
         throws Throwable {
 /*
         //create the grid;  readBinary calculates stats
@@ -336,8 +345,8 @@ public class EDDGridFromBinaryFile extends EDDGrid {
             double desiredMinLat, double desiredMaxLat,
             int desiredNLonPoints, int desiredNLatPoints)
             throws Throwable {
-        //future: this cound accept data from files with different data types, e.g., float
-        //future: this cound accept data in different order (stored col-by-col, from lower left
+        //FUTURE: this cound accept data from files with different data types, e.g., float
+        //FUTURE: this cound accept data in different order (stored col-by-col, from lower left
 
         //ensure desired range is acceptable
         if (verbose) String2.log("Grid.readBinary");
@@ -418,27 +427,27 @@ public class EDDGridFromBinaryFile extends EDDGrid {
 
         //open the file  (reading should be thread safe)
         RandomAccessFile raf = new RandomAccessFile(fullFileName, "r");
-
-        //fill data array
-        //lat is outer loop because file is lat major
-        //and loop is backwards since stored top to bottom
-        //(goal is to read basically from start to end of file)
-        nValidPoints = nLon * nLat; //all points are valid
-        data = new double[nValidPoints];
-        minData = Double.MAX_VALUE;
-        maxData = -Double.MIN_VALUE;
-        for (int tLat = nLat - 1; tLat >= 0; tLat--) { 
-            for (int tLon = 0; tLon < nLon; tLon++) { 
-               raf.seek(offsetLat[tLat] + offsetLon[tLon]);
-               double td = raf.readShort();
-               setData(tLon, tLat, td);
-               minData = Math.min(minData, td);
-               maxData = Math.max(maxData, td);
+        try {
+            //fill data array
+            //lat is outer loop because file is lat major
+            //and loop is backwards since stored top to bottom
+            //(goal is to read basically from start to end of file)
+            nValidPoints = nLon * nLat; //all points are valid
+            data = new double[nValidPoints];
+            minData = Double.MAX_VALUE;
+            maxData = -Double.MIN_VALUE;
+            for (int tLat = nLat - 1; tLat >= 0; tLat--) { 
+                for (int tLon = 0; tLon < nLon; tLon++) { 
+                   raf.seek(offsetLat[tLat] + offsetLon[tLon]);
+                   double td = raf.readShort();
+                   setData(tLon, tLat, td);
+                   minData = Math.min(minData, td);
+                   maxData = Math.max(maxData, td);
+                }
             }
+        } finally {
+            raf.close();
         }
-
-        //close the file 
-        raf.close();
         if (verbose) 
             String2.log("Grid.readBinary TIME=" + 
                 (System.currentTimeMillis() - time) + "ms\n"); 
@@ -452,9 +461,9 @@ public class EDDGridFromBinaryFile extends EDDGrid {
      *
      * @throws Throwable if trouble
      */
-    public static void test() throws Throwable {
+    public static void basicTest() throws Throwable {
 
-        String2.log("\n****************** EDDGridFromBinaryFile.test() *****************\n");
+        String2.log("\n****************** EDDGridFromBinaryFile.basicTest() *****************\n");
         verbose = true;
         reallyVerbose = true;
         GridDataAccessor.verbose = true;
@@ -536,6 +545,47 @@ public class EDDGridFromBinaryFile extends EDDGrid {
 */
         String2.log("\n*** EDDGridFromBinaryFile.test finished.");
 
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDGridFromBinaryFile.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

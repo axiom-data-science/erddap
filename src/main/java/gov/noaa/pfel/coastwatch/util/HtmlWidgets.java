@@ -89,14 +89,15 @@ public class HtmlWidgets {
         "00FFFF", "0099FF", "0000FF", "9900FF", "FF00FF", "FF99FF"};
 
     /** This will display a message to the user if JavaScript is not supported
-     * or disabled. Last updated 2016-03-28. */
+     * or disabled. Last updated 2019-12-19. 
+     * FUTURE: refer to https://enable-javascript.com/ ???
+     */
     public static String ifJavaScriptDisabled =
         "<noscript><div style=\"color:red\"><strong>To work correctly, this web page requires that JavaScript be enabled in your browser.</strong> Please:\n" +
         "<br>1) Enable JavaScript in your browser:\n" +
-        "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Chrome: \"Settings : Show advanced settings : Privacy / Content settings : JavaScript\"\n" +
+        "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Chrome: \"Settings : Advanced : Privacy and security : Site Settings : JavaScript\"\n" +
+//        "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Edge: \n" +  ??? 2019-12-19 search yielded: it should be supported but administrator may have disabled it. 
         "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Firefox: (it should be always on!)\"\n" +
-        "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Internet Explorer: \"Tools : Internet Options : Security : Internet : Custom level :\n" +
-        "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Sripting/ Active Scripting : Enable : OK : OK\"\n" +
         "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Opera: \"Settings : Websites : JavaScript\"\n" +
         "<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &bull; Safari: \"Safari : Preferences : Security : Enable JavaScript\"\n" + 
         "<br>2) Reload this web page.\n" +
@@ -985,10 +986,11 @@ public class HtmlWidgets {
      * @param imgUrl is the URL of the downArrow image
      * @param options One of the options can be "".
      * @param other Other attributes for the textField (usually "")
+     * @param onChange the onChange parameter for the options (use null for the standard value).
      */    
     public String comboBox(String formName, String name, String tooltip, 
         int fieldLength, int maxLength,
-        String initialTextValue, String options[], String other) {
+        String initialTextValue, String options[], String other, String onChange) {
 
         StringBuilder sb = new StringBuilder();
         int nOptions = options.length;
@@ -1008,8 +1010,11 @@ public class HtmlWidgets {
                 options, -1, 
 //!!! This javascript is identical to other places (except within popup).
 //It works in all browsers except MS Edge (item is selected, but value not copied to 'name' textfield).
-                "\n  onChange=\"document." + formName + "." + name + 
-                    ".value=this.options[this.selectedIndex].text; this.selectedIndex=-1;\"\n")));  //
+                "\n  " + 
+                (onChange == null? 
+                    "onChange=\"document." + formName + "." + name + 
+                    ".value=this.options[this.selectedIndex].text; this.selectedIndex=-1;\"\n" :
+                    onChange))));  
         sb.append("</span>");
 
 /*
@@ -1493,9 +1498,9 @@ sb.append(
         String debugInBrowser) {
         return twoClickMap(
             formName, "minLon", "maxLon", "minLat", "maxLat",
-            imageUrl, 412, 155,  //image w, h
-            17, 12, 380, 127,  //map left, top, graph width, height  (via subtraction)
-            540, -180, 180, 90,
+            imageUrl, 785, 278, //2019-10-18 was 412, 155,  //image w, h
+            21, 9, 748, 251, //2019-10-18 was 17, 12, 381, 128,  //map left, top, width, height  (via subtraction+1)
+            540, -180, 180, 90, //lonRange, lonMin, latRange, latMax
             null, debugInBrowser);
     }
 
@@ -1505,7 +1510,7 @@ sb.append(
         return twoClickMap(
             formName, "minLon", "maxLon", "minLat", "maxLat",
             imageUrl, 285, 155,
-            17, 12, 253, 127,
+            17, 12, 254, 128, //map left, top, width, height  (via subtraction+1)
             360, -180, 180, 90,
             null, debugInBrowser);
     }
@@ -1516,7 +1521,7 @@ sb.append(
         return twoClickMap(
             formName, "minLon", "maxLon", "minLat", "maxLat",
             imageUrl, 284, 155,
-            16, 12, 253, 127,
+            16, 12, 254, 128, //map left, top, width, height  (via subtraction+1)
             360, 0, 180, 90,
             null, debugInBrowser);
     }
@@ -1527,7 +1532,7 @@ sb.append(
         return twoClickMap(
             formName, "minLon", "maxLon", "minLat", "maxLat",
             imageUrl, 293, 113,
-            18, 10, 260, 86,
+            18, 10, 261, 87, //map left, top, width, height  (via subtraction+1)
             540, -180, 180, 90,
             null, debugInBrowser);
     }
@@ -1538,7 +1543,7 @@ sb.append(
         return twoClickMap(
             formName, "minLon", "maxLon", "minLat", "maxLat",
             imageUrl, 205, 113,
-            18, 10, 173, 86,
+            18, 10, 174, 87, //map left, top, width, height  (via subtraction+1)
             360, -180, 180, 90,
             null, debugInBrowser);
     }
@@ -1549,8 +1554,8 @@ sb.append(
         return twoClickMap(
             formName, "minLon", "maxLon", "minLat", "maxLat",
             imageUrl, 205, 113,
-            18, 10, 173, 86,
-            360, 0, 180, 90,
+            18, 10, 174, 87, //map left, top, width, height  (via subtraction+1)
+            360, 0, 180, 90, //lonRange, lonMin, latRange, latMax
             null, debugInBrowser);
     }
 
@@ -1651,33 +1656,25 @@ if (debugInBrowser != null)
 "\n");
 
 sb2.append(
-"//findPos from http://blog.firetree.net/2005/07/04/javascript-find-position/\n" +
-"function findPosX(obj) {\n" +
+//basically, this finds the offsetXY of an element by adding up the offsets of all parent elements
+//was "//findPos from http://blog.firetree.net/2005/07/04/javascript-find-position/\n" +  but that's gone
+//https://www.chestysoft.com/imagefile/javascript/get-coordinates.asp
+"function findPosXY(obj) {\n" +
 "  var curleft = 0;\n" +
-"  if(obj.offsetParent)\n" +
-"    for (var i = 0; i < 20; i++) {\n" +
-"      curleft += obj.offsetLeft;\n" +
-"      if(!obj.offsetParent)\n" +
-"        break;\n" +
-"      obj = obj.offsetParent;\n" +
-"    }\n" +
-"  else if(obj.x)\n" +
-"    curleft += obj.x;\n" +
-"  return curleft;\n" +
-"}\n" +
-"\n" +
-"function findPosY(obj) {\n" +
 "  var curtop = 0;\n" +
-"  if(obj.offsetParent)\n" +
-"    for (var i = 0; i < 20; i++) {\n" +
-"      curtop += obj.offsetTop;\n" +
+"  if(obj.offsetParent) {\n" +
+"    for (var i = 0; i < 20; i++) {\n" + //a 'while' loop is technically better but risks an infinite loop
+"      curleft += obj.offsetLeft;\n" +
+"      curtop  += obj.offsetTop;\n" +
 "      if(!obj.offsetParent)\n" +
 "        break;\n" +
 "      obj = obj.offsetParent;\n" +
 "    }\n" +
-"  else if(obj.y)\n" +
-"    curtop += obj.y;\n" +
-"  return curtop;\n" +
+"  } else {\n" +
+"    if(obj.x) curleft = obj.x;\n" +
+"    if(obj.y) curtop  = obj.y;\n" +
+"  }" +
+"  return [curleft, curtop];\n" +
 "}\n" +
 "\n" +
 "function rubber(clicked, evt) {\n" +
@@ -1697,9 +1694,10 @@ sb2.append(
 "    tx = evt.pageX;\n" +
 "    ty = evt.pageY;\n" +
 "  } else return true;\n" +
-"  var imx = findPosX(im);\n" +
-"  var imy = findPosY(im);\n" +
-"  tx = Math.max(tx, imx + " + mapX + ");\n" +
+"  var posxy = findPosXY(im);\n" + //upper left of image
+"  var imx = posxy[0];\n" +
+"  var imy = posxy[1];\n" +
+"  tx = Math.max(tx, imx + " + mapX + ");\n" +  //constrain tx,ty to be in map (in image)
 "  tx = Math.min(tx, imx + " + mapX + " + " + (mapWidth - 1) + ");\n" +  
 "  ty = Math.max(ty, imy + " + mapY + ");\n" +
 "  ty = Math.min(ty, imy + " + mapY + " + " + (mapHeight - 1) + ")\n" +
@@ -1716,24 +1714,22 @@ sb2.append(
 "  }\n" +
 "\n" +
 "  updateRubber();\n" +    
-"  document." + formName + "." + minLonTF + ".value = Math.round(((Math.min(cx[0], cx[1]) - " + mapX + " - imx) / " + (mapWidth - 1)  + ") * " + lonRange  + " + " + lonMin + ");\n" + 
-"  document." + formName + "." + maxLonTF + ".value = Math.round(((Math.max(cx[0], cx[1]) - " + mapX + " - imx) / " + (mapWidth - 1)  + ") * " + lonRange  + " + " + lonMin + ");\n" +
-"  document." + formName + "." + minLatTF + ".value = Math.round(((Math.max(cy[0], cy[1]) - " + mapY + " - imy) / " + (mapHeight - 1) + ") * " + -latRange + " + " + latMax + ");\n" +
-"  document." + formName + "." + maxLatTF + ".value = Math.round(((Math.min(cy[0], cy[1]) - " + mapY + " - imy) / " + (mapHeight - 1) + ") * " + -latRange + " + " + latMax + ");\n" +
+"  document." + formName + "." + minLonTF + ".value = Math.round(((Math.min(cx[0], cx[1]) - (imx + " + mapX + ")) / " + (mapWidth - 1)  + ") * " + lonRange  + " + " + lonMin + ");\n" + 
+"  document." + formName + "." + maxLonTF + ".value = Math.round(((Math.max(cx[0], cx[1]) - (imx + " + mapX + ")) / " + (mapWidth - 1)  + ") * " + lonRange  + " + " + lonMin + ");\n" +
+"  document." + formName + "." + minLatTF + ".value = Math.round(((Math.max(cy[0], cy[1]) - (imy + " + mapY + ")) / " + (mapHeight - 1) + ") * " + -latRange + " + " + latMax + ");\n" +
+"  document." + formName + "." + maxLatTF + ".value = Math.round(((Math.min(cy[0], cy[1]) - (imy + " + mapY + ")) / " + (mapHeight - 1) + ") * " + -latRange + " + " + latMax + ");\n" +
 (debugInBrowser == null? "" : 
 "  log(\"  done\");\n") +
 "  return true;\n" +
 "}\n" +
 "\n" +
 "function updateRubber() {\n" +
-"  var cx = tcCx;\n" + //local cx should now point to global tcCx array
-"  var cy = tcCy;\n" +
 "  var rb = (document.all)? document.all.rubberBand : document.getElementById('rubberBand');\n" +
 "  var rbs = rb.style;\n" +
-"  rbs.left = Math.min(cx[0], cx[1]) + 'px';\n" +
-"  rbs.top  = Math.min(cy[0], cy[1]) + 'px';\n" +
-"  rbs.width  = Math.abs(cx[1] - cx[0]) + 'px';\n" +
-"  rbs.height = Math.abs(cy[1] - cy[0]) + 'px';\n" +
+"  rbs.left = Math.min(tcCx[0], tcCx[1]) + 'px';\n" +
+"  rbs.top  = Math.min(tcCy[0], tcCy[1]) + 'px';\n" +
+"  rbs.width  = Math.max(0, Math.abs(tcCx[1] - tcCx[0]) - 1) + 'px';\n" +
+"  rbs.height = Math.max(0, Math.abs(tcCy[1] - tcCy[0]) - 1) + 'px';\n" +
 "  rbs.visibility = 'visible';\n" +
 "}\n" +
 "\n" +
@@ -1905,7 +1901,7 @@ return new String[]{sb0.toString(), sb1.toString(), sb2.toString()};
     /**
      * This makes a test document and displays it in the browser.
      */
-    public static void test() throws Throwable {
+    public static void basicTest() throws Throwable {
         boolean oDebugMode = debugMode;
         debugMode = true;
         String fullName = SSR.getTempDirectory() + "TestHtmlWidgets.html";
@@ -2019,7 +2015,7 @@ return new String[]{sb0.toString(), sb1.toString(), sb2.toString()};
             "<input type=\"password\" name=\"mypassword\" autocomplete=\"off\">\n" +
             "<br>ComboBox: " + 
             widgets.comboBox(formName, "myComboBox", "My comboBox tooltip", 25, 255,
-                "myInitialValue", new String[]{"", "able", "baker", "charlie"}, "") + //other
+                "myInitialValue", new String[]{"", "able", "baker", "charlie"}, "", null) + //other
             "<br>TextField1: \n" + 
             widgets.textField("textFieldName1", "textFieldTooltip literal: &lt;&gt;&amp;\"!", 10, 255, 
                 "initialValue<script>prompt(123)</script>", "") +
@@ -2218,6 +2214,47 @@ sb.append(twoClickMap[2]);
 
         SSR.displayInBrowser("file://" + fullName);
         debugMode = oDebugMode;
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 0 : -1;
+        String msg = "\n^^^ HtmlWidgets.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) basicTest();
+
+                } else {
+                    //if (test ==  0) ...;
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

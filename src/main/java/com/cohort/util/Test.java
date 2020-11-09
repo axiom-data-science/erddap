@@ -5,6 +5,7 @@
 package com.cohort.util;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAOne;
 import com.cohort.array.PrimitiveArray;
 
 import java.awt.Color;
@@ -13,6 +14,7 @@ import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.awt.image.PixelGrabber;
 import java.io.File;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.GregorianCalendar;
@@ -95,12 +97,46 @@ public class Test {
     public static void ensureEqual(long i1, long i2, String message)
         throws RuntimeException {
         if (i1 != i2) 
-            error("\n" + String2.ERROR + " in Test.ensureEqual(int):\n" + 
+            error("\n" + String2.ERROR + " in Test.ensureEqual(long):\n" + 
                 message + "\nSpecifically: " + i1 + " != " + i2);
     }  
       
     /** 
-     * If the two int values are equal, 
+     * If the two BigInteger values aren't equal, this throws a RuntimeException 
+     * with the specified message. 
+     *
+     * @param i1
+     * @param i2 
+     * @param message
+     */
+    public static void ensureEqual(BigInteger i1, BigInteger i2, String message)
+        throws RuntimeException {
+        if (i1 == null && i2 == null)
+            return;
+        if (i1 == null || !i1.equals(i2)) 
+            error("\n" + String2.ERROR + " in Test.ensureEqual(BigInteger):\n" + 
+                message + "\nSpecifically: " + i1 + " != " + i2);
+    }  
+      
+    /** 
+     * If the two PAOne values aren't equal, this throws a RuntimeException 
+     * with the specified message. 
+     *
+     * @param i1
+     * @param i2 
+     * @param message
+     */
+    public static void ensureEqual(PAOne i1, PAOne i2, String message)
+        throws RuntimeException {
+        if (i1 == null && i2 == null)
+            return;
+        if (i1 == null || !i1.equals(i2)) 
+            error("\n" + String2.ERROR + " in Test.ensureEqual(PAOne):\n" + 
+                message + "\nSpecifically: " + i1 + " != " + i2);
+    }  
+      
+    /** 
+     * If the two long values are equal, 
      * this throws a RuntimeException with the specified message. 
      *
      * @param i1
@@ -110,7 +146,24 @@ public class Test {
     public static void ensureNotEqual(long i1, long i2, String message)
         throws RuntimeException {
         if (i1 == i2) 
-            error("\n" + String2.ERROR + " in Test.ensureNotEqual(int):\n" + 
+            error("\n" + String2.ERROR + " in Test.ensureNotEqual(long):\n" + 
+                message + "\nSpecifically: " + i1 + " = " + i2);
+    }  
+      
+    /** 
+     * If the two BigInteger values are equal, 
+     * this throws a RuntimeException with the specified message. 
+     *
+     * @param i1
+     * @param i2 
+     * @param message
+     */
+    public static void ensureNotEqual(BigInteger i1, BigInteger i2, String message)
+        throws RuntimeException {
+        if (i1 == null && i2 == null)
+            return;
+        if (i1 == null || i1.equals(i2)) 
+            error("\n" + String2.ERROR + " in Test.ensureNotEqual(BigInteger):\n" + 
                 message + "\nSpecifically: " + i1 + " = " + i2);
     }  
       
@@ -153,6 +206,34 @@ public class Test {
      * @param s2 
      */
     public static boolean equal(String s1, String s2) {
+        if (s1 == null && s2 == null) 
+            return true;
+        if (s1 == null || s2 == null)
+            return false;
+        return s1.equals(s2);
+    }  
+      
+    /** 
+     * This returns true if the two BigInteger values are equal (or both null). 
+     *
+     * @param s1
+     * @param s2 
+     */
+    public static boolean equal(BigInteger s1, BigInteger s2) {
+        if (s1 == null && s2 == null) 
+            return true;
+        if (s1 == null || s2 == null)
+            return false;
+        return s1.equals(s2);
+    }  
+      
+    /** 
+     * This returns true if the two PAOne values are equal (or both null). 
+     *
+     * @param s1
+     * @param s2 
+     */
+    public static boolean equal(PAOne s1, PAOne s2) {
         if (s1 == null && s2 == null) 
             return true;
         if (s1 == null || s2 == null)
@@ -409,7 +490,7 @@ public class Test {
                     message + "\n" + 
                     MustBe.getStackTrace() +
                     "\n" + String2.ERROR + " in Test.repeatedlyEnsureLinesMatch():\n" + 
-                    "Differentce #" + (++nDifferences) + " is:\n" +
+                    "Difference #" + (++nDifferences) + " is:\n" +
                     "  text [" + line + "]=" + String2.annotatedString(text[line]) + "\n" +
                     "  regex[" + line + "]=" + String2.annotatedString(regex[line]) + "\n" +
                     "Press Enter to see the next error. "); 
@@ -572,7 +653,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (aar[i] != bar[i])
                     Test.error(errorInObjectEquals + message + 
-                        "\na byte[" + i + "]=" + aar[i] + " != b byte[" + i + "]=" + bar[i] + ".");
+                        "\na byte[" + i + "]=" + aar[i] + " != b byte[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof char[] && b instanceof char[]) {
@@ -585,7 +668,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (aar[i] != bar[i])
                     Test.error(errorInObjectEquals + message + 
-                        "\na char[" + i + "]=" + (int)aar[i] + " != b char[" + i + "]=" + (int)bar[i] + ".");
+                        "\na char[" + i + "]=" + (int)aar[i] + " != b char[" + i + "]=" + (int)bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof short[] && b instanceof short[]) {
@@ -598,7 +683,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (aar[i] != bar[i])
                     Test.error(errorInObjectEquals + message + 
-                        "\na short[" + i + "]=" + aar[i] + " != b short[" + i + "]=" + bar[i] + ".");
+                        "\na short[" + i + "]=" + aar[i] + " != b short[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof int[] && b instanceof int[]) {
@@ -611,7 +698,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (aar[i] != bar[i])
                     Test.error(errorInObjectEquals + message + 
-                        "\na int[" + i + "]=" + aar[i] + " != b int[" + i + "]=" + bar[i] + ".");
+                        "\na int[" + i + "]=" + aar[i] + " != b int[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof long[] && b instanceof long[]) {
@@ -624,7 +713,24 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (aar[i] != bar[i])
                     Test.error(errorInObjectEquals + message + 
-                        "\na long[" + i + "]=" + aar[i] + " != b long[" + i + "]=" + bar[i] + ".");
+                        "\na long[" + i + "]=" + aar[i] + " != b long[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
+            return;
+        }
+        if (a instanceof BigInteger[] && b instanceof BigInteger[]) {
+            BigInteger aar[] = (BigInteger[])a;
+            BigInteger bar[] = (BigInteger[])b;
+            int an = aar.length;
+            int bn = bar.length;
+            ensureEqual(an, bn, 
+                errorInObjectEquals + message + "\na BigInteger[] length != b BigInteger[] length");
+            for (int i = 0; i < an; i++)
+                if (!aar[i].equals(bar[i]))
+                    Test.error(errorInObjectEquals + message + 
+                        "\na BigInteger[" + i + "]=" + aar[i] + " != b BigInteger[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof float[] && b instanceof float[]) {
@@ -637,7 +743,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (!equal(aar[i], bar[i]))
                     Test.error(errorInObjectEquals + message + 
-                        "\na float[" + i + "]=" + aar[i] + " != b float[" + i + "]=" + bar[i] + ".");
+                        "\na float[" + i + "]=" + aar[i] + " != b float[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof double[] && b instanceof double[]) {
@@ -650,7 +758,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (!equal(aar[i], bar[i]))
                     Test.error(errorInObjectEquals + message + 
-                        "\na double[" + i + "]=" + aar[i] + " != b double[" + i + "]=" + bar[i] + ".");
+                        "\na double[" + i + "]=" + aar[i] + " != b double[" + i + "]=" + bar[i] + ".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof String[] && b instanceof String[]) {
@@ -663,7 +773,9 @@ public class Test {
             for (int i = 0; i < an; i++)
                 if (!aar[i].equals(bar[i]))
                     Test.error(errorInObjectEquals + message + 
-                        "\na String[" + i + "]=\"" + aar[i] + "\" != b String[" + i + "]=\"" + bar[i] + "\".");
+                        "\na String[" + i + "]=\"" + aar[i] + "\" != b String[" + i + "]=\"" + bar[i] + "\".\n" +
+                        "a=" + String2.toCSSVString(aar) + "\n" +
+                        "b=" + String2.toCSSVString(bar) + "\n");
             return;
         }
         if (a instanceof StringBuilder && b instanceof StringBuilder) {
@@ -676,9 +788,21 @@ public class Test {
             if (err.length() > 0)
                 error(err);
         }
+        if (a instanceof PAOne) {
+            String s = a.toString();
+            if (s.endsWith(".0")) //so a double can be compared to an int
+                s = s.substring(0, s.length() - 2);
+            a = s;
+        }
+        if (b instanceof PAOne) {
+            String s = b.toString();
+            if (s.endsWith(".0"))
+                s = s.substring(0, s.length() - 2);
+            b = s;
+        }
 
         //fall through to most general case
-        if (!a.equals(b))
+        if (!a.toString().equals(b.toString()))
             error(errorInObjectEquals + message + "\nSpecifically:\n" +
                 "a(" + a.getClass().getName() + ")=" + a.toString() + "\n" +
                 "b(" + b.getClass().getName() + ")=" + b.toString());
@@ -714,7 +838,7 @@ public class Test {
         int po = String2.findInvalidUnicode(s, "\r\n\t");
         if (po >= 0) {
             int max = Math.min(po + 20, s.length());
-            error("\n" + String2.ERROR + " in Test.ensureSomthingUnicode():\n" + 
+            error("\n" + String2.ERROR + " in Test.ensureSomethingUnicode():\n" + 
                 message + " has an invalid Unicode character (#" + 
                 (int)s.charAt(po) + ") at position=" + po + 
                 (po > 80? 
@@ -751,18 +875,44 @@ public class Test {
      * This is the standard way to display (during the unit tests) information 
      * about a known problem that won't be fixed soon.
      *
+     * @param title
+     * @param t  a related throwable
+     */
+    public static void knownProblem(String title, Throwable t) throws RuntimeException {
+        knownProblem(title, MustBe.throwableToString(t));
+    }
+
+    /** 
+     * This is the standard way to display (during the unit tests) information 
+     * about a known problem that won't be fixed soon.
+     *
+     * @param title usually all caps
+     * @param msg
+     * @param t  a related throwable
+     */
+    public static void knownProblem(String title, String msg, Throwable t) throws RuntimeException {
+        knownProblem(title, msg + "\n" + MustBe.throwableToString(t));
+    }
+
+    public static void knownProblem(String title) throws Exception {
+        knownProblem(title, "");
+    }
+
+    /** 
+     * This is the standard way to display (during the unit tests) information 
+     * about a known problem that won't be fixed soon.
+     *
      * @param title usually all caps
      * @param msg
      */
-    public static void knownProblem(String title, String msg) throws Exception {
-        String2.log( 
-            "\n\n*********\n" + 
-            msg + String2.beep(1) + "\n" +
+    public static void knownProblem(String title, String msg) throws RuntimeException {
+        throw new RuntimeException( 
+            msg + /* String2.beep(1) + */ "\n" +
             (msg.endsWith("\n")? "" : "\n") + 
             "*** KNOWN PROBLEM: " + title); // + "\n" +
             //"Press ^C to stop.  Otherwise, testing will continue in 10 seconds.\n"));
         //Math2.sleep(10000);
-        String2.pressEnterToContinue(); 
+        //String2.pressEnterToContinue(); 
     }
 
 

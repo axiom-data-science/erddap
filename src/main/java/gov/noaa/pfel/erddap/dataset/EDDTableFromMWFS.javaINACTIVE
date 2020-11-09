@@ -90,6 +90,7 @@ public class EDDTableFromMWFS extends EDDTable{
         String tLocalSourceUrl = null;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -145,6 +146,8 @@ public class EDDTableFromMWFS extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -155,7 +158,8 @@ public class EDDTableFromMWFS extends EDDTable{
 
         return new EDDTableFromMWFS(tDatasetID, tAccessibleTo,
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere, 
+            tGlobalAttributes,
             tLongitudeSourceMinimum, tLongitudeSourceMaximum,
             tLatitudeSourceMinimum,  tLatitudeSourceMaximum,
             tAltitudeSourceMinimum,  tAltitudeSourceMaximum, 
@@ -233,7 +237,7 @@ public class EDDTableFromMWFS extends EDDTable{
     public EDDTableFromMWFS(String tDatasetID, String tAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery,
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere,
         Attributes tAddGlobalAttributes,
         double tLonMin, double tLonMax,
         double tLatMin, double tLatMax,
@@ -331,15 +335,19 @@ public class EDDTableFromMWFS extends EDDTable{
             }
         }
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid
         ensureValid();
 
         //done
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
-            (reallyVerbose? "\n" + toString() : "") +
+            (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableFromMWFS " + datasetID + 
             " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -382,8 +390,8 @@ public class EDDTableFromMWFS extends EDDTable{
             String2.genEFormat6(requestedDestinationMin[1]) + "," + 
             String2.genEFormat6(requestedDestinationMin[0]) + "," + 
             String2.genEFormat6(requestedDestinationMax[1]) +
-            "&TIME=" + Calendar2.epochSecondsToIsoStringT(requestedDestinationMin[3]) + 
-                "Z," + Calendar2.epochSecondsToIsoStringT(requestedDestinationMax[3]) + "Z" + 
+            "&TIME=" + Calendar2.epochSecondsToIsoStringTZ(requestedDestinationMin[3]) + 
+                 "," + Calendar2.epochSecondsToIsoStringTZ(requestedDestinationMax[3]) + 
             "&TYPENAME=" + sourceVarName;
         if (reallyVerbose)
             String2.log("  constraint=" + constraint);
@@ -397,108 +405,111 @@ public class EDDTableFromMWFS extends EDDTable{
         String tTime = "", tStationID = "";     //values that persist for a while
         //read the xml properties file
         if (verbose) String2.log("mWFS data request url=\n" + sourceUrl + constraint);
-        SimpleXMLReader xmlReader = new SimpleXMLReader(
-            SSR.getUrlInputStream(sourceUrl + constraint), "gml:FeatureCollection");
-        String tags = xmlReader.allTags();
-        TAG_LOOP:
-        do {
-            //process the tags
-            if (reallyVerbose) String2.log("tags=" + tags + xmlReader.content());
+        SimpleXMLReader = new SimpleXMLReader(SSR.getUrlBufferedInputStream(sourceUrl + constraint), 
+            "gml:FeatureCollection");
+        try {
+            String tags = xmlReader.allTags();
+            TAG_LOOP:
+            do {
+                //process the tags
+                if (reallyVerbose) String2.log("tags=" + tags + xmlReader.content());
 
-            if (tags.startsWith(timeSeriesTag)) {
-                String endOfTsTag = tags.substring(timeSeriesTag.length());
-                String content = xmlReader.content();
-                String error = null;
+                if (tags.startsWith(timeSeriesTag)) {
+                    String endOfTsTag = tags.substring(timeSeriesTag.length());
+                    String content = xmlReader.content();
+                    String error = null;
 
-                if (endOfTsTag.equals("</ioos:sensor>")) {
-                    //e.g., 44004
-                    tStationID = content;
+                    if (endOfTsTag.equals("</ioos:sensor>")) {
+                        //e.g., 44004
+                        tStationID = content;
 
-                } else if (endOfTsTag.equals("</ioos:observationName>")) {
-                    //e.g., waterTemperature
-                    if (!content.equals(sourceVarName))
-                        error = "<ioos:observationName>=" + content + 
-                            " should have been " + sourceVarName + ".";
+                    } else if (endOfTsTag.equals("</ioos:observationName>")) {
+                        //e.g., waterTemperature
+                        if (!content.equals(sourceVarName))
+                            error = "<ioos:observationName>=" + content + 
+                                " should have been " + sourceVarName + ".";
 
-                } else if (endOfTsTag.equals("</ioos:verticalPosition>")) {
-                    //e.g., 0
-                    tAltitude = String2.parseDouble(content);
-                    if (Double.isNaN(tAltitude))
-                        error = "Invalid <ioos:verticalPosition>=" + content;
+                    } else if (endOfTsTag.equals("</ioos:verticalPosition>")) {
+                        //e.g., 0
+                        tAltitude = String2.parseDouble(content);
+                        if (Double.isNaN(tAltitude))
+                            error = "Invalid <ioos:verticalPosition>=" + content;
 
-                } else if (endOfTsTag.equals("<ioos:horizontalPosition><gml:Point></gml:pos>")) {
-                    //e.g., 38.48 -70.43    order is lat lon
-                    int spo = content.indexOf(' ');                
-                    if (spo < 0) spo = 0; //push error to handler below 
-                    tLat = String2.parseDouble(content.substring(0, spo));
-                    tLon = String2.parseDouble(content.substring(spo + 1));
-                    if (Double.isNaN(tLon) || Double.isNaN(tLat))
-                        error = "Invalid <gml:Point>=" + content;
+                    } else if (endOfTsTag.equals("<ioos:horizontalPosition><gml:Point></gml:pos>")) {
+                        //e.g., 38.48 -70.43    order is lat lon
+                        int spo = content.indexOf(' ');                
+                        if (spo < 0) spo = 0; //push error to handler below 
+                        tLat = String2.parseDouble(content.substring(0, spo));
+                        tLon = String2.parseDouble(content.substring(spo + 1));
+                        if (Double.isNaN(tLon) || Double.isNaN(tLat))
+                            error = "Invalid <gml:Point>=" + content;
 
-                } else if (endOfTsTag.equals("<ioos:tsEvent><ioos:TSMeasurement></ioos:obsDateTime>")) {
-                    //e.g., 2007-06-01T12:50:00Z
-                    tTime = content;
+                    } else if (endOfTsTag.equals("<ioos:tsEvent><ioos:TSMeasurement></ioos:obsDateTime>")) {
+                        //e.g., 2007-06-01T12:50:00Z
+                        tTime = content;
 
-                } else if (endOfTsTag.equals("<ioos:tsEvent><ioos:TSMeasurement></ioos:observation>")) {
-                    //e.g., 24.1
-                    String invalid = null;
-                    if (Double.isNaN(tLon))       invalid = "longitude";
-                    if (Double.isNaN(tLat))       invalid = "latitude";
-                    if (Double.isNaN(tAltitude))  invalid = "altitude";
-                    if (tTime.length() == 0)      invalid = "time";
-                    if (tStationID.length() == 0) invalid = "station_id";
-                    if (invalid == null) {
+                    } else if (endOfTsTag.equals("<ioos:tsEvent><ioos:TSMeasurement></ioos:observation>")) {
+                        //e.g., 24.1
+                        String invalid = null;
+                        if (Double.isNaN(tLon))       invalid = "longitude";
+                        if (Double.isNaN(tLat))       invalid = "latitude";
+                        if (Double.isNaN(tAltitude))  invalid = "altitude";
+                        if (tTime.length() == 0)      invalid = "time";
+                        if (tStationID.length() == 0) invalid = "station_id";
+                        if (invalid == null) {
 
-                        //add a row of data to table
-                        table.getColumn(lonIndex).addDouble(tLon);
-                        table.getColumn(latIndex).addDouble(tLat);
-                        table.getColumn(altIndex).addDouble(tAltitude);
-                        table.getColumn(timeIndex).addString(tTime);
-                        table.getColumn(stationIDIndex).addString(tStationID);
-                        table.getColumn(nFixedVariables).addString(content);
+                            //add a row of data to table
+                            table.getColumn(lonIndex).addDouble(tLon);
+                            table.getColumn(latIndex).addDouble(tLat);
+                            table.getColumn(altIndex).addDouble(tAltitude);
+                            table.getColumn(timeIndex).addString(tTime);
+                            table.getColumn(stationIDIndex).addString(tStationID);
+                            table.getColumn(nFixedVariables).addString(content);
 
-                        //write to tableWriter?
-                        if (writeChunkToTableWriter(requestUrl, userDapQuery, table, tableWriter, false)) {
-                            table = makeEmptySourceTable(
-                                (new IntArray(0, dataVariables.length - 1)).toArray(), 128);
-                            if (tableWriter.noMoreDataPlease) {
-                                tableWriter.logCaughtNoMoreDataPlease(datasetID);
-                                break TAG_LOOP;
+                            //write to tableWriter?
+                            if (writeChunkToTableWriter(requestUrl, userDapQuery, table, tableWriter, false)) {
+                                table = makeEmptySourceTable(
+                                    (new IntArray(0, dataVariables.length - 1)).toArray(), 128);
+                                if (tableWriter.noMoreDataPlease) {
+                                    tableWriter.logCaughtNoMoreDataPlease(datasetID);
+                                    break TAG_LOOP;
+                                }
                             }
+
+
+                        } else {
+                            error = "The " + invalid + " value wasn't set in the XML response.";
                         }
 
-
-                    } else {
-                        error = "The " + invalid + " value wasn't set in the XML response.";
+                    //a tag that unsets persistent values
+                    } else if (endOfTsTag.equals("</ioos:tsEvent>")) {
+                        tTime = "";
                     }
 
+                    //handle the error
+                    if (error != null)
+                        throw new RuntimeException(
+                            "Data source error on xml line #" + xmlReader.lineNumber() + 
+                            ": " + error);
+
                 //a tag that unsets persistent values
-                } else if (endOfTsTag.equals("</ioos:tsEvent>")) {
+                } else if (tags.equals(timeSeriesEndTag)) {
+                    tLon = Double.NaN;
+                    tLat = Double.NaN;
+                    tAltitude = Double.NaN;
                     tTime = "";
-                }
-
-                //handle the error
-                if (error != null)
-                    throw new RuntimeException(
-                        "Data source error on xml line #" + xmlReader.lineNumber() + 
-                        ": " + error);
-
-            //a tag that unsets persistent values
-            } else if (tags.equals(timeSeriesEndTag)) {
-                tLon = Double.NaN;
-                tLat = Double.NaN;
-                tAltitude = Double.NaN;
-                tTime = "";
-                tStationID = "";                
-            }            
+                    tStationID = "";                
+                }            
 
 
-            //get the next tags
-            xmlReader.nextTag();
-            tags = xmlReader.allTags();
-        } while (!tags.equals("</gml:FeatureCollection>"));
+                //get the next tags
+                xmlReader.nextTag();
+                tags = xmlReader.allTags();
+            } while (!tags.equals("</gml:FeatureCollection>"));
+        } finally { 
+            try {if (xmlReader != null) xmlReader.close(); } catch (Exception e) {}
+        }
 
-        xmlReader.close();      
 
         //do the final writeToTableWriter
         writeChunkToTableWriter(requestUrl, userDapQuery, table, tableWriter, true);
@@ -530,7 +541,7 @@ public class EDDTableFromMWFS extends EDDTable{
 "Markup Language (GML) Simple Feature Profile to transport in-situ \n" +
 "time series data.")   //better summary?
                 .add("institution",   "NOAA CSC")
-                .add("infoUrl",       "http://www.csc.noaa.gov/DTL/dtl_proj4_gmlsfp_wfs.html")
+                .add("infoUrl",       "https://www.coast.noaa.gov/DTL/dtl_proj4_gmlsfp_wfs.html")
                 .add("cdm_data_type", CDM_TIMESERIES)
                 .add("standard_name_vocabulary", FileNameUtility.getStandardNameVocabulary())
                 .add("license",       "[standard]"),
@@ -560,7 +571,7 @@ public class EDDTableFromMWFS extends EDDTable{
      * @param doLongTest
      * @throws Throwable if trouble
      */
-    public static void test(boolean doLongTest) throws Throwable {
+    public static void basicTest(boolean doLongTest) throws Throwable {
         String2.log("\n****************** EDDTableFromMWFS.test() *****************\n");
         verbose = true;
         reallyVerbose = true;
@@ -589,10 +600,10 @@ Markup Language (GML) Simple Feature Profile to transport in-situ
 time series data.</att>
             <att name="cdm_data_type">Station</att>
             <att name="Conventions">COARDS, CF-1.6, ACDD-1.3</att>  
-            <att name="infoUrl">http://www.csc.noaa.gov/DTL/dtl_proj4_gmlsfp_wfs.html</att>
+            <att name="infoUrl">https://www.coast.noaa.gov/DTL/dtl_proj4_gmlsfp_wfs.html</att>
             <att name="institution">NOAA CSC</att>
             <att name="license">[standard]</att>
-            <att name="standard_name_vocabulary">CF Standard Name Table v29</att>
+            <att name="standard_name_vocabulary">CF Standard Name Table v55</att>
         </addAttributes> 
         <longitudeSourceMinimum>-97.22</longitudeSourceMinimum>
         <longitudeSourceMaximum>-70.43</longitudeSourceMaximum>
@@ -733,7 +744,7 @@ time series data.</att>
 "    String history \"" + today + " http://csc-s-ial-p.csc.noaa.gov/cgi-bin/microwfs/microWFS.cgi?SERVICENAME=dtlservicesubType=gml/3.1.1/profiles/gmlsf/1.0.0/1[10]\n" +
 today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
                 "/tabledap/cscWT.das\";[10]\n" + //note no '?' after .das
-"    String infoUrl \"http://www.csc.noaa.gov/DTL/dtl_proj4_gmlsfp_wfs.html\";[10]\n" +
+"    String infoUrl \"https://www.coast.noaa.gov/DTL/dtl_proj4_gmlsfp_wfs.html\";[10]\n" +
 "    String institution \"NOAA CSC\";[10]\n" +
 "    String license \"The data may be used and redistributed for free but is not intended[10]\n" +
 "for legal use, since it may contain inaccuracies. Neither the data[10]\n" +
@@ -745,7 +756,7 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
 "    Float64 Northernmost_Northing 38.48;[10]\n" +
 "    String sourceUrl \"http://csc-s-ial-p.csc.noaa.gov/cgi-bin/microwfs/microWFS.cgi?SERVICENAME=dtlservicesubType=gml/3.1.1/profiles/gmlsf/1.0.0/1\";[10]\n" +
 "    Float64 Southernmost_Northing 24.55;[10]\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v29\";[10]\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v55\";[10]\n" +
 "    String summary \"[Normally, the summary describes the dataset. Here, it describes [10]\n" +
 "the server.][10]\n" +
 "The mission of the NOAA CSC Data Transport Laboratory (DTL) is to[10]\n" +
@@ -926,6 +937,47 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
                 "*** EXPECTED ERROR first appeared 2008-09-04: " + MustBe.throwableToString(t)); 
         }
 
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDTableFromMWFS.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest(doSlowTestsToo);
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

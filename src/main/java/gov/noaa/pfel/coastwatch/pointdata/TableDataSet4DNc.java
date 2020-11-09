@@ -139,7 +139,7 @@ public class TableDataSet4DNc extends TableDataSet {
                             dataType == DataType.STRING ||
                             dataType == DataType.STRUCTURE) {
                             if (verbose) String2.log(reject + 
-                                "dataType=" + NcHelper.getElementClass(dataType).toString());
+                                "dataType=" + NcHelper.getElementPAType(variable).toString());
                             continue;
                         }
 
@@ -160,7 +160,7 @@ public class TableDataSet4DNc extends TableDataSet {
 
                             //interpret time units (e.g., "days since 1985-01-01" or "days since 1985-1-1")
                             //it must be: <units> since <isoDate>   or exception thrown
-                            //future: need to catch time zone information
+                            //FUTURE: need to catch time zone information
                             String tsUnits = timeAttributes.getString("units");
                             double timeBaseAndFactor[] = Calendar2.getTimeBaseAndFactor(tsUnits); //throws exception if trouble
                             timeBaseSeconds = timeBaseAndFactor[0];
@@ -280,7 +280,7 @@ public class TableDataSet4DNc extends TableDataSet {
                         Attributes tAttributes = new Attributes();
                         NcHelper.getVariableAttributes(variable, tAttributes);
                         dataAttributes.add(tAttributes);
-                        dataElementType.add(NcHelper.getElementClass(variable.getDataType()));
+                        dataElementType.add(NcHelper.getElementPAType(variable));
                     }
 
                     //close the file  (do care if exception)
@@ -453,12 +453,11 @@ public class TableDataSet4DNc extends TableDataSet {
      *
      * @throws Exception if trouble
      */
-    public static void test() throws Exception {
+    public static void basicTest() throws Exception {
         verbose = true;
-        try {
         TableDataSet4DNc dataset = new TableDataSet4DNc(
             "4NBmeto", "NDBC Meteorological",
-            "c:/u00/data/points/ndbcMet/", 
+            "c:/u00/data/points/ndbcMet2/historical/", 
             //".+\\.nc");
             "NDBC_41..._met.nc");
 
@@ -485,14 +484,53 @@ public class TableDataSet4DNc extends TableDataSet {
         Test.ensureEqual(table.getDoubleData(8, row), Double.NaN, "");
         Test.ensureEqual(table.getDoubleData(9, row), Double.NaN, "");
         Test.ensureEqual(table.getDoubleData(10, row), Double.NaN, "");
-        Test.ensureEqual(table.getDoubleData(11, row), Double.NaN, "");
+        Test.ensureEqual(table.getIntData(11, row), 32767, "");  
         Test.ensureEqual(table.getFloatData(12, row), 1021.1f, "");
         Test.ensureEqual(table.getFloatData(13, row), 19.9f, "");
         Test.ensureEqual(table.getFloatData(14, row), 18.4f, "");
         Test.ensureEqual(table.getFloatData(15, row), Float.NaN, "");
         Test.ensureEqual(table.getFloatData(16, row), Float.NaN, "");
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t));
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ TableDataSet4DNc.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
         }
     }
+
 }

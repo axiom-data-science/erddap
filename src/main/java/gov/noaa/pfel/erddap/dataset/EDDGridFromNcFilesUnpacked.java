@@ -18,6 +18,7 @@ import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
+import com.cohort.util.Units2;
 import com.cohort.util.XML;
 
 import gov.noaa.pfel.coastwatch.Projects;
@@ -72,13 +73,13 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
 
     /** subclasses call lower version */
     public static String generateDatasetsXml(
-        String tFileDir, String tFileNameRegex, String sampleFileName, 
-        int tReloadEveryNMinutes, String tCacheFromUrl,
+        String tFileDir, String tFileNameRegex, String sampleFileName, String tGroup,
+        String tDimensionsCSV, int tReloadEveryNMinutes, String tCacheFromUrl,
         Attributes externalAddGlobalAttributes) throws Throwable {
 
         return generateDatasetsXml("EDDGridFromNcFilesUnpacked",
-            tFileDir, tFileNameRegex, sampleFileName, 
-            tReloadEveryNMinutes, tCacheFromUrl,
+            tFileDir, tFileNameRegex, sampleFileName, tGroup,
+            tDimensionsCSV, tReloadEveryNMinutes, tCacheFromUrl,
             externalAddGlobalAttributes);
     }
     
@@ -198,40 +199,41 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
 "  :file_quality_index = \"0\";\n" +
 "  :History = \"Translated to CF-1.0 Conventions by Netcdf-Java CDM (NetcdfCFWriter)\n" +
 "Original Dataset = satellite/MUR/ssta/1day; Translation Date = Thu Oct 08 09:39:01 PDT 2015\";\n" +
-" data:\n" +
-"analysed_sst =\n" +
-"  {\n" +
-"    {\n" +
-"      {1779, 1790, 1802, 1815, 1827, 1839, 1851, 1862, 1874, 1886},\n" +
-"      {1782, 1792, 1804, 1816, 1828, 1840, 1851, 1863, 1875, 1887},\n" +
-"      {1786, 1795, 1805, 1817, 1828, 1839, 1851, 1862, 1874, 1885},\n" +
-"      {1789, 1798, 1807, 1817, 1828, 1838, 1849, 1860, 1871, 1882},\n" +
-"      {1793, 1800, 1808, 1817, 1827, 1836, 1846, 1856, 1866, 1876},\n" +
-"      {1795, 1801, 1809, 1816, 1825, 1833, 1842, 1851, 1859, 1868},\n" +
-"      {1796, 1802, 1808, 1815, 1822, 1829, 1836, 1844, 1851, 1858},\n" +
-"      {1797, 1801, 1807, 1812, 1818, 1824, 1830, 1836, 1842, 1848},\n" +
-"      {1796, 1800, 1804, 1809, 1813, 1818, 1822, 1827, 1832, 1836},\n" +
-"      {1794, 1797, 1801, 1804, 1807, 1811, 1814, 1817, 1821, 1824}\n" +
-"    },\n" +
-"    {\n" +
-"      {1773, 1777, 1782, 1787, 1792, 1798, 1803, 1809, 1815, 1821},\n" +
-"      {1776, 1780, 1784, 1789, 1794, 1800, 1805, 1811, 1817, 1823},\n" +
-"      {1778, 1782, 1787, 1792, 1797, 1802, 1807, 1813, 1819, 1825},\n" +
-"      {1781, 1785, 1789, 1794, 1799, 1804, 1809, 1815, 1820, 1826},\n" +
-"      {1783, 1787, 1791, 1796, 1800, 1805, 1810, 1816, 1821, 1826},\n" +
-"      {1786, 1789, 1793, 1798, 1802, 1806, 1811, 1816, 1821, 1826},\n" +
-"      {1788, 1791, 1795, 1799, 1803, 1807, 1812, 1816, 1821, 1825},\n" +
-"      {1790, 1793, 1796, 1800, 1804, 1807, 1811, 1815, 1820, 1824},\n" +
-"      {1791, 1794, 1797, 1800, 1804, 1807, 1811, 1814, 1818, 1822},\n" +
-"      {1792, 1795, 1797, 1800, 1803, 1806, 1809, 1812, 1816, 1819}\n" +
-"    }\n" +
-"  }\n" +
-"time =\n" +
-"  {1096880400, 1096966800}\n" +
-"lat =\n" +
-"  {20.0006, 20.0116, 20.0226, 20.0336, 20.0446, 20.0555, 20.0665, 20.0775, 20.0885, 20.0995}\n" +
-"lon =\n" +
-"  {-134.995, -134.984, -134.973, -134.962, -134.951, -134.94, -134.929, -134.918, -134.907, -134.896}\n" +
+"\n" +
+"  data:\n" +
+"    analysed_sst = \n" +
+"      {\n" +
+"        {\n" +
+"          {1779, 1790, 1802, 1815, 1827, 1839, 1851, 1862, 1874, 1886},\n" +
+"          {1782, 1792, 1804, 1816, 1828, 1840, 1851, 1863, 1875, 1887},\n" +
+"          {1786, 1795, 1805, 1817, 1828, 1839, 1851, 1862, 1874, 1885},\n" +
+"          {1789, 1798, 1807, 1817, 1828, 1838, 1849, 1860, 1871, 1882},\n" +
+"          {1793, 1800, 1808, 1817, 1827, 1836, 1846, 1856, 1866, 1876},\n" +
+"          {1795, 1801, 1809, 1816, 1825, 1833, 1842, 1851, 1859, 1868},\n" +
+"          {1796, 1802, 1808, 1815, 1822, 1829, 1836, 1844, 1851, 1858},\n" +
+"          {1797, 1801, 1807, 1812, 1818, 1824, 1830, 1836, 1842, 1848},\n" +
+"          {1796, 1800, 1804, 1809, 1813, 1818, 1822, 1827, 1832, 1836},\n" +
+"          {1794, 1797, 1801, 1804, 1807, 1811, 1814, 1817, 1821, 1824}\n" +
+"        },\n" +
+"        {\n" +
+"          {1773, 1777, 1782, 1787, 1792, 1798, 1803, 1809, 1815, 1821},\n" +
+"          {1776, 1780, 1784, 1789, 1794, 1800, 1805, 1811, 1817, 1823},\n" +
+"          {1778, 1782, 1787, 1792, 1797, 1802, 1807, 1813, 1819, 1825},\n" +
+"          {1781, 1785, 1789, 1794, 1799, 1804, 1809, 1815, 1820, 1826},\n" +
+"          {1783, 1787, 1791, 1796, 1800, 1805, 1810, 1816, 1821, 1826},\n" +
+"          {1786, 1789, 1793, 1798, 1802, 1806, 1811, 1816, 1821, 1826},\n" +
+"          {1788, 1791, 1795, 1799, 1803, 1807, 1812, 1816, 1821, 1825},\n" +
+"          {1790, 1793, 1796, 1800, 1804, 1807, 1811, 1815, 1820, 1824},\n" +
+"          {1791, 1794, 1797, 1800, 1804, 1807, 1811, 1814, 1818, 1822},\n" +
+"          {1792, 1795, 1797, 1800, 1803, 1806, 1809, 1812, 1816, 1819}\n" +
+"        }\n" +
+"      }\n" +
+"    time = \n" +
+"      {1096880400, 1096966800}\n" +
+"    lat = \n" +
+"      {20.0006, 20.0116, 20.0226, 20.0336, 20.0446, 20.0555, 20.0665, 20.0775, 20.0885, 20.0995}\n" +
+"    lon = \n" +
+"      {-134.995, -134.984, -134.973, -134.962, -134.951, -134.94, -134.929, -134.918, -134.907, -134.896}\n" +
 "}\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
@@ -240,21 +242,21 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
         //  so here it appears not to be double var with no scale_factor or add_offset
         results = generateDatasetsXml(
             sampleDir, sampleRegex, sampleName,
-            DEFAULT_RELOAD_EVERY_N_MINUTES, null, null) + "\n"; //cacheFromUrl
+            "", //group
+            "", DEFAULT_RELOAD_EVERY_N_MINUTES, null, null) + "\n"; //dimensionsCSV, reloadMinutes, cacheFromUrl
         String suggDatasetID = suggestDatasetID(sampleDir + sampleRegex);
 
         //GenerateDatasetsXml
         String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
             "EDDGridFromNcFilesUnpacked",
             sampleDir, sampleRegex, sampleName,
-            "" + DEFAULT_RELOAD_EVERY_N_MINUTES, ""}, //cacheFromUrl
+            "", //group
+            "", "" + DEFAULT_RELOAD_EVERY_N_MINUTES, ""}, //dimensionsCSV, reloadMinutes, cacheFromUrl
             false); //doIt loop?
         Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt. " + 
             gdxResults.length() + " " + results.length());
 
         expected = 
-"<!-- NOTE! The source for nc_5633_008e_cd85 has nGridVariables=4,\n" +
-"  but this dataset will only serve 1 because the others use different dimensions. -->\n" +
 "<dataset type=\"EDDGridFromNcFilesUnpacked\" datasetID=\"" + suggDatasetID + "\" active=\"true\">\n" +
 "    <reloadEveryNMinutes>10080</reloadEveryNMinutes>\n" +
 "    <updateEveryNMillis>10000</updateEveryNMillis>\n" +
@@ -265,7 +267,6 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
 "    <metadataFrom>last</metadataFrom>\n" +
 "    <matchAxisNDigits>20</matchAxisNDigits>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"comment\">Interim-MUR(nrt) will be replaced by MUR-Final in about 3 days; MUR = &quot;Multi-scale Ultra-high Reolution&quot;; produced under NASA MEaSUREs program.</att>\n" +
 "        <att name=\"contact\">ghrsst@podaac.jpl.nasa.gov</att>\n" +
@@ -309,7 +310,7 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
 "        <att name=\"netcdf_version_id\">null</att>\n" +
 "        <att name=\"northernmost_latitude\">null</att>\n" +
 "        <att name=\"southernmost_latitude\">null</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"start_date\">null</att>\n" +
 "        <att name=\"start_time\">null</att>\n" +
 "        <att name=\"stop_date\">null</att>\n" +
@@ -375,7 +376,7 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
 "            <att name=\"coordinates\">time lat lon </att>\n" +
 "            <att name=\"long_name\">analysed sea surface temperature</att>\n" +
 "            <att name=\"standard_name\">sea_surface_foundation_temperature</att>\n" +
-"            <att name=\"units\">kelvin</att>\n" +
+"            <att name=\"units\">degree_K</att>\n" +
 "            <att name=\"valid_max\" type=\"double\">330.917</att>\n" +
 "            <att name=\"valid_min\" type=\"double\">265.383</att>\n" +
 "        </sourceAttributes -->\n" +
@@ -416,7 +417,6 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
         String error = "";
         EDV edv;
         String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
-        try {
 
         //generateDatasetsXml        
         String id = "testEDDGridFromNcFilesUnpacked";
@@ -472,7 +472,7 @@ public class EDDGridFromNcFilesUnpacked extends EDDGridFromNcLow {
 "    String ioos_category \"Temperature\";\n" +
 "    String long_name \"analysed sea surface temperature\";\n" +
 "    String standard_name \"sea_surface_foundation_temperature\";\n" +
-"    String units \"kelvin\";\n" +
+"    String units \"degree_K\";\n" +
 "    Float64 valid_max 330.917;\n" +
 "    Float64 valid_min 265.383;\n" +
 "  }\n" +
@@ -525,7 +525,7 @@ expected =
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing 20.0006;\n" +
 "    String spatial_resolution \"0.011 degrees\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String summary \"Interim-Multi-scale Ultra-high Resolution (MUR)(nrt) will be replaced by MUR-Final in about 3 days; MUR = \\\"Multi-scale Ultra-high Resolution\\\"; produced under NASA Making Earth System Data Records for Use in Research Environments (MEaSUREs) program.\";\n" +
 "    String time_coverage_end \"2015-10-06T09:00:00Z\";\n" +
 "    String time_coverage_start \"2015-10-05T09:00:00Z\";\n" +
@@ -569,7 +569,7 @@ expected =
         //String2.log(results);
         expected = 
 "time,latitude,longitude,analysed_sst\n" +
-"UTC,degrees_north,degrees_east,kelvin\n" +
+"UTC,degrees_north,degrees_east,degree_K\n" +
 "2015-10-05T09:00:00Z,20.0006,-134.995,299.929\n" +  //note double values (Kelvin)
 "2015-10-05T09:00:00Z,20.0006,-134.973,299.952\n" +
 "2015-10-05T09:00:00Z,20.0006,-134.951,299.977\n" +
@@ -589,9 +589,6 @@ expected =
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
         //  */
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-        }
     }
 
     /**
@@ -608,8 +605,10 @@ expected =
         String today = Calendar2.getCurrentISODateTimeStringZulu() + "Z";
         String fileDir = EDStatic.unitTestDataDir + "unsigned/";
         String fileName = "9km_aggregate__MODIS_AQUA_L3_SST_THERMAL_8DAY_9KM_DAYTIME.nc";
-        boolean oDebugMode = NcHelper.debugMode;
-NcHelper.debugMode = true;
+        boolean oNcDebugMode = NcHelper.debugMode;
+        NcHelper.debugMode = true;
+        boolean oAttDebugMode = Attributes.debugMode;
+        Attributes.debugMode = true;
 
         //DumpString
         results = NcHelper.ncdump(fileDir + fileName, "-h");
@@ -623,9 +622,9 @@ NcHelper.debugMode = true;
 "    short l3m_data(time=1, lat=2160, lon=25);\n" +
 "      :_Unsigned = \"true\";\n" +
 "      :long_name = \"l3m_data\";\n" +
-"      :scale_factor = 7.17185E-4f; // float\n" + //32768-> 23.50071808, so, many data values are higher
+"      :scale_factor = 7.17185E-4f; // float\n" + //halfway=32768-> 23.50071808, so, many data values are higher
 "      :add_offset = -2.0f; // float\n" +
-"      :_FillValue = -1S; // short\n" + //wrong: cf says it should be actual value: 65535(int)
+"      :_FillValue = -1S; // short\n" + //In a sense wrong: cf says it should be actual value: 65535(ushort)
 "      :Scaling = \"linear\";\n" +
 "      :Scaling_Equation = \"(Slope*l3m_data) + Intercept = Parameter value\";\n" +
 "      :Slope = 7.17185E-4f; // float\n" +
@@ -650,7 +649,7 @@ NcHelper.debugMode = true;
 "      :_CoordinateAxisType = \"Lon\";\n" +
 "      :standard_name = \"longitude\";\n" +
 "\n" +
-"    byte l3m_qual(time=1, lat=2160, lon=25);\n" +
+"    byte l3m_qual(time=1, lat=2160, lon=25);\n" +  
 "      :_Unsigned = \"true\";\n" +
 "      :long_name = \"l3m_qual\";\n" +
 "      :scale_factor = 7.17185E-4f; // float\n" +  //I suspect that's wrong
@@ -733,14 +732,238 @@ NcHelper.debugMode = true;
 "}\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-        //one time
-        if (false)
-            String2.log(generateDatasetsXml(fileDir, fileName, fileDir + fileName,
-                DEFAULT_RELOAD_EVERY_N_MINUTES, null, null));        
+        //generateDatasetsXml
+        results = generateDatasetsXml(fileDir, fileName, "", 
+            "", //group
+            "", -1, "", null);
+        expected = 
+"<dataset type=\"EDDGridFromNcFilesUnpacked\" datasetID=\"unsigned_55f5_4ca9_09f2\" active=\"true\">\n" + //same id as EDDGridFromNcFiles !!!
+"    <reloadEveryNMinutes>1440</reloadEveryNMinutes>\n" +
+"    <updateEveryNMillis>10000</updateEveryNMillis>\n" +
+"    <fileDir>/erddapTest/unsigned/</fileDir>\n" +
+"    <fileNameRegex>9km_aggregate__MODIS_AQUA_L3_SST_THERMAL_8DAY_9KM_DAYTIME.nc</fileNameRegex>\n" +
+"    <recursive>true</recursive>\n" +
+"    <pathRegex>.*</pathRegex>\n" +
+"    <metadataFrom>last</metadataFrom>\n" +
+"    <matchAxisNDigits>20</matchAxisNDigits>\n" +
+"    <fileTableInMemory>false</fileTableInMemory>\n" +
+"    <!-- sourceAttributes>\n" +
+"        <att name=\"Conventions\">CF-1.0</att>\n" +
+"        <att name=\"Data_Bins\" type=\"int\">14234182</att>\n" +
+"        <att name=\"Data_Maximum\" type=\"float\">36.915</att>\n" +
+"        <att name=\"Data_Minimum\" type=\"float\">-1.999999</att>\n" +
+"        <att name=\"Easternmost_Longitude\" type=\"float\">180.0</att>\n" +
+"        <att name=\"End_Day\" type=\"short\">271</att>\n" +
+"        <att name=\"End_Millisec\" type=\"int\">10806395</att>\n" +
+"        <att name=\"End_Orbit\" type=\"int\">0</att>\n" +
+"        <att name=\"End_Time\">2009271030006395</att>\n" +
+"        <att name=\"End_Year\" type=\"short\">2009</att>\n" +
+"        <att name=\"geospatial_lat_max\" type=\"double\">89.95833587646484</att>\n" +
+"        <att name=\"geospatial_lat_min\" type=\"double\">-89.95833587646484</att>\n" +
+"        <att name=\"geospatial_lon_max\" type=\"double\">-134.04165649414062</att>\n" +
+"        <att name=\"geospatial_lon_min\" type=\"double\">-136.04165649414062</att>\n" +
+"        <att name=\"History\">Translated to CF-1.0 Conventions by Netcdf-Java CDM (NetcdfCFWriter)\n" +
+"Original Dataset = file:/usr/ftp/ncml/catalog_ncml/OceanTemperature/modis/aqua/11um/9km/aggregate__MODIS_AQUA_L3_SST_THERMAL_8DAY_9KM_DAYTIME.ncml; Translation Date = Fri Oct 30 09:44:07 GMT-08:00 2015</att>\n" +
+"        <att name=\"Input_Files\">A20092652009272.L3b_8D_SST.main</att>\n" +
+"        <att name=\"Input_Parameters\">IFILE = /data3/sdpsoper/vdc/vpu2/workbuf/A20092652009272.L3b_8D_SST.main|OFILE = A20092652009272.L3m_8D_SST_9|PFILE = |PROD = sst|PALFILE = DEFAULT|RFLAG = ORIGINAL|MEAS = 1|STYPE = 0|DATAMIN = 0.000000|DATAMAX = 0.000000|LONWEST = -180.000000|LONEAST = 180.000000|LATSOUTH = -90.000000|LATNORTH = 90.000000|RESOLUTION = 9km|PROJECTION = RECT|GAP_FILL = 0|SEAM_LON = -180.000000|PRECISION=I</att>\n" +
+"        <att name=\"Intercept\" type=\"float\">-2.0</att>\n" +
+"        <att name=\"L2_Flag_Names\">LAND,HISOLZ</att>\n" +
+"        <att name=\"Latitude_Step\" type=\"float\">0.083333336</att>\n" +
+"        <att name=\"Latitude_Units\">degrees North</att>\n" +
+"        <att name=\"Longitude_Step\" type=\"float\">0.083333336</att>\n" +
+"        <att name=\"Longitude_Units\">degrees East</att>\n" +
+"        <att name=\"Map_Projection\">Equidistant Cylindrical</att>\n" +
+"        <att name=\"Measure\">Mean</att>\n" +
+"        <att name=\"Northernmost_Latitude\" type=\"float\">90.0</att>\n" +
+"        <att name=\"Number_of_Columns\" type=\"int\">4320</att>\n" +
+"        <att name=\"Number_of_Lines\" type=\"int\">2160</att>\n" +
+"        <att name=\"Orbit\" type=\"int\">0</att>\n" +
+"        <att name=\"Parameter\">Sea Surface Temperature</att>\n" +
+"        <att name=\"Period_End_Day\" type=\"short\">270</att>\n" +
+"        <att name=\"Period_End_Year\" type=\"short\">2009</att>\n" +
+"        <att name=\"Period_Start_Day\" type=\"short\">265</att>\n" +
+"        <att name=\"Period_Start_Year\" type=\"short\">2009</att>\n" +
+"        <att name=\"Processing_Control\">smigen par=A20092652009272.L3m_8D_SST_9.param</att>\n" +
+"        <att name=\"Processing_Time\">2009282201111000</att>\n" +
+"        <att name=\"Product_Name\">A20092652009272.L3m_8D_SST_9</att>\n" +
+"        <att name=\"Product_Type\">8-day</att>\n" +
+"        <att name=\"Replacement_Flag\">ORIGINAL</att>\n" +
+"        <att name=\"Scaled_Data_Maximum\" type=\"float\">45.0</att>\n" +
+"        <att name=\"Scaled_Data_Minimum\" type=\"float\">-2.0</att>\n" +
+"        <att name=\"Scaling\">linear</att>\n" +
+"        <att name=\"Scaling_Equation\">(Slope*l3m_data) + Intercept = Parameter value</att>\n" +
+"        <att name=\"Sensor_Name\">MODISA</att>\n" +
+"        <att name=\"Slope\" type=\"float\">7.17185E-4</att>\n" +
+"        <att name=\"Software_Name\">smigen</att>\n" +
+"        <att name=\"Software_Version\">4.0</att>\n" +
+"        <att name=\"Southernmost_Latitude\" type=\"float\">-90.0</att>\n" +
+"        <att name=\"start_date\">2002-07-04 UTC</att>\n" +
+"        <att name=\"Start_Day\" type=\"short\">265</att>\n" +
+"        <att name=\"Start_Millisec\" type=\"int\">8779</att>\n" +
+"        <att name=\"Start_Orbit\" type=\"int\">0</att>\n" +
+"        <att name=\"Start_Time\">2009265000008779</att>\n" +
+"        <att name=\"start_time\">00:00:00 UTC</att>\n" +
+"        <att name=\"Start_Year\" type=\"short\">2009</att>\n" +
+"        <att name=\"Station_Latitude\" type=\"float\">0.0</att>\n" +
+"        <att name=\"Station_Longitude\" type=\"float\">0.0</att>\n" +
+"        <att name=\"stop_date\">2015-03-06 UTC</att>\n" +
+"        <att name=\"stop_time\">23:59:59 UTC</att>\n" +
+"        <att name=\"SW_Point_Latitude\" type=\"float\">-89.958336</att>\n" +
+"        <att name=\"SW_Point_Longitude\" type=\"float\">-179.95833</att>\n" +
+"        <att name=\"Title\">MODISA Level-3 Standard Mapped Image</att>\n" +
+"        <att name=\"Units\">deg-C</att>\n" +
+"        <att name=\"Westernmost_Longitude\" type=\"float\">-180.0</att>\n" +
+"    </sourceAttributes -->\n" +
+"    <addAttributes>\n" +
+"        <att name=\"cdm_data_type\">Grid</att>\n" +
+"        <att name=\"Conventions\">CF-1.6, COARDS, ACDD-1.3</att>\n" +
+"        <att name=\"Data_Bins\">null</att>\n" +
+"        <att name=\"Data_Maximum\">null</att>\n" +
+"        <att name=\"Data_Minimum\">null</att>\n" +
+"        <att name=\"Easternmost_Longitude\">null</att>\n" +
+"        <att name=\"End_Day\">null</att>\n" +
+"        <att name=\"End_Millisec\">null</att>\n" +
+"        <att name=\"End_Orbit\">null</att>\n" +
+"        <att name=\"End_Time\">null</att>\n" +
+"        <att name=\"End_Year\">null</att>\n" +
+"        <att name=\"History\">null</att>\n" +
+"        <att name=\"history\">Translated to CF-1.0 Conventions by Netcdf-Java CDM (NetcdfCFWriter)\n" +
+"Original Dataset = file:/usr/ftp/ncml/catalog_ncml/OceanTemperature/modis/aqua/11um/9km/aggregate__MODIS_AQUA_L3_SST_THERMAL_8DAY_9KM_DAYTIME.ncml; Translation Date = Fri Oct 30 09:44:07 GMT-08:00 2015</att>\n" +
+"        <att name=\"infoUrl\">???</att>\n" +
+"        <att name=\"Input_Files\">null</att>\n" +
+"        <att name=\"institution\">???</att>\n" +
+"        <att name=\"Intercept\">null</att>\n" +
+"        <att name=\"keywords\">aqua, data, earth, Earth Science &gt; Oceans &gt; Ocean Temperature &gt; Sea Surface Temperature, image, imaging, L3, l3m_data, l3m_qual, mapped, moderate, modis, modisa, ocean, oceans, quality, resolution, science, sea, sea_surface_temperature, smi, spectroradiometer, standard, surface, temperature, time</att>\n" +
+"        <att name=\"keywords_vocabulary\">GCMD Science Keywords</att>\n" +
+"        <att name=\"Latitude_Step\">null</att>\n" +
+"        <att name=\"Latitude_Units\">null</att>\n" +
+"        <att name=\"license\">[standard]</att>\n" +
+"        <att name=\"Longitude_Step\">null</att>\n" +
+"        <att name=\"Longitude_Units\">null</att>\n" +
+"        <att name=\"Northernmost_Latitude\">null</att>\n" +
+"        <att name=\"Number_of_Columns\">null</att>\n" +
+"        <att name=\"Number_of_Lines\">null</att>\n" +
+"        <att name=\"Orbit\">null</att>\n" +
+"        <att name=\"Parameter\">null</att>\n" +
+"        <att name=\"Period_End_Day\">null</att>\n" +
+"        <att name=\"Period_End_Year\">null</att>\n" +
+"        <att name=\"Period_Start_Day\">null</att>\n" +
+"        <att name=\"Period_Start_Year\">null</att>\n" +
+"        <att name=\"Scaling\">null</att>\n" +
+"        <att name=\"Scaling_Equation\">null</att>\n" +
+"        <att name=\"Slope\">null</att>\n" +
+"        <att name=\"Southernmost_Latitude\">null</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
+"        <att name=\"start_date\">null</att>\n" +
+"        <att name=\"Start_Day\">null</att>\n" +
+"        <att name=\"Start_Millisec\">null</att>\n" +
+"        <att name=\"Start_Orbit\">null</att>\n" +
+"        <att name=\"Start_Time\">null</att>\n" +
+"        <att name=\"start_time\">null</att>\n" +
+"        <att name=\"Start_Year\">null</att>\n" +
+"        <att name=\"Station_Latitude\">null</att>\n" +
+"        <att name=\"Station_Longitude\">null</att>\n" +
+"        <att name=\"stop_date\">null</att>\n" +
+"        <att name=\"stop_time\">null</att>\n" +
+"        <att name=\"summary\">Moderate Resolution Imaging Spectroradiometer on Aqua (MODISA) Level-3 Standard Mapped Image</att>\n" +
+"        <att name=\"SW_Point_Latitude\">null</att>\n" +
+"        <att name=\"SW_Point_Longitude\">null</att>\n" +
+"        <att name=\"Title\">null</att>\n" +
+"        <att name=\"title\">MODISA L3 SMI,</att>\n" +
+"        <att name=\"Units\">null</att>\n" +
+"        <att name=\"Westernmost_Longitude\">null</att>\n" +
+"    </addAttributes>\n" +
+"    <axisVariable>\n" +
+"        <sourceName>time</sourceName>\n" +
+"        <destinationName>time</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"_CoordinateAxisType\">Time</att>\n" +
+"            <att name=\"axis\">T</att>\n" +
+"            <att name=\"standard_name\">time</att>\n" +
+"            <att name=\"units\">seconds since 1970-01-01T00:00:00Z</att>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"ioos_category\">Time</att>\n" +
+"            <att name=\"long_name\">Time</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <axisVariable>\n" +
+"        <sourceName>lat</sourceName>\n" +  //correct based on what is in the file, but needs to be Number_of_Lines
+"        <destinationName>latitude</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"ioos_category\">Location</att>\n" +
+"            <att name=\"long_name\">Latitude</att>\n" +
+"            <att name=\"standard_name\">latitude</att>\n" +
+"            <att name=\"units\">degrees_north</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <axisVariable>\n" +
+"        <sourceName>lon</sourceName>\n" +  //correct based on what is in the file, but needs to be Number_of_Columns
+"        <destinationName>longitude</destinationName>\n" +
+"        <!-- sourceAttributes>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"ioos_category\">Location</att>\n" +
+"            <att name=\"long_name\">Longitude</att>\n" +
+"            <att name=\"standard_name\">longitude</att>\n" +
+"            <att name=\"units\">degrees_east</att>\n" +
+"        </addAttributes>\n" +
+"    </axisVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>l3m_data</sourceName>\n" +
+"        <destinationName>sst</destinationName>\n" +
+"        <dataType>float</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"float\">NaN</att>\n" +  //a result of unpacking
+"            <att name=\"coordinates\">time Number_of_Lines Number_of_Columns lat lon</att>\n" +
+//"            <att name=\"Intercept\" type=\"float\">-2.0</att>\n" +                                   //this is removed by the unpacking process
+"            <att name=\"long_name\">l3m_data</att>\n" +
+//"            <att name=\"Scaling\">linear</att>\n" +                                                  //this is removed by the unpacking process  
+//"            <att name=\"Scaling_Equation\">(Slope*l3m_data) + Intercept = Parameter value</att>\n" + //this is removed by the unpacking process
+//"            <att name=\"Slope\" type=\"float\">7.17185E-4</att>\n" +                                 //this is removed by the unpacking process
+//             scale_factor and add_offset are also removed by the unpacking process            
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"colorBarMaximum\" type=\"double\">32.0</att>\n" +
+"            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
+"            <att name=\"coordinates\">null</att>\n" +
+"            <att name=\"ioos_category\">Temperature</att>\n" +
+"            <att name=\"long_name\">Sea Surface Temperature</att>\n" +
+"            <att name=\"standard_name\">sea_surface_temperature</att>\n" +
+"            <att name=\"units\">deg_C</att>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>l3m_qual</sourceName>\n" +
+"        <destinationName>sst_quality</destinationName>\n" +
+"        <dataType>float</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"coordinates\">time Number_of_Lines Number_of_Columns lat lon</att>\n" +
+"            <att name=\"long_name\">l3m_qual</att>\n" +
+"            <att name=\"valid_range\" type=\"floatList\">-2.0 -1.9985657</att>\n" + //trouble: incorrect files -> crazy result of erroneous scale_factor and add_offset
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"            <att name=\"colorBarMaximum\" type=\"double\">150.0</att>\n" +
+"            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
+"            <att name=\"coordinates\">null</att>\n" +
+"            <att name=\"ioos_category\">Quality</att>\n" +
+"            <att name=\"long_name\">Sea Surface Temperature Quality</att>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"</dataset>\n" +
+"\n";
+        Test.ensureEqual(results, expected, "results=\n" + results);
+
+
 
         //ensure files are reread
-        File2.deleteAllFiles(datasetDir("testUInt16FileUnpacked"));
-        EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "testUInt16FileUnpacked"); 
+        //NOTE that testUInt16FileUnpacked uses
+        //  Number_of_Lines   (the 1D var which uses lat dimension) and
+        //  Number_of_Columns (the 1D var which uses lon dimension)
+        File2.deleteAllFiles(datasetDir(                    "testUInt16FileUnpacked")); 
+        EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "testUInt16FileUnpacked");  
         //in uaf erddap, this is nasa_jpl_c688_be2f_cf9d
 
 //re-pack apparent missing value
@@ -794,7 +1017,6 @@ NcHelper.debugMode = true;
 "    Float64 colorBarMinimum 0.0;\n" +
 "    String ioos_category \"Quality\";\n" +
 "    String long_name \"Sea Surface Temperature Quality\";\n" +
-"    String units \"deg_C\";\n" +   //??? did ERDDAP add that?
 "    Float32 valid_range -2.0, -1.9985657;\n" + //unpacking did that
 "  }\n" +
 "  NC_GLOBAL {\n" +
@@ -817,10 +1039,9 @@ expected =
 //"2015-10-30T18:17:10Z (local files)
 //2015-10-30T18:17:10Z http://localhost:8080/cwexperimental/griddap/testUInt16File.das";
 "    String infoUrl \"???\";\n" +
-"    String Input_Files \"A20092652009272.L3b_8D_SST.main\";\n" +
 "    String Input_Parameters \"IFILE = /data3/sdpsoper/vdc/vpu2/workbuf/A20092652009272.L3b_8D_SST.main|OFILE = A20092652009272.L3m_8D_SST_9|PFILE = |PROD = sst|PALFILE = DEFAULT|RFLAG = ORIGINAL|MEAS = 1|STYPE = 0|DATAMIN = 0.000000|DATAMAX = 0.000000|LONWEST = -180.000000|LONEAST = 180.000000|LATSOUTH = -90.000000|LATNORTH = 90.000000|RESOLUTION = 9km|PROJECTION = RECT|GAP_FILL = 0|SEAM_LON = -180.000000|PRECISION=I\";\n" +
 "    String institution \"???\";\n" +
-"    String keywords \"aqua, data, Earth Science > Oceans > Ocean Temperature > Sea Surface Temperature, image, imaging, L3, l3m_data, l3m_qual, mapped, moderate, modis, modis a, ocean, oceans, quality, resolution, sea, sea_surface_temperature, smi, spectroradiometer, standard, surface, temperature, time\";\n" +
+"    String keywords \"aqua, data, earth, Earth Science > Oceans > Ocean Temperature > Sea Surface Temperature, image, imaging, L3, l3m_data, l3m_qual, mapped, moderate, modis, modisa, ocean, oceans, quality, resolution, science, sea, sea_surface_temperature, smi, spectroradiometer, standard, surface, temperature, time\";\n" +
 "    String keywords_vocabulary \"GCMD Science Keywords\";\n" +
 "    String L2_Flag_Names \"LAND,HISOLZ\";\n" +
 "    String license \"The data may be used and redistributed for free but is not intended\n" +
@@ -845,7 +1066,7 @@ expected =
 "    String Software_Version \"4.0\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing -89.95834;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String summary \"Moderate Resolution Imaging Spectroradiometer on Aqua (MODISA) Level-3 Standard Mapped Image\";\n" +
 "    String time_coverage_end \"2002-07-04T00:00:00Z\";\n" +
 "    String time_coverage_start \"2002-07-04T00:00:00Z\";\n" +
@@ -890,44 +1111,378 @@ expected =
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
         //.csv data values
-        userDapQuery = "sst[0][0:100:2159][(-134.95833513)]"; 
+        userDapQuery = "sst[0][0:100:2159][(-134.95833513)],sst_quality[0][0:100:2159][(-134.95833513)]"; 
         tName = eddGrid.makeNewFileForDapQuery(null, null, userDapQuery, 
             EDStatic.fullTestCacheDirectory, eddGrid.className(), ".csv"); 
         results = String2.directReadFrom88591File(
             EDStatic.fullTestCacheDirectory + tName);
         String2.log(results);
         expected = //difference from testUInt16Dap: lat lon are float here, not double
-"time,latitude,longitude,sst\n" +
-"UTC,degrees_north,degrees_east,deg_C\n" +
-"2002-07-04T00:00:00Z,89.958336,-134.95833,-0.84102905\n" +
-"2002-07-04T00:00:00Z,81.62501,-134.95833,-1.6371044\n" +
-"2002-07-04T00:00:00Z,73.291664,-134.95833,-0.11021753\n" +
-"2002-07-04T00:00:00Z,64.958336,-134.95833,NaN\n" + //shows _FillValue's correctly caught
-"2002-07-04T00:00:00Z,56.625008,-134.95833,NaN\n" +
-"2002-07-04T00:00:00Z,48.291664,-134.95833,12.6406145\n" +
-"2002-07-04T00:00:00Z,39.958336,-134.95833,17.95137\n" +
-"2002-07-04T00:00:00Z,31.625,-134.95833,20.432829\n" +  
-"2002-07-04T00:00:00Z,23.291664,-134.95833,19.664007\n" +
-"2002-07-04T00:00:00Z,14.958336,-134.95833,24.482773\n" + //>23.5 shows unsigned values correctly caught
-"2002-07-04T00:00:00Z,6.625,-134.95833,29.068455\n" +
-"2002-07-04T00:00:00Z,-1.7083359,-134.95833,27.240349\n" +
-"2002-07-04T00:00:00Z,-10.041664,-134.95833,27.210228\n" +
-"2002-07-04T00:00:00Z,-18.375,-134.95833,26.713936\n" +
-"2002-07-04T00:00:00Z,-26.708336,-134.95833,21.580326\n" +
-"2002-07-04T00:00:00Z,-35.041668,-134.95833,15.789774\n" +
-"2002-07-04T00:00:00Z,-43.375,-134.95833,NaN\n" +
-"2002-07-04T00:00:00Z,-51.708336,-134.95833,6.1673026\n" +
-"2002-07-04T00:00:00Z,-60.041668,-134.95833,0.40400413\n" +
-"2002-07-04T00:00:00Z,-68.375,-134.95833,NaN\n" +
-"2002-07-04T00:00:00Z,-76.708336,-134.95833,NaN\n" +
-"2002-07-04T00:00:00Z,-85.04167,-134.95833,NaN\n"; 
-        Test.ensureEqual(results, expected, "\nresults=\n" + results);
+"time,latitude,longitude,sst,sst_quality\n" +
+"UTC,degrees_north,degrees_east,deg_C,\n" +                              //quality values should be 0, 1, 2, 3, 4, 5  
+"2002-07-04T00:00:00Z,89.958336,-134.95833,-0.84102905,-1.9992828\n" +   //quality values are wrong because file incorrectly has scale_factor, add_offset for them
+"2002-07-04T00:00:00Z,81.62501,-134.95833,-1.6371044,-2.0\n" +
+"2002-07-04T00:00:00Z,73.291664,-134.95833,-0.11021753,-2.0\n" +
+"2002-07-04T00:00:00Z,64.958336,-134.95833,NaN,-1.8171178\n" +   //NaN shows _FillValue=-1S was correctly caught
+"2002-07-04T00:00:00Z,56.625008,-134.95833,NaN,-1.8171178\n" +
+"2002-07-04T00:00:00Z,48.291664,-134.95833,12.6406145,-2.0\n" +
+"2002-07-04T00:00:00Z,39.958336,-134.95833,17.95137,-2.0\n" +
+"2002-07-04T00:00:00Z,31.625,-134.95833,20.432829,-2.0\n" +
+"2002-07-04T00:00:00Z,23.291664,-134.95833,19.664007,-1.9985657\n" +
+"2002-07-04T00:00:00Z,14.958336,-134.95833,24.482773,-2.0\n" + //sst>23.5 shows unsigned values correctly caught
+"2002-07-04T00:00:00Z,6.625,-134.95833,29.068455,-2.0\n" +
+"2002-07-04T00:00:00Z,-1.7083359,-134.95833,27.240349,-2.0\n" +
+"2002-07-04T00:00:00Z,-10.041664,-134.95833,27.210228,-2.0\n" +
+"2002-07-04T00:00:00Z,-18.375,-134.95833,26.713936,-2.0\n" +
+"2002-07-04T00:00:00Z,-26.708336,-134.95833,21.580326,-2.0\n" +
+"2002-07-04T00:00:00Z,-35.041668,-134.95833,15.789774,-2.0\n" +
+"2002-07-04T00:00:00Z,-43.375,-134.95833,NaN,-1.8171178\n" +
+"2002-07-04T00:00:00Z,-51.708336,-134.95833,6.1673026,-1.9985657\n" +
+"2002-07-04T00:00:00Z,-60.041668,-134.95833,0.40400413,-2.0\n" +
+"2002-07-04T00:00:00Z,-68.375,-134.95833,NaN,-1.8171178\n" +
+"2002-07-04T00:00:00Z,-76.708336,-134.95833,NaN,-1.8171178\n" +
+"2002-07-04T00:00:00Z,-85.04167,-134.95833,NaN,-1.8171178\n"; 
+        Test.ensureEqual(results, expected, "\nresults=\n" + results + 
+            "\nFIX THIS problem with unsigned values.");
 
         //display the image
         String2.log("\n\n* PNG ");
         tName = eddGrid.makeNewFileForDapQuery(null, null, "sst[0][][]&.land=under", 
             EDStatic.fullTestCacheDirectory, eddGrid.className() + "_UInt16_Map", ".png"); 
         SSR.displayInBrowser("file://" + EDStatic.fullTestCacheDirectory + tName);
+
+        NcHelper.debugMode = oNcDebugMode;
+        Attributes.debugMode = oAttDebugMode;
+    }
+
+    /**
+     * Test file from Yibo Jiang (PODAAC) and stored in /erddapTest/nc/ .
+     *
+     * @throws Throwable if trouble
+     */
+    public static void testSuperPreciseTimeUnits() throws Throwable {
+        String2.log("\n*** EDDGridFromNcFilesUnpacked.testSuperPreciseTimeUnits");
+        testVerboseOn();
+        String name, tName, results, tResults, expected, userDapQuery;
+        String fileDir = EDStatic.unitTestDataDir + "nc/";
+        boolean oDebugMode = NcHelper.debugMode;
+        NcHelper.debugMode = true;
+
+        //ncdump of file showing time units and values
+        results = NcHelper.ncdump(fileDir + "superPreciseTimeUnits.nc", "-v time");
+        expected = 
+"netcdf superPreciseTimeUnits.nc {\n" +
+"  dimensions:\n" +
+"    time = 24;\n" +
+"    lat = 400;\n" +
+"    lon = 1800;\n" +
+"  variables:\n" +
+"    byte time(time=24);\n" +
+"      :long_name = \"Reference time of file\";\n" +
+"      :standard_name = \"time\";\n" +
+"      :calendar = \"gregorian\";\n" +
+"      :comment = \"Timestamp coordinate at the center of the 1 hr bin, at 1 hour resolution. Range is one UTC day.\";\n" +
+"      :units = \"hours since 2020-01-01 00:30:00.000000000\";\n" +
+"      :_ChunkSizes = 24U; // uint\n" +
+"\n" +
+"    int epoch_time(time=24);\n" +
+"      :long_name = \"Time Centering of Data Based on Epoch Reference\";\n" +
+"      :standard_name = \"time\";\n" +
+"      :calendar = \"gregorian\";\n" +
+"      :comment = \"Timestamp coordinate is at the center of the 1 hr bin, at 1 hour resolution referenced by the historical Epoch reference date/time. The Epoch reference date/time corresponds to the first observation time window in the CYGNSS historical data record. Total number of timestamps in a file corresponds to one UTC day. This value is rounded to the nearest hour since leap seconds may have occured making the number of hours since the start of the mission not exact.\";\n" +
+"      :units = \"hours since 2017-03-18 00:30:00.000000000\";\n" +
+"      :_ChunkSizes = 24U; // uint\n" +
+"\n" +
+"    float lat(lat=400);\n" +
+"      :long_name = \"Latitude\";\n" +
+"      :standard_name = \"latitude\";\n" +
+"      :units = \"degrees_north\";\n" +
+"      :comment = \"Latitude coordinate at the center of the 0.2 degree bin, degrees_north, at 0.2 degree resolution. Range is -39.9 .. 39.9.\";\n" +
+"      :_ChunkSizes = 400U; // uint\n" +
+"\n" +
+"    float lon(lon=1800);\n" +
+"      :long_name = \"Longitude\";\n" +
+"      :standard_name = \"longitude\";\n" +
+"      :units = \"degrees_east\";\n" +
+"      :comment = \"Longitude coordinate at the center of the 0.2 degree bin, degrees_east, at 0.2 degree resolution. Range is 0.1 .. 359.9.\";\n" +
+"      :_ChunkSizes = 1800U; // uint\n" +
+"\n" +
+"    float wind_speed(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Wind speed\";\n" +
+"      :standard_name = \"wind_speed\";\n" +
+"      :units = \"m s-1\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = -5.0, 100.0; // double\n" +
+"      :comment = \"Minimum variance estimate of the mean wind speed in the bin over the spatial and temporal intervals specified by the bin's boundaries. This is done using an inverse-variance weighted average of all L2 samples of the wind speed that were made within the bin.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    float wind_speed_uncertainty(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Wind speed uncertainty\";\n" +
+"      :units = \"m s-1\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = 0.0, 10.0; // double\n" +
+"      :comment = \"Standard deviation of the error in the mean of all L2 samples of the wind speed within the bin.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    int num_wind_speed_samples(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Number of wind speed samples\";\n" +
+"      :units = \"1\";\n" +
+"      :_FillValue = -99; // int\n" +
+"      :valid_range = 1, 100000; // int\n" +
+"      :comment = \"The number of L2 wind speed samples used to calculate wind_speed.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    float yslf_wind_speed(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Young sea limited fetch wind speed\";\n" +
+"      :standard_name = \"yslf_wind_speed\";\n" +
+"      :units = \"m s-1\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = -5.0, 100.0; // double\n" +
+"      :comment = \"Minimum variance estimate of the young sea limited fetch mean wind speed in the bin over the spatial and temporal intervals specified by the bin's boundaries. This is done using an inverse-variance weighted average of all L2 samples of the wind speed that were made within the bin.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    float yslf_wind_speed_uncertainty(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Young sea limited fetch wind speed uncertainty\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = 0.0, 10.0; // double\n" +
+"      :comment = \"Standard deviation of the error in the mean of all L2 samples of the young sea limited fetch wind speed within the bin.\";\n" +
+"      :units = \"m s-1\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    int num_yslf_wind_speed_samples(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Number of young sea limited fetch wind speed samples\";\n" +
+"      :units = \"1\";\n" +
+"      :_FillValue = -99; // int\n" +
+"      :valid_range = 1, 100000; // int\n" +
+"      :comment = \"The number of L2 young sea limited fetch wind speed samples used to calculate yslf_wind_speed.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    float mean_square_slope(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Mean square slope\";\n" +
+"      :units = \"1\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = 0.0, 0.04; // double\n" +
+"      :comment = \"Mean MSS in the bin over the spatial and temporal intervals specified by the bin's boundaries.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    float mean_square_slope_uncertainty(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Mean square slope uncertainty\";\n" +
+"      :units = \"1\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = 0.0, 0.08; // double\n" +
+"      :comment = \"Standard deviation of the error in the mean of all L2 samples of the MSS within the bin.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    int num_mss_samples(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"Number of mean square slope samples\";\n" +
+"      :units = \"1\";\n" +
+"      :_FillValue = -99; // int\n" +
+"      :valid_range = 1, 100000; // int\n" +
+"      :comment = \"The number of L2 MSS samples used to calculate mean_square_slope.\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    float merra2_wind_speed(time=24, lat=400, lon=1800);\n" +
+"      :long_name = \"MERRA-2 reference wind speed\";\n" +
+"      :units = \"m s-1\";\n" +
+"      :_FillValue = -9999.0f; // float\n" +
+"      :valid_range = 0.0, 100.0; // double\n" +
+"      :comment = \"Mean MERRA-2 wind speed in the bin over the spatial and temporal intervals specified by the bin's boundaries. See https://disc.gsfc.nasa.gov/datasets/M2I1NXASM_5.12.4/summary?keywords=%22MERRA-2%22\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"    int num_merra2_wind_speed_samples(time=24, lat=400, lon=1800);\n" +
+"      :units = \"1\";\n" +
+"      :_FillValue = -99; // int\n" +
+"      :valid_range = 1, 100000; // int\n" +
+"      :comment = \"The number of L2 MERRA-2 wind speed samples used to calculate merra2_wind_speed.\";\n" +
+"      :long_name = \"Number of MERRA-2 wind speed samples\";\n" +
+"      :_ChunkSizes = 8U, 134U, 600U; // uint\n" +
+"\n" +
+"  // global attributes:\n" +
+"  :Conventions = \"CF-1.6, ACDD-1.3, ISO-8601\";\n" +
+"  :standard_name_vocabulary = \"CF Standard Name Table v30\";\n" +
+"  :project = \"CYGNSS\";\n" +
+"  :summary = \"CYGNSS is a NASA Earth Venture mission, managed by the Earth System Science Pathfinder Program. The mission consists of a constellation of eight small satellites. The eight observatories comprise a constellation that measures the ocean surface wind field with very high temporal resolution and spatial coverage, under all precipitating conditions, and over the full dynamic range of wind speeds experienced in a tropical cyclone. The CYGNSS observatories fly in 510 km circular orbits at a common inclination of 35°. Each observatory includes a Delay Doppler Mapping Instrument (DDMI) consisting of a modified GPS receiver capable of measuring surface scattering, a low gain zenith antenna for measurement of the direct GPS signal, and two high gain nadir antennas for measurement of the weaker scattered signal. Each DDMI is capable of measuring 4 simultaneous bi-static reflections, resulting in a total of 32 wind measurements per second by the full constellation.\";\n" +
+"  :program = \"CYGNSS\";\n" +
+"  :references = \"Ruf, C., P. Chang, M.P. Clarizia, S. Gleason, Z. Jelenak, J. Murray, M. Morris, S. Musko, D. Posselt, D. Provost, D. Starkenburg, V. Zavorotny, CYGNSS Handbook, Ann Arbor, MI, Michigan Pub., ISBN 978-1-60785-380-0, 154 pp, 1 Apr 2016. http://clasp-research.engin.umich.edu/missions/cygnss/reference/cygnss-mission/CYGNSS_Handbook_April2016.pdf\n" +
+"Global Modeling and Assimilation Office (GMAO) (2015), MERRA-2 inst1_2d_asm_Nx: 2d,1-Hourly,Instantaneous,Single-Level,Assimilation,Single-Level Diagnostics V5.12.4, Greenbelt, MD, USA, Goddard Earth Sciences Data and Information Services Center (GES DISC), Accessed: {dates differ for each L1 file. See 'source' L1 files for exact timestamps}, https://doi.org/10.5067/3Z173KIE2TPD\";\n" +
+"  :processing_level = \"3\";\n" +
+"  :comment = \"This Level 3 gridded product combines all 8 x 4 = 32 wind speed and mean square slope (MSS) measurements made by the CYGNSS constellation each second, uniformly sampled in latitude, longitude and time.\";\n" +
+"  :creator_type = \"institution\";\n" +
+"  :institution = \"University of Michigan Space Physics Research Lab (SPRL)\";\n" +
+"  :creator_name = \"CYGNSS Science Operations Center\";\n" +
+"  :publisher_name = \"PO.DAAC\";\n" +
+"  :publisher_email = \"podaac@podaac.jpl.nasa.gov\";\n" +
+"  :publisher_url = \"\u200Bhttp://podaac.jpl.nasa.gov\";\n" +    //! zero width space  #8203
+"  :sensor = \"Delay Doppler Mapping Instrument (DDMI)\";\n" +
+"  :geospatial_lat_min = \"-39.9N\";\n" +
+"  :geospatial_lat_max = \"39.9N\";\n" +
+"  :geospatial_lon_min = \"0.1E\";\n" +
+"  :geospatial_lon_max = \"359.9E\";\n" +
+"  :version_id = \"1.0\";\n" +
+"  :title = \"CYGNSS Level 3 Climate Data Record Version 1.0\";\n" +
+"  :ShortName = \"CYGNSS_L3_CDR_V1.0\";\n" +
+"  :id = \"PODAAC-CYGNS-L3C10\";\n" +
+"  :netcdf_version_id = \"4.3.3.1 of Dec 10 2015 16:44:18 $\";\n" +
+"  :l3_algorithm_version = \"cdr-v1.0\";\n" +
+"  :date_created = \"2020-04-28T17:49:27Z\";\n" +
+"  :date_issued = \"2020-04-28T17:49:27Z\";\n" +
+"  :source = \"cyg.ddmi.s20200101-000000-e20200101-235959.l2.wind-mss-cdr.a10.d10.nc\";\n" +
+"  :history = \"Tue Apr 28 17:49:28 2020: ncks -O -L1 -a /tmp/qt_temp.J61461 /tmp/qt_temp.T61461\n" +
+"/data/ops/op_cdr_1_0/apps/src/produce-L3-files/produce-L3-files --dstore production_1@cygnss-data-1.engin.umich.edu --day 2020-01-01\";\n" +
+"  :time_coverage_start = \"2020-01-01T00:30:00Z\";\n" +
+"  :time_coverage_end = \"2020-01-01T23:30:00Z\";\n" +
+"  :time_coverage_duration = \"P1DT00H00M00S\";\n" +
+"  :time_coverage_resolution = \"P0DT1H0M0S\";\n" +
+"  :platform = \"Observatory References: cyg1, cyg2, cyg3, cyg4, cyg5, cyg6, cyg7, cyg8\";\n" +
+"  :NCO = \"4.4.4\";\n" +
+"\n" +
+"  data:\n" +
+"    time = \n" +
+"      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}\n" +
+"}\n";
+        Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
+
+
+        //ensure files are reread
+        File2.deleteAllFiles(datasetDir("testSuperPreciseTimeUnits"));
+        EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "testSuperPreciseTimeUnits"); 
+
+        //.dds     dds isn't affected by userDapQuery
+        tName = eddGrid.makeNewFileForDapQuery(null, null, "", 
+            EDStatic.fullTestCacheDirectory, eddGrid.className(), ".dds"); 
+        results = String2.directReadFrom88591File(
+            EDStatic.fullTestCacheDirectory + tName);
+        expected = //difference from testUInt16Dap: lat lon are float here, not double
+"Dataset {\n" +
+"  Float64 time[time = 24];\n" +
+"  Float32 latitude[latitude = 400];\n" +
+"  Float32 longitude[longitude = 1800];\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 wind_speed[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } wind_speed;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 wind_speed_uncertainty[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } wind_speed_uncertainty;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Int32 num_wind_speed_samples[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } num_wind_speed_samples;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 yslf_wind_speed[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } yslf_wind_speed;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 yslf_wind_speed_uncertainty[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } yslf_wind_speed_uncertainty;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Int32 num_yslf_wind_speed_samples[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } num_yslf_wind_speed_samples;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 mean_square_slope[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } mean_square_slope;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 mean_square_slope_uncertainty[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } mean_square_slope_uncertainty;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Int32 num_mss_samples[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } num_mss_samples;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Float32 merra2_wind_speed[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } merra2_wind_speed;\n" +
+"  GRID {\n" +
+"    ARRAY:\n" +
+"      Int32 num_merra2_wind_speed_samples[time = 24][latitude = 400][longitude = 1800];\n" +
+"    MAPS:\n" +
+"      Float64 time[time = 24];\n" +
+"      Float32 latitude[latitude = 400];\n" +
+"      Float32 longitude[longitude = 1800];\n" +
+"  } num_merra2_wind_speed_samples;\n" +
+"} testSuperPreciseTimeUnits;\n";
+        Test.ensureEqual(results, expected, "\nresults=\n" + results);
+
+        //.csv data values
+        userDapQuery = "time"; 
+        tName = eddGrid.makeNewFileForDapQuery(null, null, "time", 
+            EDStatic.fullTestCacheDirectory, eddGrid.className(), ".csv"); 
+        results = String2.directReadFrom88591File(
+            EDStatic.fullTestCacheDirectory + tName);
+        String2.log(results);
+        expected = //difference from testUInt16Dap: lat lon are float here, not double
+"time\n" +
+"UTC\n" +
+"2020-01-01T00:30:00Z\n" +
+"2020-01-01T01:30:00Z\n" +
+"2020-01-01T02:30:00Z\n" +
+"2020-01-01T03:30:00Z\n" +
+"2020-01-01T04:30:00Z\n" +
+"2020-01-01T05:30:00Z\n" +
+"2020-01-01T06:30:00Z\n" +
+"2020-01-01T07:30:00Z\n" +
+"2020-01-01T08:30:00Z\n" +
+"2020-01-01T09:30:00Z\n" +
+"2020-01-01T10:30:00Z\n" +
+"2020-01-01T11:30:00Z\n" +
+"2020-01-01T12:30:00Z\n" +
+"2020-01-01T13:30:00Z\n" +
+"2020-01-01T14:30:00Z\n" +
+"2020-01-01T15:30:00Z\n" +
+"2020-01-01T16:30:00Z\n" +
+"2020-01-01T17:30:00Z\n" +
+"2020-01-01T18:30:00Z\n" +
+"2020-01-01T19:30:00Z\n" +
+"2020-01-01T20:30:00Z\n" +
+"2020-01-01T21:30:00Z\n" +
+"2020-01-01T22:30:00Z\n" +
+"2020-01-01T23:30:00Z\n"; 
+        Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
         NcHelper.debugMode = oDebugMode;
     }
@@ -979,7 +1534,7 @@ NcHelper.debugMode = true;
 "      :scale_factor = 1.0f; // float\n" +
 "      :add_offset = 0.0f; // float\n" +
 "      :reference = \"Stramski, D., et al. \\\"Relationships between the surface concentration of particulate organic carbon and optical properties in the eastern South Pacific and eastern Atlantic Oceans.\\\" Biogeosciences 5.1 (2008): 171-201.\";\n" +
-"      :_ChunkSizes = 64, 64; // int\n" +
+"      :_ChunkSizes = 64U, 64U; // uint\n" +
 "\n" +
 "    float lon(lon=8640);\n" +
 "      :long_name = \"Longitude\";\n" +
@@ -988,9 +1543,9 @@ NcHelper.debugMode = true;
 "      :valid_min = -180.0f; // float\n" +
 "      :valid_max = 180.0f; // float\n" +
 "\n" +
-"    byte palette(rgb=3, eightbitcolor=256);\n" +
-"      :_FillValue = -1UB; // byte\n" +
-"      :_Unsigned = \"true\";\n" +
+"    ubyte palette(rgb=3, eightbitcolor=256);\n" +
+//"      :_FillValue = -1UB; // byte\n" + //gone with 
+//"      :_Unsigned = \"true\";\n" +
 "\n" +
 "    float lat(lat=4320);\n" +
 "      :long_name = \"Latitude\";\n" +
@@ -1011,17 +1566,17 @@ NcHelper.debugMode = true;
             expected = 
     "    _FillValue=-32767.0f\n" +
     "    long_name=Longitude\n" +
-    "    units=degree_east\n" +
+    "    units=degree_east\n" +  //what's in the file
     "    valid_max=180.0f\n" +
     "    valid_min=-180.0f\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
-            atts.unpackVariableAttributes(var.getFullName(), NcHelper.getElementClass(var.getDataType()));
+            Units2.unpackVariableAttributes(atts, var.getFullName(), NcHelper.getElementPAType(var));
             results = atts.toString();
             expected = 
     "    _FillValue=NaNf\n" +  //converted to PA standard mv
     "    long_name=Longitude\n" +
-    "    units=degree_east\n" +
+    "    units=degrees_east\n" + //standardized to degrees_east
     "    valid_max=180.0f\n" +
     "    valid_min=-180.0f\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
@@ -1032,29 +1587,31 @@ NcHelper.debugMode = true;
             NcHelper.getVariableAttributes(var, atts);
             results = atts.toString();
             expected = 
-    "    _FillValue=-1b\n" +
-    "    _Unsigned=true\n";
+//    "    _FillValue=-1b\n" + 
+//    "    _Unsigned=true\n"; //disappeared w netcdf-java 5.2, so I added back in with code in getVariableAttributes. 2020 now gone again because it is just a part of the dataType
+                "";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
-            atts.unpackVariableAttributes(var.getFullName(), NcHelper.getElementClass(var.getDataType()));
+            Units2.unpackVariableAttributes(atts, var.getFullName(), NcHelper.getElementPAType(var));
             results = atts.toString();
             expected = 
-    "    _FillValue=32767s\n"; //byte -> short  //converted to PA standard mv
-    //"    _Unsigned=true\n"; //removed
+                "";
+//    "    _FillValue=32767s\n"; //byte -> short  //converted to PA standard mv
+//    "    _Unsigned=true\n"; 
             Test.ensureEqual(results, expected, "results=\n" + results);
 
             //palette as unsigned byte
             pa = NcHelper.getPrimitiveArray(
-                var.read(new int[]{0,0}, new int[]{1, 10})); //origin, shape
-            Test.ensureEqual(pa.elementClassString(), "byte", "");
+                var.read(new int[]{0,0}, new int[]{1, 10}), true, NcHelper.isUnsigned(var)); //origin, shape
+            Test.ensureEqual(pa.elementTypeString(), "ubyte", "");
             results = pa.toString();
             expected = 
-    "-109, 0, 108, -112, 0, 111, -115, 0, 114, -118";
+    "147, 0, 108, 144, 0, 111, 141, 0, 114, 138";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
-            //palette unpacked as short
+            //palette ubyte
             pa = NcHelper.unpackPA(var, pa, true, true); //lookForStringTimes, lookForUnsigned
-            Test.ensureEqual(pa.elementClassString(), "short", "");
+            Test.ensureEqual(pa.elementTypeString(), "ubyte", "");
             results = pa.toString();
             expected = 
     "147, 0, 108, 144, 0, 111, 141, 0, 114, 138";  //unsigned
@@ -1081,7 +1638,7 @@ NcHelper.debugMode = true;
     "    valid_min=0.0f\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
-            atts.unpackVariableAttributes(var.getFullName(), NcHelper.getElementClass(var.getDataType()));
+            Units2.unpackVariableAttributes(atts, var.getFullName(), NcHelper.getElementPAType(var));
             results = atts.toString();
             expected = 
     "    _ChunkSizes=64i,64i\n" +
@@ -1094,15 +1651,15 @@ NcHelper.debugMode = true;
     "    reference=\"Stramski, D., et al. \"\"Relationships between the surface concentration of particulate organic carbon and optical properties in the eastern South Pacific and eastern Atlantic Oceans.\"\" Biogeosciences 5.1 (2008): 171-201.\"\n" +
     //"    scale_factor=1.0f\n" + //removed
     "    standard_name=mole_concentration_of_particulate_organic_carbon_in_sea_water\n" +
-    "    units=mg m^-3\n" +
+    "    units=mg m-3\n" +
     "    valid_max=1000.0f\n" +
     "    valid_min=0.0f\n";
             Test.ensureEqual(results, expected, "results=\n" + results);
 
             //poc as packed values (shorts)
             pa = NcHelper.getPrimitiveArray(   
-                var.read(new Section("(0:4100:1000,0:8100:1000)"))); //start:end:stride 
-            Test.ensureEqual(pa.elementClassString(), "float", "");
+                var.read(new Section("(0:4100:1000,0:8100:1000)")), true, NcHelper.isUnsigned(var)); //start:end:stride 
+            Test.ensureEqual(pa.elementTypeString(), "float", "");
             results = pa.toString();
             expected = 
     "-32767.0, -32767.0, -32767.0, -32767.0, -32767.0, -32767.0, -32767.0, -32767.0, " +
@@ -1115,7 +1672,7 @@ NcHelper.debugMode = true;
 
             //poc as unpacked values (float)
             pa = NcHelper.unpackPA(var, pa, true, true); //lookForStringTimes, lookForUnsigned
-            Test.ensureEqual(pa.elementClassString(), "float", "");
+            Test.ensureEqual(pa.elementTypeString(), "float", "");
             results = pa.toString();
             expected = //standardized mv
     "NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, " +
@@ -1152,11 +1709,11 @@ NcHelper.debugMode = true;
 "      :display_scale = \"log\";\n" +
 "      :display_min = 10.0f; // float\n" +
 "      :display_max = 1000.0f; // float\n" +
-"      :_ChunkSizes = 40, 1729; // int\n" +
+"      :_ChunkSizes = 40U, 1729U; // uint\n" +
 "\n" +
-"    byte palette(rgb=3, eightbitcolor=256);\n" +
-"      :_FillValue = -1UB; // byte\n" +
-"      :_Unsigned = \"true\";\n" +
+"    ubyte palette(rgb=3, eightbitcolor=256);\n" + //'u' added in netcdf-java 5.2
+//"      :_FillValue = -1UB; // byte\n" + //gone in netcdf-java 5.2
+//"      :_Unsigned = \"true\";\n" +
 "\n" +
 "    float lat(lat=4320);\n" +
 "      :long_name = \"Latitude\";\n" +
@@ -1183,17 +1740,17 @@ NcHelper.debugMode = true;
         expected = 
 "    _FillValue=-999.0f\n" +
 "    long_name=Longitude\n" +
-"    units=degree_east\n" +
+"    units=degree_east\n" + //in file
 "    valid_max=180.0f\n" +
 "    valid_min=-180.0f\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-        atts.unpackVariableAttributes(var.getFullName(), NcHelper.getElementClass(var.getDataType()));
+        Units2.unpackVariableAttributes(atts, var.getFullName(), NcHelper.getElementPAType(var));
         results = atts.toString();
         expected = 
 "    _FillValue=NaNf\n" + //converted to PA standard mv
 "    long_name=Longitude\n" +
-"    units=degree_east\n" +
+"    units=degrees_east\n" + //stardardized to 's'
 "    valid_max=180.0f\n" +
 "    valid_min=-180.0f\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
@@ -1203,30 +1760,28 @@ NcHelper.debugMode = true;
         atts = new Attributes();
         NcHelper.getVariableAttributes(var, atts);
         results = atts.toString();
-        expected = 
-"    _FillValue=-1b\n" +
-"    _Unsigned=true\n";
+        expected = "";
+//"    _FillValue=-1b\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-        atts.unpackVariableAttributes(var.getFullName(), NcHelper.getElementClass(var.getDataType()));
+        Units2.unpackVariableAttributes(atts, var.getFullName(), NcHelper.getElementPAType(var));
         results = atts.toString();
-        expected = 
-"    _FillValue=32767s\n"; //byte -> short  //converted to PA standard mv
-//"    _Unsigned=true\n"; //removed
+        expected = "";
+//"    _FillValue=32767s\n"; //byte -> short  //converted to PA standard mv.  gone in netcdf-java 5.2
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //palette as unsigned byte
         pa = NcHelper.getPrimitiveArray(
-            var.read(new int[]{0,0}, new int[]{1, 10})); //origin, shape
-        Test.ensureEqual(pa.elementClassString(), "byte", "");
+            var.read(new int[]{0,0}, new int[]{1, 10}), true, NcHelper.isUnsigned(var)); //origin, shape
+        Test.ensureEqual(pa.elementTypeString(), "ubyte", "");
         results = pa.toString();
         expected = 
-"-109, 0, 108, -112, 0, 111, -115, 0, 114, -118";
+"147, 0, 108, 144, 0, 111, 141, 0, 114, 138";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-        //palette unpacked as short
+        //palette ubyte
         pa = NcHelper.unpackPA(var, pa, true, true); //lookForStringTimes, lookForUnsigned
-        Test.ensureEqual(pa.elementClassString(), "short", "");
+        Test.ensureEqual(pa.elementTypeString(), "ubyte", "");
         results = pa.toString();
         expected = 
 "147, 0, 108, 144, 0, 111, 141, 0, 114, 138";
@@ -1248,12 +1803,12 @@ NcHelper.debugMode = true;
 "    reference=\"Stramski, D., et al. \"\"Relationships between the surface concentration of particulate organic carbon and optical properties in the eastern South Pacific and eastern Atlantic Oceans.\"\" Biogeosciences 5.1 (2008): 171-201.\"\n" +
 "    scale_factor=0.2f\n" +
 "    standard_name=mole_concentration_of_particulate_organic_carbon_in_sea_water\n" +
-"    units=mg m^-3\n" +
+"    units=mg m^-3\n" +  // in file
 "    valid_max=-27000s\n" +
 "    valid_min=-32000s\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
-        atts.unpackVariableAttributes(var.getFullName(), NcHelper.getElementClass(var.getDataType()));
+        Units2.unpackVariableAttributes(atts, var.getFullName(), NcHelper.getElementPAType(var));
         results = atts.toString();
         expected = 
 "    _ChunkSizes=40i,1729i\n" +
@@ -1266,15 +1821,15 @@ NcHelper.debugMode = true;
 "    reference=\"Stramski, D., et al. \"\"Relationships between the surface concentration of particulate organic carbon and optical properties in the eastern South Pacific and eastern Atlantic Oceans.\"\" Biogeosciences 5.1 (2008): 171-201.\"\n" +
 //"    scale_factor=0.2f\n" + removed
 "    standard_name=mole_concentration_of_particulate_organic_carbon_in_sea_water\n" +
-"    units=mg m^-3\n" +
+"    units=mg m-3\n" +  //standardized
 "    valid_max=1000.0f\n" + //unpacked
 "    valid_min=0.0f\n";     //unpacked
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //poc as packed values (shorts)
         pa = NcHelper.getPrimitiveArray(   //odd start to catch some data, not just mv
-            var.read(new Section("(70:4100:1000,70:8100:1000)"))); //start:end:stride 
-        Test.ensureEqual(pa.elementClassString(), "short", "");
+            var.read(new Section("(70:4100:1000,70:8100:1000)")), true, NcHelper.isUnsigned(var)); //start:end:stride 
+        Test.ensureEqual(pa.elementTypeString(), "short", "");
         results = pa.toString();
         expected = 
 "-32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, -32767, " +
@@ -1286,7 +1841,7 @@ NcHelper.debugMode = true;
 
         //poc as unpacked values (float)
         pa = NcHelper.unpackPA(var, pa, true, true); //lookForStringTimes, lookForUnsigned
-        Test.ensureEqual(pa.elementClassString(), "float", "");
+        Test.ensureEqual(pa.elementTypeString(), "float", "");
         results = pa.toString();
         expected = 
 "NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, 96.4, NaN, 162.8, " +
@@ -1347,7 +1902,7 @@ NcHelper.debugMode = true;
 "    String long_name \"Particulate Organic Carbon, D. Stramski, 2007 (443/555 version)\";\n" +
 "    String references \"Stramski, D., et al. \\\"Relationships between the surface concentration of particulate organic carbon and optical properties in the eastern South Pacific and eastern Atlantic Oceans.\\\" Biogeosciences 5.1 (2008): 171-201.\";\n" +
 "    String standard_name \"mole_concentration_of_particulate_organic_carbon_in_sea_water\";\n" +
-"    String units \"mg m^-3\";\n" +
+"    String units \"mg m-3\";\n" +
 "    Float32 valid_max 1000.0;\n" +
 "    Float32 valid_min 0.0;\n" +
 "  }\n" +
@@ -1398,34 +1953,6 @@ expected =
 "    String naming_authority \"gov.noaa.pfeg.coastwatch\";\n" +
 "    Float64 Northernmost_Northing 89.97916;\n" +
 "    String platform \"Aqua\";\n" +
-"    String processing_control_input_parameters_apply_pal \"yes\";\n" +
-"    String processing_control_input_parameters_central_meridian \"-999\";\n" +
-"    String processing_control_input_parameters_deflate \"4\";\n" +
-"    String processing_control_input_parameters_east \"180.000\";\n" +
-"    String processing_control_input_parameters_fudge \"1.0\";\n" +
-"    String processing_control_input_parameters_ifile \"A2016242.L3b_DAY_POC.nc\";\n" +
-"    String processing_control_input_parameters_interp \"area\";\n" +
-"    String processing_control_input_parameters_north \"90.000\";\n" +
-"    String processing_control_input_parameters_ofile \"A2016242.L3m_DAY_POC_poc_4km.nc\";\n" +
-"    String processing_control_input_parameters_oformat \"2\";\n" +
-"    String processing_control_input_parameters_oformat2 \"png\";\n" +
-"    String processing_control_input_parameters_palette_dir \"$OCDATAROOT/common/palette\";\n" +
-"    String processing_control_input_parameters_par \"A2016242.L3m_DAY_POC_poc_4km.nc.param\";\n" +
-"    String processing_control_input_parameters_product \"poc\";\n" +
-"    String processing_control_input_parameters_product_rgb \"rhos_645,rhos_555,rhos_469\";\n" +
-"    String processing_control_input_parameters_projection \"smi\";\n" +
-"    String processing_control_input_parameters_pversion \"2014.0.1QL\";\n" +
-"    String processing_control_input_parameters_quiet \"false\";\n" +
-"    String processing_control_input_parameters_resolution \"4km\";\n" +
-"    String processing_control_input_parameters_south \"-90.000\";\n" +
-"    String processing_control_input_parameters_threshold \"0\";\n" +
-"    String processing_control_input_parameters_use_quality \"yes\";\n" +
-"    String processing_control_input_parameters_use_rgb \"no\";\n" +
-"    String processing_control_input_parameters_west \"-180.000\";\n" +
-"    String processing_control_l2_flag_names \"ATMFAIL,LAND,HILT,HISATZEN,STRAYLIGHT,CLDICE,COCCOLITH,LOWLW,CHLWARN,CHLFAIL,NAVWARN,MAXAERITER,ATMWARN,HISOLZEN,NAVFAIL,FILTER,HIGLINT\";\n" +
-"    String processing_control_software_name \"l3mapgen\";\n" +
-"    String processing_control_software_version \"1.0.1-r13111\";\n" +
-"    String processing_control_source \"A2016242.L3b_DAY_POC.nc\";\n" +
 "    String processing_level \"L3 Mapped\";\n" +
 "    String processing_version \"2014.0.1QL\";\n" +
 "    String project \"Ocean Biology Processing Group (NASA/GSFC/OBPG)\";\n" +
@@ -1436,7 +1963,7 @@ expected =
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing -89.97918;\n" +
 "    String spatialResolution \"4.64 km\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String summary \"MODIS Aqua, Level-3 Standard Mapped Image (SMI), Global, 4km, Particulate Organic Carbon (POC) (1 Day Composite)\";\n" +
 "    String temporal_range \"day\";\n" +
 "    String testOutOfDate \"now-4days\";\n" +
@@ -1499,7 +2026,7 @@ expected =
         String2.log(results);
         expected = 
 "time,latitude,longitude,poc\n" +
-"UTC,degrees_north,degrees_east,mg m^-3\n" +
+"UTC,degrees_north,degrees_east,mg m-3\n" +
 "2003-01-01T12:00:00Z,89.979164,-179.97917,NaN\n" +
 "2003-01-01T12:00:00Z,89.979164,-138.3125,NaN\n" +
 "2003-01-01T12:00:00Z,89.979164,-96.64583,NaN\n" +
@@ -1556,7 +2083,7 @@ expected =
         String2.log(results);
         expected = 
 "time,latitude,longitude,poc\n" +
-"UTC,degrees_north,degrees_east,mg m^-3\n" +
+"UTC,degrees_north,degrees_east,mg m-3\n" +
 "2016-08-28T12:00:00Z,87.0625,-177.0625,NaN\n" +
 "2016-08-28T12:00:00Z,87.0625,-135.39583,NaN\n" +
 "2016-08-28T12:00:00Z,87.0625,-93.729164,NaN\n" +
@@ -1615,22 +2142,52 @@ expected =
     }
 
 
-
     /**
-     * This tests this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test(boolean deleteCachedDatasetInfo) throws Throwable {
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 4;
+        String msg = "\n^^^ EDDGridFromNcFilesUnpacked.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        String2.log("\n*** EDDGridFromNcFilesUnpacked.test");
-        testGenerateDatasetsXml();
-        testBasic(deleteCachedDatasetInfo);
-        testUInt16File();
-        testMissingValue();
+        boolean deleteCachedDatasetInfo = true;
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testBasic(deleteCachedDatasetInfo);
+if (test ==  2) testUInt16File();  //trouble
+                    if (test ==  3) testMissingValue();
+                    if (test ==  4) testSuperPreciseTimeUnits();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
-
 
 }
 

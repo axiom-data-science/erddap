@@ -1,10 +1,14 @@
 /* 
- * EDUnits Copyright 2009, NOAA.
+ * Units2 Copyright 2009, NOAA.
  * See the LICENSE.txt file in this file's directory.
  */
-package gov.noaa.pfel.erddap.util;
+package com.cohort.util;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.DoubleArray;
+import com.cohort.array.FloatArray;
+import com.cohort.array.PAType;
+import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
 import com.cohort.util.Math2;
@@ -29,7 +33,7 @@ import ucar.units.UnitFormat;
  * An old local copy of UDUnits 1 info is at c:/programs/udunits-1.12.4/udunits.txt .
  * See the UCUM validator at https://ucum.nlm.nih.gov/ucum-lhc/demo.html .
  */
-public class EDUnits { 
+public class Units2 { 
 
     /** UDUNITS and UCUM support metric prefixes. */
     public static String metricName[] = {
@@ -55,12 +59,16 @@ public class EDUnits {
 
     //these don't need to be thread-safe because they are read-only after creation
     private static HashMap<String,String> udHashMap = getHashMapStringString(
-        EDStatic.contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/UdunitsToUcum.properties", 
+        String2.webInfParentDirectory() + "WEB-INF/classes/com/cohort/util/UdunitsToUcum.properties", 
         String2.ISO_8859_1);
     private static HashMap<String,String> ucHashMap = getHashMapStringString(
-        EDStatic.contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/UcumToUdunits.properties", 
+        String2.webInfParentDirectory() + "WEB-INF/classes/com/cohort/util/UcumToUdunits.properties", 
         String2.ISO_8859_1);
 
+    //these special cases are usually populated by EDStatic static constructor, but don't have to be
+    public static HashMap<String,String> standardizeUdunitsHM = new HashMap();
+    public static HashMap<String,String> ucumToUdunitsHM = new HashMap();
+    public static HashMap<String,String> udunitsToUcumHM = new HashMap();
 
     /**
      * Set this to true (by calling reallyReallyVerbose=true in your program, 
@@ -123,7 +131,7 @@ public class EDUnits {
             return "";
 
         //specified in <udunitsToUcum> in messages.xml
-        String t = EDStatic.udunitsToUcumHM.get(udunits);
+        String t = udunitsToUcumHM.get(udunits);
         if (t != null)
             return t;
 
@@ -297,7 +305,8 @@ public class EDUnits {
         udunits = String2.replaceAll(udunits, "parts per 1000000", "ppm");
         udunits = String2.replaceAll(udunits, "parts per million", "ppm");
 
-        udunits = String2.replaceAll(udunits, "percent", "%");  //avoids problems below
+        udunits = String2.replaceAll(udunits, "percentage", "%");  //avoids problems below
+        udunits = String2.replaceAll(udunits, "percent", "%");     //avoids problems below
 
         udunits = String2.replaceAll(udunits, "photon flux", "photon_flux");
 
@@ -600,7 +609,7 @@ public class EDUnits {
         //no change? failure; return original udunits as a comment
         //  because I don't want to change "exact" into "ect" 
         //  (i.e., seeing a metric prefix that isn't a metric prefix)
-        if (debugMode) String2.log("EDUnits.oneUdunitsToUcum fail: ucum=" + 
+        if (debugMode) String2.log("Units2.oneUdunitsToUcum fail: ucum=" + 
             ucum + " udunits=" + udunits);
         //ucum.append(udunits);
         return "{" + oldUdunits + "}"; //ucum.toString();
@@ -610,7 +619,8 @@ public class EDUnits {
     /**
      * This tests udunitsToUcum.
      * The most likely bugs are:
-     * <li> Excess/incorrect substitutions, e.g., "avoirdupois_pounds" -> "[lb_av]" -> "[[lb_av]_av]".
+     * <ul>
+     * <li> Excess/incorrect substitutions, e.g., "avoirdupois_pounds" to "[lb_av]" to "[[lb_av]_av]".
      *   <br>This is the only thing that this method has pretty good tests for.
      * <li> Plural vs Singular conversions
      * <li> Typos 
@@ -621,7 +631,7 @@ public class EDUnits {
      */
     public static void testUdunitsToUcum() {
 
-        String2.log("\n*** EDUnits.testUdunitsToUcum");
+        String2.log("\n*** Units2.testUdunitsToUcum");
         //debugMode = true;
 
         //time point (try odd time units)
@@ -1034,6 +1044,7 @@ public class EDUnits {
         testUdunitsToUcum("peck",              "[pk_us]");
         testUdunitsToUcum("pennyweight",       "[pwt_tr]"); 
         testUdunitsToUcum("percent",           "%");
+        testUdunitsToUcum("percentage",        "%");
         testUdunitsToUcum("perches",           "[rd_us]");
         testUdunitsToUcum("perch",             "[rd_us]");
         testUdunitsToUcum("perm_0C",           "(S.572135.10^-16.kg/(Pa.s.m2))");
@@ -1356,7 +1367,7 @@ public class EDUnits {
             return "";
 
         //specified in <ucumToUdunits> in messages.xml
-        String t = EDStatic.ucumToUdunitsHM.get(ucum);
+        String t = ucumToUdunitsHM.get(ucum);
         if (t != null)
             return t;
 
@@ -1667,7 +1678,7 @@ public class EDUnits {
             //no change? failure; return original ucum
             //  because I don't want to change "exact" into "ect" 
             // (i.e., seeing a metric prefix that isn't a metric prefix)
-            if (debugMode) String2.log("EDUnits.oneUcumToUdunits fail: udunits=" + 
+            if (debugMode) String2.log("Units2.oneUcumToUdunits fail: udunits=" + 
                 udunits + " ucum=" + ucum);
             //udunits.append(ucum);
             return oldUcum; 
@@ -1677,7 +1688,8 @@ public class EDUnits {
     /**
      * This tests UcumToUdunits.
      * The most likely bugs are:
-     * <li> Excess/incorrect substitutions, e.g., "avoirdupois_pounds" -> "[lb_av]" -> "[[lb_av]_av]".
+     * <ul>
+     * <li> Excess/incorrect substitutions, e.g., "avoirdupois_pounds" to "[lb_av]" to "[[lb_av]_av]".
      *   <br>This is the only thing that this method has pretty good tests for.
      * <li> Plural vs Singular conversions
      * <li> Typos 
@@ -1688,7 +1700,7 @@ public class EDUnits {
      */
     public static void testUcumToUdunits() {
 
-        String2.log("\n*** EDUnits.testUcumToUdunits");
+        String2.log("\n*** Units2.testUcumToUdunits");
         debugMode = true;
 
         //main alphabetical section
@@ -1697,10 +1709,10 @@ public class EDUnits {
 
 
         testUcumToUdunits("deg",               "degree");
-        testUcumToUdunits("deg{east}",         "degree_east");
-        testUcumToUdunits("deg{north}",        "degree_north");
-        testUcumToUdunits("deg{true}",         "degree_true");
-        testUcumToUdunits("deg{west}",         "degree_west");
+        testUcumToUdunits("deg{east}",         "degrees_east");
+        testUcumToUdunits("deg{north}",        "degrees_north");
+        testUcumToUdunits("deg{true}",         "degrees_true");
+        testUcumToUdunits("deg{west}",         "degrees_west");
 
         //twoAcronym
         testUcumToUdunits("KiBd",              "1024.baud");
@@ -1783,7 +1795,7 @@ String2.log("5/9=" + (5/9.0));
      * No one else will need to use this.
      */
     public static void checkUdunits2File(String fileName) throws Exception {
-        String2.log("\n*** EDUnits.checkUdUnits2File " + fileName);
+        String2.log("\n*** Units2.checkUdUnits2File " + fileName);
         StringArray sa = StringArray.fromFile(fileName);
         StringArray names = new StringArray();
         int n = sa.size();
@@ -1864,7 +1876,7 @@ String2.log("5/9=" + (5/9.0));
      * No one else will need to use this.
      */
     public static void makeCrudeUcumToUdunits() {
-        String2.log("\n*** EDUnits.makeCrudeUcumToUdunits");
+        String2.log("\n*** Units2.makeCrudeUcumToUdunits");
         StringArray sa = new StringArray();
         Object keys[] = udHashMap.keySet().toArray();
         for (int i = 0; i < keys.length; i++) {
@@ -1885,7 +1897,7 @@ String2.log("5/9=" + (5/9.0));
      */
     public static void testRoundTripConversions() {
         //uc -> ud -> uc is more likely to work cleanly because it starts with acronym
-        String2.log("\n*** EDUnits.testRoundTripConversions");
+        String2.log("\n*** Units2.testRoundTripConversions");
         Object ucKeys[] = ucHashMap.keySet().toArray();
         Arrays.sort(ucKeys);
         for (int i = 0; i < ucKeys.length; i++) {
@@ -1933,7 +1945,7 @@ String2.log("5/9=" + (5/9.0));
         set.add("minutes since 1980-1-1");
         set.add("years since 02-JAN-1985");
 
-        Pattern pattern = Pattern.compile(".*<att name=\"units\">(.*)</att>.*");
+        Pattern pattern = Pattern.compile("<att name=\"units\">(.*)</att>");
         for (int f = 0; f < 3; f++) {
             String fileName = bobsErddapContentDir + 
                 (f == 0? "datasetsFED31UAF.xml" :
@@ -1959,7 +1971,7 @@ String2.log("5/9=" + (5/9.0));
     /**
      * This tries to return a standardized (lightly canonical) version of a UDUnits string.
      * This is mostly about standardizing syntax and converting synonyms to 1 option.
-     * This is just a standard way of writing the units as given (e.g., cm stay as cm,
+     * This is just a standard way of writing the units as given (e.g., cm stays as cm,
      * not as 0.01 m).
      * This doesn't convert to low level canonical units as does UDUnits units.getCanonical().
      * @return the standardizedUdunits. If it was null, this returns "".
@@ -1968,8 +1980,8 @@ String2.log("5/9=" + (5/9.0));
         if (!String2.isSomething(udunits))
             return "";
         udunits = udunits.trim(); //so search HM works as expected
-        String t = EDStatic.standardizeUdunitsHM.get(udunits);
-        return t == null? safeUcumToUdunits(safeUdunitsToUcum(udunits)) : t;
+        String t = standardizeUdunitsHM.get(udunits);  //do exceptions first
+        return t == null? safeUcumToUdunits(safeUdunitsToUcum(udunits)) : t; //do a round trip
     }
 
     /**
@@ -2039,7 +2051,7 @@ String2.log("5/9=" + (5/9.0));
      *   (e.g., K to degree_C) and saves that to cfUnique. 
      *
      * @param fullCFXMLFileName A CF standard names XML file downloaded from
-     *    http://cfconventions.org/standard-names.html
+     *    https://cfconventions.org/standard-names.html
      * @throws Exception if trouble
      */
     public static void gatherUniqueCFUnits(String fullCFXMLFileName) throws Exception {
@@ -2048,7 +2060,7 @@ String2.log("5/9=" + (5/9.0));
         HashSet reject = new HashSet();
         HashSet set = new HashSet();
         set.add("degree_C");  //test it, too
-        Pattern pattern = Pattern.compile(".*<canonical_units>(.*)</canonical_units>.*");
+        Pattern pattern = Pattern.compile("<canonical_units>(.*)</canonical_units>");
         int nLines = lines.size();
         for (int i = 0; i < nLines; i++) {
             String s = String2.extractCaptureGroup(lines.get(i), pattern, 1); //captureGroupNumber
@@ -2076,6 +2088,118 @@ String2.log("5/9=" + (5/9.0));
         String2.log(
             "* UdunitsHelper.gatherUniqueCFUnits() successfully wrote the list of unique CF units to\n" +
             cfUnique);
+    }
+
+    /**
+     * If the variable is packed with scale_factor and/or add_offset, 
+     *  this will unpack the packed attributes of the variable: 
+     *   actual_range, actual_min, actual_max, 
+     *   data_max, data_min, 
+     *   valid_max, valid_min, valid_range.
+     * missing_value and _FillValue will be converted to PA standard mv 
+     *   for the the unpacked datatype (or current type if not packed).
+     *
+     * @param atts the set of attributes that will be unpacked/revised.
+     * @param varName the var's fullName, for diagnostic messages only
+     * @param oPAType the var's initial elementPAType
+     */    
+    public static void unpackVariableAttributes(Attributes atts, String varName, PAType oPAType) {
+
+        if (debugMode)
+            String2.log(">> unpackVariableAttributes for varName=" + varName);
+
+        Attributes newAtts = atts;   //the results, so it has a more descriptive name     
+        Attributes oldAtts = new Attributes(atts); //so we have an unchanged copy to refer to
+
+        //deal with numeric time units
+        String oUnits = newAtts.getString("units");
+        if (oUnits == null || !String2.isSomething(oUnits))
+            newAtts.remove("units"); 
+        else if (Calendar2.isNumericTimeUnits(oUnits)) 
+            newAtts.set("units", Calendar2.SECONDS_SINCE_1970); //AKA EDV.TIME_UNITS
+            //presumably, String time var doesn't have numeric time units
+        else if (Calendar2.isStringTimeUnits(oUnits)) 
+            {}
+        else 
+            newAtts.set("units", Units2.safeStandardizeUdunits(oUnits));
+
+        PrimitiveArray unsignedPA = newAtts.remove("_Unsigned");
+        boolean unsigned = unsignedPA != null && "true".equals(unsignedPA.toString());         
+        PrimitiveArray scalePA = newAtts.remove("scale_factor");
+        PrimitiveArray addPA   = newAtts.remove("add_offset");
+
+        //if present, convert _FillValue and missing_value to PA standard mv
+        PAType destPAType = 
+            scalePA != null? scalePA.elementType() :
+            addPA   != null? addPA.elementType() : 
+            unsigned && oPAType == PAType.BYTE?  PAType.UBYTE  : //was PAType.SHORT :  //similar code below
+            unsigned && oPAType == PAType.SHORT? PAType.USHORT : //was PAType.INT :
+            unsigned && oPAType == PAType.INT?   PAType.UINT   : //was PAType.DOUBLE : //ints are converted to double because nc3 doesn't support long
+            unsigned && oPAType == PAType.LONG?  PAType.ULONG  : //was PAType.DOUBLE : //longs are converted to double (not ideal)
+            oPAType;  
+        if (newAtts.remove("_FillValue")    != null)
+            newAtts.set(   "_FillValue",    PrimitiveArray.factory(destPAType, 1, ""));
+        if (newAtts.remove("missing_value") != null)
+            newAtts.set(   "missing_value", PrimitiveArray.factory(destPAType, 1, ""));
+
+        //if var isn't packed, we're done
+        if (!unsigned && scalePA == null && addPA == null)
+            return; 
+
+        //var is packed, so unpack all packed numeric attributes
+        //lookForStringTimes is false because these are all attributes of numeric variables
+        if (debugMode) 
+            String2.log(">> before unpack " + varName + 
+                " unsigned="      + unsigned +
+                " scale_factor="  + scalePA + 
+                " add_offset="    + addPA + 
+                " actual_max="    + oldAtts.get("actual_max") + 
+                " actual_min="    + oldAtts.get("actual_min") +
+                " actual_range="  + oldAtts.get("actual_range") + 
+                " data_max="      + oldAtts.get("data_max") + 
+                " data_min="      + oldAtts.get("data_min") +
+                " valid_max="     + oldAtts.get("valid_max") + 
+                " valid_min="     + oldAtts.get("valid_min") +
+                " valid_range="   + oldAtts.get("valid_range"));
+
+        //attributes in nc3 files are never unsigned
+
+        //if scale and/or addOffset, then remove redundant related atts
+        if (scalePA != null || addPA != null) {
+            newAtts.remove("Intercept");
+            newAtts.remove("Slope");
+            String ss = newAtts.getString("Scaling");
+            if ("linear".equals(ss)) {
+                //remove if Scaling=linear
+                newAtts.remove("Scaling");
+                newAtts.remove("Scaling_Equation");
+            }
+        }
+
+        //before erddap v1.82, ERDDAP said actual_range had packed values.
+        //but CF 1.7 says actual_range is unpacked. 
+        //So look at data types and guess which to do, with preference to believing they're already unpacked
+        //Note that at this point in this method, we're dealing with a packed data variable
+        if (destPAType != null && (destPAType == PAType.FLOAT || destPAType == PAType.DOUBLE)) {
+            for (int i = 0; i < Attributes.signedToUnsignedAttNames.length; i++) {
+                String name = Attributes.signedToUnsignedAttNames[i];
+                PrimitiveArray pa = newAtts.get(name);
+                if (pa != null && !(pa instanceof FloatArray) && !(pa instanceof DoubleArray))
+                    newAtts.set(name, oldAtts.unpackPA(varName, pa, false, false)); 
+            }
+        }
+
+        if (debugMode) 
+            String2.log(">> after  unpack " + varName + 
+                " unsigned="      + unsigned +               
+                " actual_max="    + newAtts.get("actual_max") + 
+                " actual_min="    + newAtts.get("actual_min") +
+                " actual_range="  + newAtts.get("actual_range") + 
+                " data_max="      + newAtts.get("data_max") + 
+                " data_min="      + newAtts.get("data_min") +
+                " valid_max="     + newAtts.get("valid_max") + 
+                " valid_min="     + newAtts.get("valid_min") +
+                " valid_range="   + newAtts.get("valid_range"));
     }
 
     /**
@@ -2127,6 +2251,14 @@ String2.log("5/9=" + (5/9.0));
     }
 */
 
+    /**
+     * This tests the udunitsToUcum and ucumToUdunits conversions.
+     *
+     * @param udunits the source udunits string
+     * @param ucum the expected/desired, resulting ucum string from udunitsToUcum.
+     * @param rt1 the sanitized udunits string created by round trip: udunits to ucum to udunits.
+     * @param rt2 the sanitized ucum string created by round trip: ucum to udunits to ucum.
+     */
     public static void testToUcumToUdunits(String udunits, String ucum, String rt1, String rt2) {
         String ucum2 = safeUdunitsToUcum(udunits);
         Test.ensureEqual(ucum2, ucum, "ucum2 error for udunits=" + udunits);
@@ -2138,6 +2270,7 @@ String2.log("5/9=" + (5/9.0));
     }
 
     public static void testAllToUcumToUdnits() {
+//                  source udunits,     expected ucum,      round trip udunits, rount trip ucum         
 testToUcumToUdunits("#",                "{count}",          "count",            "{count}");
 testToUcumToUdunits("%",                "%",                "%",                "%");
 testToUcumToUdunits("(0 - 1)",          "1",                "1",                "1");
@@ -2491,42 +2624,38 @@ testToUcumToUdunits("degree C",         "Cel",              "degree_C",         
 testToUcumToUdunits("degree_C",         "Cel",              "degree_C",         "Cel");
 testToUcumToUdunits("degree_C day-1",   "Cel.d-1",          "degree_C day-1",   "Cel.d-1");
 testToUcumToUdunits("degree_Celsius",   "Cel",              "degree_C",         "Cel");
-testToUcumToUdunits("degree_east",      "deg{east}",        "degree_east",      "deg{east}");
+testToUcumToUdunits("degree_east",      "deg{east}",        "degrees_east",     "deg{east}");
 testToUcumToUdunits("degree_F",         "[degF]",           "degree_F",         "[degF]");
 testToUcumToUdunits("degree_K",         "K",                "degree_K",         "K");
-testToUcumToUdunits("degree_north",     "deg{north}",       "degree_north",     "deg{north}");
-testToUcumToUdunits("degree_true",      "deg{true}",        "degree_true",      "deg{true}");
+testToUcumToUdunits("degree_north",     "deg{north}",       "degrees_north",    "deg{north}");
+testToUcumToUdunits("degree_true",      "deg{true}",        "degrees_true",     "deg{true}");
 testToUcumToUdunits("degrees",          "deg",              "degree",           "deg");
-testToUcumToUdunits("degrees (+E)",     "deg{east}",        "degree_east",      "deg{east}");
-testToUcumToUdunits("degrees (+N)",     "deg{north}",       "degree_north",     "deg{north}");
+testToUcumToUdunits("degrees (+E)",     "deg{east}",        "degrees_east",     "deg{east}");
+testToUcumToUdunits("degrees (+N)",     "deg{north}",       "degrees_north",    "deg{north}");
 testToUcumToUdunits("degrees (clockwise from bow)",
                     "deg{clockwise from bow}",
                     "degree(clockwise from bow)",
                     "deg{clockwise from bow}");
 testToUcumToUdunits("degrees (clockwise from true north)",
-                    "deg{true}",
-                    "degree_true",
-                    "deg{true}");
+                                        "deg{true}",        "degrees_true",      "deg{true}");
 testToUcumToUdunits("degrees (clockwise towards true north)",
-                    "deg{true}",
-                    "degree_true",
-                    "deg{true}");
+                                        "deg{true}",        "degrees_true",      "deg{true}");
 testToUcumToUdunits("degrees C",        "Cel",              "degree_C",         "Cel");
 testToUcumToUdunits("degrees Celcius",  "Cel",              "degree_C",         "Cel");
 testToUcumToUdunits("degrees Celsius",  "Cel",              "degree_C",         "Cel");
-testToUcumToUdunits("Degrees(azimuth)", "deg{azimuth}",     "degree(azimuth)", "deg{azimuth}");
-testToUcumToUdunits("degrees(azimuth)", "deg{azimuth}",     "degree(azimuth)", "deg{azimuth}");
+testToUcumToUdunits("Degrees(azimuth)", "deg{azimuth}",     "degree(azimuth)",  "deg{azimuth}");
+testToUcumToUdunits("degrees(azimuth)", "deg{azimuth}",     "degree(azimuth)",  "deg{azimuth}");
 testToUcumToUdunits("Degrees, Oceanographic Convention, 0=toward N, 90=toward E",
-                                        "deg{true}",        "degree_true",      "deg{true}");
-testToUcumToUdunits("degrees-east",     "deg{east}",        "degree_east",      "deg{east}");
-testToUcumToUdunits("degrees-north",    "deg{north}",       "degree_north",     "deg{north}");
+                                        "deg{true}",        "degrees_true",     "deg{true}");
+testToUcumToUdunits("degrees-east",     "deg{east}",        "degrees_east",     "deg{east}");
+testToUcumToUdunits("degrees-north",    "deg{north}",       "degrees_north",    "deg{north}");
 testToUcumToUdunits("degrees/min",      "deg.min-1",        "degree minute-1",  "deg.min-1");
 testToUcumToUdunits("degrees_celsius",  "Cel",              "degree_C",         "Cel");
-testToUcumToUdunits("degrees_E",        "deg{east}",        "degree_east",      "deg{east}");
-testToUcumToUdunits("degrees_east",     "deg{east}",        "degree_east",      "deg{east}");
-testToUcumToUdunits("degrees_N",        "deg{north}",       "degree_north",     "deg{north}");
-testToUcumToUdunits("degrees_north",    "deg{north}",       "degree_north",     "deg{north}");
-testToUcumToUdunits("degrees_true",     "deg{true}",        "degree_true",      "deg{true}");
+testToUcumToUdunits("degrees_E",        "deg{east}",        "degrees_east",     "deg{east}");
+testToUcumToUdunits("degrees_east",     "deg{east}",        "degrees_east",     "deg{east}");
+testToUcumToUdunits("degrees_N",        "deg{north}",       "degrees_north",    "deg{north}");
+testToUcumToUdunits("degrees_north",    "deg{north}",       "degrees_north",    "deg{north}");
+testToUcumToUdunits("degrees_true",     "deg{true}",        "degrees_true",     "deg{true}");
 testToUcumToUdunits("Dobsons",          "{dobson}",         "dobson",           "{dobson}");
 testToUcumToUdunits("dyn-cm",           "[g].cm",           "geopotential cm",  "[g].cm");
 testToUcumToUdunits("dynamic meter",    "[g].m",            "geopotential m",   "[g].m");
@@ -2539,7 +2668,7 @@ testToUcumToUdunits("fish per square kilometer",
                                         "{fish}.km-2",      "fish km-2",        "{fish}.km-2");
 testToUcumToUdunits("fish per tow",     "{fish}.{tow}-1",   "fish tow-1",       "{fish}.{tow}-1");
 testToUcumToUdunits("four digit year",  "a",                "year",             "a");
-testToUcumToUdunits("frac.",            "1",                "1"       ,         "1");
+testToUcumToUdunits("frac.",            "1",                "1",                "1");
 testToUcumToUdunits("fraction",         "1",                "1",                "1");
 testToUcumToUdunits("fraction (between 0 and 1)",
                                         "1",                "1",                "1");
@@ -3352,28 +3481,64 @@ testToUcumToUdunits("some unrelated24 con33tent, really (a fact)",
                     "{some}.{unrelated}24.{con33tent},.{really}.(a.{fact})");    
 
 //test of <ucumToUdunits> and <udunitsToUcum> in messages.xml
-Test.ensureEqual(ucumToUdunits("deg north"),      "degree_north", ""); //this also tests that last triplet is read
-Test.ensureEqual(udunitsToUcum("degrees north"),  "deg{north}", "");   //this also tests that last triplet is read 
+Test.ensureEqual(ucumToUdunits("deg north"),      "degrees_north", ""); //this also tests that last triplet is read
+Test.ensureEqual(udunitsToUcum("degrees north"),  "deg{north}",    ""); //this also tests that last triplet is read 
+
+        Test.ensureEqual(safeStandardizeUdunits("percent"),    "%", ""); 
+        Test.ensureEqual(safeStandardizeUdunits("percentage"), "%", ""); 
+        Test.ensureEqual(safeStandardizeUdunits("%"),          "%", "");  
 
 debugMode = false;
 }
 
-    /** 
-     * This tests some of the methods in this class.
-     * @throws an Exception if trouble.
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-/* for releases, this line should have open/close comment */
-        testUdunitsToUcum();
-        testUcumToUdunits();
-        testAllToUcumToUdnits();
-        /* */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ Units2.test(" + interactive + ") test=";
 
-        //not normally run:
-        //generateTests();
-        //tool for development and testing:
-        //repeatedlyTestOneUduit();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
+                } else {
+                    if (test ==  0) testUdunitsToUcum();
+                    if (test ==  1) testUcumToUdunits();
+                    if (test ==  2) testAllToUcumToUdnits();
+
+                    //not normally run:
+                    if (test ==  1000) generateTests();
+                    //tool for development and testing:
+                    if (test ==  1001) repeatedlyTestOneUdunit();
+
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 
 }

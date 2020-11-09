@@ -1358,7 +1358,7 @@ public class SgtGraph  {
      */
     public static void drawMarker(Graphics2D g2d, int markerType, int markerSize, 
         int x, int y, Color interiorColor, Color lineColor) {
-
+      
         if (markerType <= GraphDataLayer.MARKER_TYPE_NONE) 
             return;
 
@@ -1385,6 +1385,16 @@ public class SgtGraph  {
             g2d.drawPolygon(xa, ya, 4);
             return;
         }
+        if (markerType == GraphDataLayer.MARKER_TYPE_BORDERLESS_FILLED_SQUARE) {
+            if (interiorColor == null) 
+                return; 
+            int xa[] = {ulx, ulx, ulx + markerSize, ulx + markerSize};
+            int ya[] = {uly, uly + markerSize, uly + markerSize, uly};
+            g2d.setColor(interiorColor);
+            g2d.fillPolygon(xa, ya, 4);
+            g2d.drawPolygon(xa, ya, 4);
+            return;
+        }
         if (markerType == GraphDataLayer.MARKER_TYPE_CIRCLE) {
             g2d.setColor(interiorColor == null? lineColor : interiorColor);
             g2d.drawOval(ulx, uly, markerSize, markerSize);
@@ -1396,6 +1406,14 @@ public class SgtGraph  {
                 g2d.fillOval(ulx, uly, markerSize, markerSize); 
             }
             g2d.setColor(lineColor);
+            g2d.drawOval(ulx, uly, markerSize, markerSize); 
+            return;
+        }
+        if (markerType == GraphDataLayer.MARKER_TYPE_BORDERLESS_FILLED_CIRCLE) {
+            if (interiorColor == null) 
+                return; 
+            g2d.setColor(interiorColor);
+            g2d.fillOval(ulx, uly, markerSize, markerSize); 
             g2d.drawOval(ulx, uly, markerSize, markerSize); 
             return;
         }
@@ -1416,6 +1434,17 @@ public class SgtGraph  {
                 g2d.fillPolygon(xa, ya, 3);
             }
             g2d.setColor(lineColor);
+            g2d.drawPolygon(xa, ya, 3);
+            return;
+        }
+        if (markerType == GraphDataLayer.MARKER_TYPE_BORDERLESS_FILLED_UP_TRIANGLE) {
+            if (interiorColor == null) 
+                return; 
+            int m21 = m2 + 1; //to make the size look same as others
+            int xa[] = {x - m21, x,       x + m21}; //ensure symmetrical
+            int ya[] = {y + m21, y - m21, y + m21};
+            g2d.setColor(interiorColor);
+            g2d.fillPolygon(xa, ya, 3);
             g2d.drawPolygon(xa, ya, 3);
             return;
         }
@@ -1712,7 +1741,7 @@ public class SgtGraph  {
         long time = System.currentTimeMillis();
         String tempDir = SSR.getTempDirectory();
         SgtGraph sgtGraph = new SgtGraph("DejaVu Sans");  //"DejaVu Sans" "Bitstream Vera Sans"); //"SansSerif" is safe choice
-        String imageDir = SSR.getContextDirectory() + //with / separator and / at the end
+        String imageDir = String2.webInfParentDirectory() + //with / separator and / at the end
             "images/";
 
         int width = 800;  //2 graphs wide 
@@ -2116,7 +2145,7 @@ public class SgtGraph  {
         long time = System.currentTimeMillis();
         String tempDir = SSR.getTempDirectory();
         SgtGraph sgtGraph = new SgtGraph("DejaVu Sans");  //"DejaVu Sans" "Bitstream Vera Sans"); //"SansSerif" is safe choice
-        String imageDir = SSR.getContextDirectory() + //with / separator and / at the end
+        String imageDir = String2.webInfParentDirectory() + //with / separator and / at the end
             "images/";
 
         int width = 400;  
@@ -2228,7 +2257,7 @@ public class SgtGraph  {
 
         String tempDir = SSR.getTempDirectory();
         SgtGraph sgtGraph = new SgtGraph("DejaVu Sans");  //"DejaVu Sans" "Bitstream Vera Sans"); //"SansSerif" is safe choice
-        String imageDir = SSR.getContextDirectory() + //with / separator and / at the end
+        String imageDir = String2.webInfParentDirectory() + //with / separator and / at the end
             "images/";
        
         int width = 400;  
@@ -2250,7 +2279,7 @@ public class SgtGraph  {
         CompoundColorMap cColorMap = new CompoundColorMap(
             //String baseDir, String palette, String scale, double minData, 
             //double maxData, int nSections, boolean continuous, String resultDir)
-            SSR.getContextDirectory() + "WEB-INF/cptfiles/",
+            String2.webInfParentDirectory() + "WEB-INF/cptfiles/",
             "Rainbow", "linear", 0, 20, 5, true, 
             SSR.getTempDirectory());
 
@@ -2335,15 +2364,52 @@ public class SgtGraph  {
     } 
 
 
-    /** This tests SgtGraph. */ 
-    public static void test() throws Exception {
-        testDiverseGraphs(true, false, false); //testAllAndDisplay, xIsLogAxis, yIsLogAxis
-        testDiverseGraphs(true, false, true);  
-        testDiverseGraphs(true, true,  true);  
-        testForMemoryLeak();
-        testSurface(false, false); //xIsLogAxis, yIsLogAxis
-        testSurface(false, true); 
-        testSurface(true, true); 
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 6 : -1;
+        String msg = "\n^^^ SgtGraph.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testDiverseGraphs(true, false, false); //testAllAndDisplay, xIsLogAxis, yIsLogAxis
+                    if (test ==  1) testDiverseGraphs(true, false, true);  
+                    if (test ==  2) testDiverseGraphs(true, true,  true);  
+                    if (test ==  3) testForMemoryLeak();
+                    if (test ==  4) testSurface(false, false); //xIsLogAxis, yIsLogAxis
+                    if (test ==  5) testSurface(false, true); 
+                    if (test ==  6) testSurface(true, true); 
+
+                } else {
+                    //if (test ==  0) ...;
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 
 }

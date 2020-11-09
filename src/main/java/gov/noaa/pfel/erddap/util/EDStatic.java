@@ -6,6 +6,7 @@ package gov.noaa.pfel.erddap.util;
 
 import com.cohort.array.Attributes;
 import com.cohort.array.LongArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -17,6 +18,7 @@ import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
 import com.cohort.util.String2LogOutputStream;
 import com.cohort.util.Test;
+import com.cohort.util.Units2;
 import com.cohort.util.XML;
 
 import gov.noaa.pfel.coastwatch.griddata.NcHelper;
@@ -56,6 +58,9 @@ import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -167,10 +172,11 @@ public class EDStatic {
      * <br>2.00 released on 2019-06-26
      * <br>2.01 released on 2019-07-02
      * <br>2.02 released on 2019-08-21
+     * <br>2.10 released on 2020-11-05 (version jump because of new PATypes)
      *
      * For master branch releases, this will be a floating point
      * number with 2 decimal digits, with no additional text. 
-     * !!! People other than the main ERDDAP developer (Bob) 
+     * !!! In general, people other than the main ERDDAP developer (Bob) 
      * should not change the *number* below.
      * If you need to identify a fork of ERDDAP, please append "_" + other 
      * ASCII text (no spaces or control characters) to the number below,
@@ -180,7 +186,7 @@ public class EDStatic {
      * A request to http.../erddap/version will return just the number (as text).
      * A request to http.../erddap/version_string will return the full string.
      */   
-    public static String erddapVersion = "2.02_axiom-r1"; //see comment above
+    public static String erddapVersion = "2.10"; //see comment above
 
     /** 
      * This is almost always false.  
@@ -206,7 +212,7 @@ public static boolean developmentMode = false;
     public final static int TITLE_DOT_LENGTH = 95; //max nChar before using " ... "
 
     /* contextDirectory is the local directory on this computer, e.g., [tomcat]/webapps/erddap/ */
-    public static String contextDirectory = SSR.getContextDirectory(); //with / separator and / at the end
+    public static String webInfParentDirectory = String2.webInfParentDirectory(); //with / separator and / at the end
     //fgdc and iso19115XmlDirectory are used for virtual URLs.
     public final static String fgdcXmlDirectory     = "metadata/fgdc/xml/";     //virtual
     public final static String iso19115XmlDirectory = "metadata/iso19115/xml/"; //virtual
@@ -214,10 +220,10 @@ public static boolean developmentMode = false;
     public final static String IMAGES_DIR           = "images/";
     public final static String PUBLIC_DIR           = "public/"; 
     public static String
-        fullPaletteDirectory = contextDirectory + "WEB-INF/cptfiles/",
-        fullPublicDirectory  = contextDirectory + PUBLIC_DIR,
-        downloadDir          = contextDirectory + DOWNLOAD_DIR, //local directory on this computer
-        imageDir             = contextDirectory + IMAGES_DIR;   //local directory on this computer
+        fullPaletteDirectory = webInfParentDirectory + "WEB-INF/cptfiles/",
+        fullPublicDirectory  = webInfParentDirectory + PUBLIC_DIR,
+        downloadDir          = webInfParentDirectory + DOWNLOAD_DIR, //local directory on this computer
+        imageDir             = webInfParentDirectory + IMAGES_DIR;   //local directory on this computer
     public static Tally tally = new Tally();
     public static int failureTimesDistributionLoadDatasets[] = new int[String2.DistributionSize];
     public static int failureTimesDistribution24[]           = new int[String2.DistributionSize];
@@ -233,6 +239,8 @@ public static boolean developmentMode = false;
     public static int taskThreadFailedDistributionTotal[]    = new int[String2.DistributionSize];
     public static int taskThreadSucceededDistribution24[]    = new int[String2.DistributionSize];
     public static int taskThreadSucceededDistributionTotal[] = new int[String2.DistributionSize];
+    public static int dangerousMemoryFailures = 0; //since last Major LoadDatasets
+    public static StringBuffer suggestAddFillValueCSV = new StringBuffer(); //EDV constructors append message here   //thread-safe but probably doesn't need to be
 
     public static String datasetsThatFailedToLoad = "";
     public static String errorsDuringMajorReload = "";
@@ -265,12 +273,14 @@ public static boolean developmentMode = false;
     public final static int DEFAULT_nTableThreads = 1;
     public static int decompressedCacheMaxGB         = DEFAULT_decompressedCacheMaxGB; 
     public static int decompressedCacheMaxMinutesOld = DEFAULT_decompressedCacheMaxMinutesOld; 
-    public static int nGridThreads                   = DEFAULT_nGridThreads;   //will be a valid number 1+
+    public static int nGridThreads                   = DEFAULT_nGridThreads;  //will be a valid number 1+
     public static int nTableThreads                  = DEFAULT_nTableThreads; //will be a valid number 1+
+    public static String convertInterpolateRequestCSVExample = null;         //may be null or ""
+    public static String convertInterpolateDatasetIDVariableList[] = new String[0]; //may be [0]
 
     //things that were in setup.xml (discouraged) and are now in datasets.xml (v2.00+)
     public final static int    DEFAULT_cacheMinutes            = 60;
-    public final static String DEFAULT_drawLandMask            = "under";  //or "over"
+    public final static String DEFAULT_drawLandMask            = "under";  
     public final static int    DEFAULT_graphBackgroundColorInt = 0xffccccff; 
     public final static int    DEFAULT_loadDatasetsMinMinutes  = 15;
     public final static int    DEFAULT_loadDatasetsMaxMinutes  = 60;
@@ -459,6 +469,8 @@ public static boolean developmentMode = false;
         accessConstraints,
         accessRequiresAuthorization,
 
+        awsS3OutputBucket, //null or valid
+
         fees,
         keywords,
         units_standard,
@@ -491,6 +503,10 @@ public static boolean developmentMode = false;
         EDDGridDataTimeExampleHA,
         EDDGridGraphExampleHA,
         EDDGridMapExampleHA,
+
+        EDDTableFromHttpGetDatasetDescription,
+        EDDTableFromHttpGetAuthorDescription,
+        EDDTableFromHttpGetTimestampDescription,
 
         //the unencoded EDDTable...Example attributes
         EDDTableErddapUrlExample,
@@ -591,7 +607,7 @@ public static boolean developmentMode = false;
         reallyVerbose,
         subscriptionSystemActive,  convertersActive, slideSorterActive,
         fgdcActive, iso19115Active, jsonldActive, geoServicesRestActive, 
-        filesActive, dataProviderFormActive, 
+        filesActive, defaultAccessibleViaFiles, dataProviderFormActive, 
         outOfDateDatasetsActive, politicalBoundariesActive, 
         wmsClientActive, 
         sosActive, wcsActive, wmsActive,
@@ -647,6 +663,9 @@ public static boolean developmentMode = false;
         filesDocumentation;
     public static String 
         addConstraints,
+        addVarWhereAttName,
+        addVarWhereAttValue,
+        addVarWhere,
         admKeywords,
         admSubsetVariables,
         admSummary,
@@ -727,6 +746,7 @@ public static boolean developmentMode = false;
         advancedSearchWithCriteria,
         advancedSearchFewerCriteria,
         advancedSearchNoCriteria,
+        advancedSearchErrorHandling,
         autoRefresh,
         blacklistMsg,
         categoryTitleHtml,
@@ -757,6 +777,14 @@ public static boolean developmentMode = false;
         convertFipsCountyNotes,
         convertFipsCountyService,
         convertHtml,
+        convertInterpolate,             
+        convertInterpolateIntro,
+        convertInterpolateTLLTable,
+        convertInterpolateTLLTableHelp,
+        convertInterpolateDatasetIDVariable,
+        convertInterpolateDatasetIDVariableHelp,
+        convertInterpolateNotes,
+        convertInterpolateService,
         convertKeywords,          
         convertKeywordsCfTooltip,
         convertKeywordsGcmdTooltip,
@@ -1187,6 +1215,7 @@ public static boolean developmentMode = false;
         notAuthorized,
         notAuthorizedForData,
         notAvailable,
+        note,
         noXxx,
         noXxxBecause,
         noXxxBecause2,
@@ -1420,10 +1449,6 @@ public static boolean developmentMode = false;
         zoomIn,
         zoomOut;
 
-    public static HashMap<String,String> standardizeUdunitsHM = new HashMap();
-    public static HashMap<String,String> ucumToUdunitsHM = new HashMap();
-    public static HashMap<String,String> udunitsToUcumHM = new HashMap();
-
     public static int[] imageWidths, imageHeights, pdfWidths, pdfHeights;
     private static String theLongDescriptionHtml; //see the xxx() methods
     public static String errorFromDataSource = String2.ERROR + " from data source: ";
@@ -1568,7 +1593,7 @@ public static boolean developmentMode = false;
 
         String2.log(
             "bigParentDirectory=" + bigParentDirectory + eol +
-            "contextDirectory=" + contextDirectory);
+            "webInfParentDirectory=" + webInfParentDirectory);
 
         //are bufferedImages hardware accelerated?
         String2.log(SgtUtil.isBufferedImageAccelerated());
@@ -1706,6 +1731,10 @@ public static boolean developmentMode = false;
         fees                       = setup.getNotNothingString("fees",                       errorInMethod);
         keywords                   = setup.getNotNothingString("keywords",                   errorInMethod);
 
+        //awsS3OutputBucket          = setup.getString(          "awsS3OutputBucket",          null);
+        if (!String2.isSomething(awsS3OutputBucket))
+            awsS3OutputBucket = null;
+
         units_standard             = setup.getString(          "units_standard",             "UDUNITS");
 
         fgdcActive                 = setup.getBoolean(         "fgdcActive",                 true); 
@@ -1714,6 +1743,7 @@ public static boolean developmentMode = false;
 //until geoServicesRest is finished, it is always inactive
 geoServicesRestActive      = false; //setup.getBoolean(         "geoServicesRestActive",      false); 
         filesActive                = setup.getBoolean(         "filesActive",                true); 
+        defaultAccessibleViaFiles  = setup.getBoolean(         "defaultAccessibleViaFiles",  false); //false matches historical behavior 
         dataProviderFormActive     = setup.getBoolean(         "dataProviderFormActive",     true); 
         outOfDateDatasetsActive    = setup.getBoolean(         "outOfDateDatasetsActive",    true); 
         politicalBoundariesActive  = setup.getBoolean(         "politicalBoundariesActive",  true); 
@@ -1748,10 +1778,10 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         datasetsRegex              = setup.getString(          "datasetsRegex",              ".*");
         drawLandMask               = setup.getString(          "drawLandMask",               null);    //new name
         if (drawLandMask == null) //2014-08-28 changed defaults below to "under". It will be in v1.48
-            drawLandMask           = setup.getString(          "drawLand",                   "under"); //old name
-        if (!drawLandMask.equals("under") && 
-            !drawLandMask.equals("over"))
-             drawLandMask = DEFAULT_drawLandMask; //default="under"
+            drawLandMask           = setup.getString(          "drawLand",                   DEFAULT_drawLandMask); //old name. DEFAULT...="under"
+        int tdlm = String2.indexOf(SgtMap.drawLandMask_OPTIONS, drawLandMask);
+        if (tdlm < 1)
+            drawLandMask = DEFAULT_drawLandMask; //"under"
         flagKeyKey                 = setup.getNotNothingString("flagKeyKey",                 errorInMethod);
         if (flagKeyKey.toUpperCase().indexOf("CHANGE THIS") >= 0)
               //really old default: "A stitch in time saves nine. CHANGE THIS!!!"  
@@ -1894,6 +1924,9 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         //read all the static Strings from messages.xml
         acceptEncodingHtml         = messages.getNotNothingString("acceptEncodingHtml",         errorInMethod);
         addConstraints             = messages.getNotNothingString("addConstraints",             errorInMethod);
+        addVarWhereAttName         = messages.getNotNothingString("addVarWhereAttName",         errorInMethod);
+        addVarWhereAttValue        = messages.getNotNothingString("addVarWhereAttValue",        errorInMethod);
+        addVarWhere                = messages.getNotNothingString("addVarWhere",                errorInMethod);
         admKeywords                = messages.getNotNothingString("admKeywords",                errorInMethod);
         admSubsetVariables         = messages.getNotNothingString("admSubsetVariables",         errorInMethod);
         admSummary                 = messages.getNotNothingString("admSummary",                 errorInMethod);
@@ -1973,6 +2006,7 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         advancedSearchWithCriteria = messages.getNotNothingString("advancedSearchWithCriteria", errorInMethod);
         advancedSearchFewerCriteria= messages.getNotNothingString("advancedSearchFewerCriteria",errorInMethod);
         advancedSearchNoCriteria   = messages.getNotNothingString("advancedSearchNoCriteria",   errorInMethod);
+        advancedSearchErrorHandling= messages.getNotNothingString("advancedSearchErrorHandling",errorInMethod);
         autoRefresh                = messages.getNotNothingString("autoRefresh",                errorInMethod);
         blacklistMsg               = messages.getNotNothingString("blacklistMsg",               errorInMethod);
         PrimitiveArray.ArrayAddN           = messages.getNotNothingString("ArrayAddN",          errorInMethod);
@@ -2018,6 +2052,17 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         convertFipsCountyNotes     = messages.getNotNothingString("convertFipsCountyNotes",     errorInMethod);
         convertFipsCountyService   = messages.getNotNothingString("convertFipsCountyService",   errorInMethod);
         convertHtml                = messages.getNotNothingString("convertHtml",                errorInMethod);
+        convertInterpolate         = messages.getNotNothingString("convertInterpolate",         errorInMethod);
+        convertInterpolateIntro    = messages.getNotNothingString("convertInterpolateIntro",    errorInMethod);
+        convertInterpolateTLLTable = messages.getNotNothingString("convertInterpolateTLLTable", errorInMethod);
+        convertInterpolateTLLTableHelp
+                                   = messages.getNotNothingString("convertInterpolateTLLTableHelp",              errorInMethod);
+        convertInterpolateDatasetIDVariable 
+                                   = messages.getNotNothingString("convertInterpolateDatasetIDVariable",     errorInMethod);
+        convertInterpolateDatasetIDVariableHelp
+                                   = messages.getNotNothingString("convertInterpolateDatasetIDVariableHelp", errorInMethod);
+        convertInterpolateNotes    = messages.getNotNothingString("convertInterpolateNotes",    errorInMethod);
+        convertInterpolateService  = messages.getNotNothingString("convertInterpolateService",  errorInMethod);
         convertKeywords            = messages.getNotNothingString("convertKeywords",            errorInMethod);
         convertKeywordsCfTooltip   = messages.getNotNothingString("convertKeywordsCfTooltip",   errorInMethod);
         convertKeywordsGcmdTooltip = messages.getNotNothingString("convertKeywordsGcmdTooltip", errorInMethod);
@@ -2189,29 +2234,29 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         EDDGridMapExampleHA        = XML.encodeAsHTMLAttribute(SSR.pseudoPercentEncode(EDDGridMapExample)); 
 
 
-        EDDTableConstraints        = messages.getNotNothingString("EDDTableConstraints",        errorInMethod);
-        EDDTableDapDescription     = messages.getNotNothingString("EDDTableDapDescription",     errorInMethod);
-        EDDTableDapLongDescription = messages.getNotNothingString("EDDTableDapLongDescription", errorInMethod);
-        EDDTableDownloadDataTooltip  =messages.getNotNothingString("EDDTableDownloadDataTooltip",   errorInMethod);
-        EDDTableTabularDatasetTooltip=messages.getNotNothingString("EDDTableTabularDatasetTooltip", errorInMethod);
-        EDDTableVariable           = messages.getNotNothingString("EDDTableVariable",           errorInMethod);
-        EDDTableCheckAll           = messages.getNotNothingString("EDDTableCheckAll",           errorInMethod);
-        EDDTableCheckAllTooltip    = messages.getNotNothingString("EDDTableCheckAllTooltip",    errorInMethod);
-        EDDTableUncheckAll         = messages.getNotNothingString("EDDTableUncheckAll",         errorInMethod);
-        EDDTableUncheckAllTooltip  = messages.getNotNothingString("EDDTableUncheckAllTooltip",  errorInMethod);
-        EDDTableMinimumTooltip     = messages.getNotNothingString("EDDTableMinimumTooltip",     errorInMethod);
-        EDDTableMaximumTooltip     = messages.getNotNothingString("EDDTableMaximumTooltip",     errorInMethod);
-        EDDTableCheckTheVariables  = messages.getNotNothingString("EDDTableCheckTheVariables",  errorInMethod);
-        EDDTableSelectAnOperator   = messages.getNotNothingString("EDDTableSelectAnOperator",   errorInMethod);
-        EDDTableFromEDDGridSummary = messages.getNotNothingString("EDDTableFromEDDGridSummary", errorInMethod);
-        EDDTableOptConstraint1Html = messages.getNotNothingString("EDDTableOptConstraint1Html", errorInMethod);
-        EDDTableOptConstraint2Html = messages.getNotNothingString("EDDTableOptConstraint2Html", errorInMethod);
-        EDDTableOptConstraintVar   = messages.getNotNothingString("EDDTableOptConstraintVar",   errorInMethod);
-        EDDTableNumericConstraintTooltip=messages.getNotNothingString("EDDTableNumericConstraintTooltip",errorInMethod);
-        EDDTableStringConstraintTooltip =messages.getNotNothingString("EDDTableStringConstraintTooltip",errorInMethod);
-        EDDTableTimeConstraintTooltip   =messages.getNotNothingString("EDDTableTimeConstraintTooltip", errorInMethod);
-        EDDTableConstraintTooltip  = messages.getNotNothingString("EDDTableConstraintTooltip",  errorInMethod);
-        EDDTableSelectConstraintTooltip =messages.getNotNothingString("EDDTableSelectConstraintTooltip",   errorInMethod);
+        EDDTableConstraints             = messages.getNotNothingString("EDDTableConstraints",        errorInMethod);
+        EDDTableDapDescription          = messages.getNotNothingString("EDDTableDapDescription",     errorInMethod);
+        EDDTableDapLongDescription      = messages.getNotNothingString("EDDTableDapLongDescription", errorInMethod);
+        EDDTableDownloadDataTooltip     = messages.getNotNothingString("EDDTableDownloadDataTooltip",   errorInMethod);
+        EDDTableTabularDatasetTooltip   = messages.getNotNothingString("EDDTableTabularDatasetTooltip", errorInMethod);
+        EDDTableVariable                = messages.getNotNothingString("EDDTableVariable",           errorInMethod);
+        EDDTableCheckAll                = messages.getNotNothingString("EDDTableCheckAll",           errorInMethod);
+        EDDTableCheckAllTooltip         = messages.getNotNothingString("EDDTableCheckAllTooltip",    errorInMethod);
+        EDDTableUncheckAll              = messages.getNotNothingString("EDDTableUncheckAll",         errorInMethod);
+        EDDTableUncheckAllTooltip       = messages.getNotNothingString("EDDTableUncheckAllTooltip",  errorInMethod);
+        EDDTableMinimumTooltip          = messages.getNotNothingString("EDDTableMinimumTooltip",     errorInMethod);
+        EDDTableMaximumTooltip          = messages.getNotNothingString("EDDTableMaximumTooltip",     errorInMethod);
+        EDDTableCheckTheVariables       = messages.getNotNothingString("EDDTableCheckTheVariables",  errorInMethod);
+        EDDTableSelectAnOperator        = messages.getNotNothingString("EDDTableSelectAnOperator",   errorInMethod);
+        EDDTableFromEDDGridSummary      = messages.getNotNothingString("EDDTableFromEDDGridSummary", errorInMethod);
+        EDDTableOptConstraint1Html      = messages.getNotNothingString("EDDTableOptConstraint1Html", errorInMethod);
+        EDDTableOptConstraint2Html      = messages.getNotNothingString("EDDTableOptConstraint2Html", errorInMethod);
+        EDDTableOptConstraintVar        = messages.getNotNothingString("EDDTableOptConstraintVar",   errorInMethod);
+        EDDTableNumericConstraintTooltip= messages.getNotNothingString("EDDTableNumericConstraintTooltip", errorInMethod);
+        EDDTableStringConstraintTooltip = messages.getNotNothingString("EDDTableStringConstraintTooltip",  errorInMethod);
+        EDDTableTimeConstraintTooltip   = messages.getNotNothingString("EDDTableTimeConstraintTooltip",    errorInMethod);
+        EDDTableConstraintTooltip       = messages.getNotNothingString("EDDTableConstraintTooltip",        errorInMethod);
+        EDDTableSelectConstraintTooltip = messages.getNotNothingString("EDDTableSelectConstraintTooltip",  errorInMethod);
 
         //default EDDGrid...Example
         EDDTableErddapUrlExample   = messages.getNotNothingString("EDDTableErddapUrlExample",   errorInMethod);
@@ -2223,6 +2268,10 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         EDDTableGraphExample       = messages.getNotNothingString("EDDTableGraphExample",       errorInMethod);
         EDDTableMapExample         = messages.getNotNothingString("EDDTableMapExample",         errorInMethod);
         EDDTableMatlabPlotExample  = messages.getNotNothingString("EDDTableMatlabPlotExample",  errorInMethod);
+
+        EDDTableFromHttpGetDatasetDescription   = messages.getNotNothingString("EDDTableFromHttpGetDatasetDescription",   errorInMethod);
+        EDDTableFromHttpGetAuthorDescription    = messages.getNotNothingString("EDDTableFromHttpGetAuthorDescription",    errorInMethod);
+        EDDTableFromHttpGetTimestampDescription = messages.getNotNothingString("EDDTableFromHttpGetTimestampDescription", errorInMethod);
 
         //admin provides EDDGrid...Example
         EDDTableErddapUrlExample   = setup.getString("EDDTableErddapUrlExample",   EDDTableErddapUrlExample);
@@ -2550,6 +2599,7 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         notAuthorized              = messages.getNotNothingString("notAuthorized",              errorInMethod);
         notAuthorizedForData       = messages.getNotNothingString("notAuthorizedForData",       errorInMethod);
         notAvailable               = messages.getNotNothingString("notAvailable",               errorInMethod);
+        note                       = messages.getNotNothingString("note",                       errorInMethod);
         noXxx                      = messages.getNotNothingString("noXxx",                      errorInMethod);
         noXxxBecause               = messages.getNotNothingString("noXxxBecause",               errorInMethod);
         noXxxBecause2              = messages.getNotNothingString("noXxxBecause2",              errorInMethod);
@@ -2645,6 +2695,7 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         resetTheForm               = messages.getNotNothingString("resetTheForm",               errorInMethod);
         resetTheFormWas            = messages.getNotNothingString("resetTheFormWas",            errorInMethod);
         resourceNotFound           = messages.getNotNothingString("resourceNotFound",           errorInMethod);
+        resourceNotFound += " ";
         resultsFormatExamplesHtml  = messages.getNotNothingString("resultsFormatExamplesHtml",  errorInMethod);
         resultsOfSearchFor         = messages.getNotNothingString("resultsOfSearchFor",         errorInMethod);
         restfulInformationFormats  = messages.getNotNothingString("restfulInformationFormats",  errorInMethod);
@@ -2670,6 +2721,8 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
         shiftXLeft                 = messages.getNotNothingString("shiftXLeft",                 errorInMethod);
         shiftXRight                = messages.getNotNothingString("shiftXRight",                errorInMethod);
         shiftXAllTheWayRight       = messages.getNotNothingString("shiftXAllTheWayRight",       errorInMethod);
+        Attributes.signedToUnsignedAttNames = StringArray.arrayFromCSV(
+                                     messages.getNotNothingString("signedToUnsignedAttNames",   errorInMethod));
         seeProtocolDocumentation   = messages.getNotNothingString("seeProtocolDocumentation",   errorInMethod);
         sosDescriptionHtml         = messages.getNotNothingString("sosDescriptionHtml",         errorInMethod);
         sosLongDescriptionHtml     = messages.getNotNothingString("sosLongDescriptionHtml",     errorInMethod); 
@@ -2848,7 +2901,7 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
             Test.ensureTrue( String2.isSomething(tStandardizeUdunits[ i3]),   "standardizeUdunits line #" + (i3 + 0) + " is empty.");
             Test.ensureTrue( String2.isSomething(tStandardizeUdunits[ i3+1]), "standardizeUdunits line #" + (i3 + 1) + " is empty.");
             Test.ensureEqual(tStandardizeUdunits[i3+2].trim(), "",            "standardizeUdunits line #" + (i3 + 2) + " isn't empty.");
-            standardizeUdunitsHM.put(
+            Units2.standardizeUdunitsHM.put(
                 String2.canonical(tStandardizeUdunits[i3].trim()), 
                 String2.canonical(tStandardizeUdunits[i3 + 1].trim()));
         }       
@@ -2859,7 +2912,7 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
             Test.ensureTrue( String2.isSomething(tUcumToUdunits[ i3]),   "ucumToUdunits line #" + (i3 + 0) + " is empty.");
             Test.ensureTrue( String2.isSomething(tUcumToUdunits[ i3+1]), "ucumToUdunits line #" + (i3 + 1) + " is empty.");
             Test.ensureEqual(tUcumToUdunits[i3+2].trim(), "",            "ucumToUdunits line #" + (i3 + 2) + " isn't empty.");
-            ucumToUdunitsHM.put(
+            Units2.ucumToUdunitsHM.put(
                 String2.canonical(tUcumToUdunits[i3].trim()), 
                 String2.canonical(tUcumToUdunits[i3 + 1].trim()));
         }       
@@ -2870,7 +2923,7 @@ wcsActive = false; //setup.getBoolean(         "wcsActive",                  fal
             Test.ensureTrue( String2.isSomething(tUdunitsToUcum[ i3]),   "udunitsToUcum line #" + (i3 + 0) + " is empty.");
             Test.ensureTrue( String2.isSomething(tUdunitsToUcum[ i3+1]), "udunitsToUcum line #" + (i3 + 1) + " is empty.");
             Test.ensureEqual(tUdunitsToUcum[i3+2].trim(), "",            "udunitsToUcum line #" + (i3 + 2) + " isn't empty.");
-            udunitsToUcumHM.put(
+            Units2.udunitsToUcumHM.put(
                 String2.canonical(tUdunitsToUcum[i3].trim()), 
                 String2.canonical(tUdunitsToUcum[i3 + 1].trim()));
         }       
@@ -2911,13 +2964,14 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
                 int nRows = 4;
                 Dimension dimension  = nc.addDimension(rootGroup, "row", nRows);
                 Variable var = nc.addVariable(rootGroup, "myLongs", 
-                    DataType.getType(long.class), Arrays.asList(dimension)); 
+                    NcHelper.getNc3DataType(PAType.LONG),
+                    Arrays.asList(dimension)); 
 
                 //leave "define" mode
                 nc.create();  //error is thrown here if netcdf-c not found
 
                 //write the data
-                Array array = Array.factory(long.class, new int[]{nRows}, new long[]{0,1,2,3});
+                Array array = Array.factory(DataType.LONG, new int[]{nRows}, new long[]{0,1,2,3});
                 nc.write(var, new int[]{0}, array);
 
                 //if close throws Throwable, it is trouble
@@ -2929,13 +2983,13 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
                 String2.log(".nc4 files can be created in this ERDDAP installation.");
 
             } finally {
-                try {if (nc != null) nc.close(); } catch (Throwable t3) {}
+                try {if (nc != null) nc.abort(); } catch (Throwable t3) {}
             }
 
         } catch (Throwable t) {
             accessibleViaNC4 = String2.canonical(
                 MessageFormat.format(noXxxBecause2, ".nc4",
-                    resourceNotFound + " netcdf-c library"));
+                    resourceNotFound + "netcdf-c library"));
             String2.log(t.toString() + "\n" + accessibleViaNC4);
         }
 //        File2.delete(testNc4Name);
@@ -2947,16 +3001,6 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
             (useLuceneSearchEngine? searchHintsLuceneTooltip : searchHintsOriginalTooltip) +
             "</div>";
         advancedSearchDirections = String2.replaceAll(advancedSearchDirections, "&searchButton;", searchButton);
-
-        convertOceanicAtmosphericAcronymsService      = MessageFormat.format(convertOceanicAtmosphericAcronymsService, preferredErddapUrl) + "\n";
-        convertOceanicAtmosphericVariableNamesService = MessageFormat.format(convertOceanicAtmosphericVariableNamesService, preferredErddapUrl) + "\n";
-        convertFipsCountyService = MessageFormat.format(convertFipsCountyService, preferredErddapUrl) + "\n";
-        convertKeywordsService   = MessageFormat.format(convertKeywordsService,   preferredErddapUrl) + "\n";
-        convertTimeNotes         = MessageFormat.format(convertTimeNotes,         preferredErddapUrl, convertTimeUnitsHelp) + "\n";
-        convertTimeService       = MessageFormat.format(convertTimeService,       preferredErddapUrl) + "\n"; 
-        convertUnitsFilter       = MessageFormat.format(convertUnitsFilter,       preferredErddapUrl, units_standard) + "\n";
-        convertUnitsService      = MessageFormat.format(convertUnitsService,      preferredErddapUrl) + "\n"; 
-        convertURLsService       = MessageFormat.format(convertURLsService,       preferredErddapUrl) + "\n"; 
 
         String tEmail = SSR.getSafeEmailAddress(adminEmail);
         filesDocumentation = String2.replaceAll(filesDocumentation, "&adminEmail;", tEmail); 
@@ -3034,7 +3078,6 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         Calendar2.verbose = verbose;
         EDD.verbose = verbose;
         EDV.verbose = verbose;      
-        EDUnits.verbose = verbose;
         Erddap.verbose = verbose;
         File2.verbose = verbose;
         FileVisitorDNLS.reallyVerbose = reallyVerbose;
@@ -3057,6 +3100,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         Subscriptions.verbose = verbose;
         Table.verbose = verbose;
         TaskThread.verbose = verbose;
+        Units2.verbose = verbose;
 
         reallyVerbose = logLevel.equals("all");
         AxisDataAccessor.reallyVerbose = reallyVerbose;
@@ -3333,7 +3377,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         throws Throwable {
 
         return htmlTooltipImageLowEDV(loggedInAs,
-            edv.destinationDataTypeClass(), 
+            edv.destinationDataPAType(), 
             edv.destinationName(), 
             edv.combinedAttributes());
     }
@@ -3348,7 +3392,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         throws Throwable {
         
         return htmlTooltipImageLowEDV(loggedInAs,
-            edvga.destinationDataTypeClass(), 
+            edvga.destinationDataPAType(), 
             edvga.destinationName() + "[" + edvga.sourceValues().size() + "]",
             edvga.combinedAttributes());
     }
@@ -3364,7 +3408,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         throws Throwable {
 
         return htmlTooltipImageLowEDV(loggedInAs,
-            edv.destinationDataTypeClass(), 
+            edv.destinationDataPAType(), 
             edv.destinationName() + allDimString, 
             edv.combinedAttributes());
     }
@@ -3374,21 +3418,17 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      * with a variable's name and attributes.
      * htmlTooltipScript (see HtmlWidgets) must be already in the document.
      *
-     * @param destinationDataTypeClass
+     * @param destinationDataPAType
      * @param destinationName  perhaps with axis information appended (e.g., [time][latitude][longitude]
      * @param attributes
      */
-    public static String htmlTooltipImageLowEDV(String loggedInAs, Class destinationDataTypeClass, 
+    public static String htmlTooltipImageLowEDV(String loggedInAs, PAType destinationDataPAType, 
         String destinationName, Attributes attributes) throws Throwable {
 
-        String destType = 
-            //long and char aren't handled by getAtomicType. I don't think ever used.
-            destinationDataTypeClass == long.class? "long" :   
-            destinationDataTypeClass == char.class? "char" :  //???   
-            OpendapHelper.getAtomicType(destinationDataTypeClass);
-
         StringBuilder sb = OpendapHelper.dasToStringBuilder(
-            destType + " " + destinationName, attributes, false); //false, do encoding below
+            OpendapHelper.getAtomicType(false, destinationDataPAType) + " " + destinationName,   //strictDapMode
+            destinationDataPAType,
+            attributes, false, false); //htmlEncoding, strictDapMode
         //String2.log("htmlTooltipImage sb=" + sb.toString());
         return htmlTooltipImage(loggedInAs, 
             "<div class=\"standard_max_width\">" + XML.encodeAsPreHTML(sb.toString()) +
@@ -3429,17 +3469,32 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      */
     public static String email(String emailAddresses[], String subject, String content) {
 
-        //write the email to the log
-        String emailAddressesCSSV = String2.toCSSVString(emailAddresses);
-        String localTime = Calendar2.getCurrentISODateTimeStringLocalTZ();
-        boolean logIt = !subject.startsWith(DONT_LOG_THIS_EMAIL);
-        if (!logIt) 
-            subject = subject.substring(DONT_LOG_THIS_EMAIL.length());
-        subject = (computerName.length() > 0? computerName + " ": "") + "ERDDAP: " + 
-            String2.replaceAll(subject, '\n', ' ');
-
-        //almost always write to emailLog
+        String emailAddressesCSSV = "";
         try {
+            //ensure all email addresses are valid
+            StringArray emailAddressesSA = new StringArray(emailAddresses);
+            BitSet keep = new BitSet(emailAddressesSA.size());  //all false
+            for (int i = 0; i < emailAddressesSA.size(); i++) { 
+                String err = subscriptions.testEmailValid(emailAddressesSA.get(i));  //tests syntax and blacklist             
+                if (err.length() == 0) {
+                    keep.set(i);
+                } else {
+                    String2.log("EDStatic.email caught an invalid email address: " + err);
+                }
+            }
+            emailAddressesSA.justKeep(keep);  //it's okay if 0 remain. email will still be written to log below.
+            emailAddresses = emailAddressesSA.toArray();
+
+            //write the email to the log
+            emailAddressesCSSV = String2.toCSSVString(emailAddresses);
+            String localTime = Calendar2.getCurrentISODateTimeStringLocalTZ();
+            boolean logIt = !subject.startsWith(DONT_LOG_THIS_EMAIL);
+            if (!logIt) 
+                subject = subject.substring(DONT_LOG_THIS_EMAIL.length());
+            subject = (computerName.length() > 0? computerName + " ": "") + "ERDDAP: " + 
+                String2.replaceAll(subject, '\n', ' ');
+
+            //almost always write to emailLog
             //Always note that email sent in regular log.
             String2.log("Emailing \"" + subject + "\" to " + emailAddressesCSSV);
 
@@ -3501,23 +3556,12 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         //send email
         String errors = "";
         try {
-            //catch common problem: sending email to one invalid address
-            if (emailAddresses.length == 1 &&
-                (!String2.isEmailAddress(emailAddresses[0]) ||
-                 emailAddresses[0].startsWith("nobody@") || 
-                 emailAddresses[0].startsWith("your.name") || 
-                 emailAddresses[0].startsWith("your.email"))) {
-                errors = "Error in EDStatic.email: invalid emailAddresses=" + emailAddressesCSSV;
-                String2.log(errors);
-            }
-
-            if (errors.length() == 0)
 //??? THREAD SAFE? SYNCHRONIZED? 
 //I don't think use of this needs to be synchronized. I could be wrong. I haven't tested.
-                SSR.sendEmail(emailSmtpHost, emailSmtpPort, emailUserName, 
-                    emailPassword, emailProperties, emailFromAddress, emailAddressesCSSV, 
-                    subject, 
-                    preferredErddapUrl + " reports:\n" + content);
+            SSR.sendEmail(emailSmtpHost, emailSmtpPort, emailUserName, 
+                emailPassword, emailProperties, emailFromAddress, emailAddressesCSSV, 
+                subject, 
+                preferredErddapUrl + " reports:\n" + content);
         } catch (Throwable t) {
             String msg = "Error: Sending email to " + emailAddressesCSSV + " failed";
             try {String2.log(MustBe.throwable(msg, t));
@@ -3545,92 +3589,6 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         }
 
         return errors;
-    }
-
-
-    /**
-     * This throws an exception if the requested nBytes are unlikely to be
-     * available.
-     * This isn't perfect, but is better than nothing. 
-     * Future: locks? synchronization? ...?
-     *
-     * <p>This is almost identical to Math2.ensureMemoryAvailable, but adds tallying.
-     *
-     * @param nBytes  size of data structure that caller plans to create
-     * @param attributeTo for the Tally system, this is the string (datasetID?) 
-     *   to which this not-enough-memory issue should be attributed.
-     * @throws RuntimeException if the requested nBytes are unlikely to be available.
-     */
-    public static void ensureMemoryAvailable(long nBytes, String attributeTo) {
-
-        //if it is a small request, don't take the time/effort to check 
-        if (nBytes < Math2.ensureMemoryAvailableTrigger) 
-            return;
-        String attributeToParen = 
-            attributeTo == null || attributeTo.length() == 0? "" : " (" + attributeTo + ")";
-        
-        //is the request too big under any circumstances?
-        if (nBytes > Math2.maxSafeMemory) {
-            tally.add("Request refused: not enough memory ever (since startup)", attributeTo);
-            tally.add("Request refused: not enough memory ever (since last daily report)", attributeTo);
-            throw new RuntimeException(Math2.memoryTooMuchData + "  " +
-                MessageFormat.format(Math2.memoryThanSafe, "" + (nBytes / Math2.BytesPerMB),  
-                    "" + (Math2.maxSafeMemory / Math2.BytesPerMB)) +
-                attributeToParen); 
-        }
-
-        //request is fine without gc?
-        long memoryInUse = Math2.getMemoryInUse();
-        if (memoryInUse + nBytes <= Math2.maxSafeMemory)  //it'll work
-            return;
-
-        //lots of memory is in use
-        //is the request is too big for right now?
-        Math2.gcAndWait();  //part of ensureMemoryAvailable: lots of memory in use
-        memoryInUse = Math2.getMemoryInUse();
-        if (memoryInUse + nBytes > Math2.maxSafeMemory) {
-            //eek! not enough memory! 
-            //Wait, then try gc again and hope that some other request requiring lots of memory will finish.
-            //If nothing else, this 1 second delay will delay another request by same user (e.g., programmatic re-request)
-            Math2.sleep(1000);
-            Math2.gcAndWait(); //in ensureMemoryIsAvailable, lots of memory in use
-            memoryInUse = Math2.getMemoryInUse();
-        }
-        if (memoryInUse > Math2.maxSafeMemory) { 
-            tally.add("MemoryInUse > MaxSafeMemory (since startup)", attributeTo);
-            tally.add("MemoryInUse > MaxSafeMemory (since last daily report)", attributeTo);
-        }
-        if (memoryInUse + nBytes > Math2.maxSafeMemory) {
-            tally.add("Request refused: not enough memory currently (since startup)", attributeTo);
-            tally.add("Request refused: not enough memory currently (since last daily report)", attributeTo);
-            throw new RuntimeException(Math2.memoryTooMuchData + "  " +
-                MessageFormat.format(Math2.memoryThanCurrentlySafe,
-                    "" + (nBytes / Math2.BytesPerMB), 
-                    "" + ((Math2.maxSafeMemory - memoryInUse) / Math2.BytesPerMB)) +
-                attributeToParen); 
-        }
-    }
-
-    /** 
-     * Even if JavaBits is 64, the limit on an array size is Integer.MAX_VALUE.
-     *
-     * <p>This is almost identical to Math2.ensureArraySizeOkay, but adds tallying.
-     * 
-     * @param tSize
-     * @param attributeTo for the Tally system, this is the string (datasetID?) 
-     *   to which this not-enough-memory issue should be attributed.
-     * @throws Exception if tSize >= Integer.MAX_VALUE.  
-     *  (equals is forbidden for safety since I often use if as missing value / trouble)
-     */
-    public static void ensureArraySizeOkay(long tSize, String attributeTo) { 
-        if (tSize >= Integer.MAX_VALUE) {
-            tally.add("Request refused: array size >= Integer.MAX_VALUE (since startup)", attributeTo);
-            tally.add("Request refused: array size >= Integer.MAX_VALUE (since last daily report)", attributeTo);
-            throw new RuntimeException(Math2.memoryTooMuchData + "  " +
-                MessageFormat.format(Math2.memoryArraySize, 
-                    "" + tSize, "" + Integer.MAX_VALUE) +
-                (attributeTo == null || attributeTo.length() == 0? "" : " (" + attributeTo + ")"));
-        }
     }
 
 
@@ -3685,7 +3643,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         sb.append("Response Succeeded Time (since startup)                 ");
         sb.append(String2.getBriefDistributionStatistics(responseTimesDistributionTotal) + "\n");
 
-        synchronized(taskList) { //all task-related things synch on taskList
+        synchronized(taskList) {
             ensureTaskThreadIsRunningIfNeeded();  //clients (like this class) are responsible for checking on it
             long tElapsedTime = taskThread == null? -1 : taskThread.elapsedTime();
             sb.append("TaskThread has finished " + (lastFinishedTask + 1) + " out of " + 
@@ -3694,6 +3652,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
                    "Currently, no task is running.\n" : 
                    "The current task has been running for " + Calendar2.elapsedTimeString(tElapsedTime) + ".\n"));
         }
+
         sb.append("TaskThread Failed    Time (since last Daily Report)     ");
         sb.append(String2.getBriefDistributionStatistics(taskThreadFailedDistribution24) + "\n");
         sb.append("TaskThread Failed    Time (since startup)               ");
@@ -3710,8 +3669,8 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
     public static void addCommonStatistics(StringBuilder sb) {
         if (majorLoadDatasetsTimeSeriesSB.length() > 0) {
             sb.append(
-"Major LoadDatasets Time Series: MLD    Datasets Loaded     Requests (median times in ms)       Number of Threads      Memory (MB)\n" +
-"  timestamp                    time   nTry nFail nTotal  nSuccess (median) nFailed (median)  tomWait inotify other  inUse highWater\n");
+"Major LoadDatasets Time Series: MLD    Datasets Loaded         Requests (median times in ms)           Number of Threads      Memory (MB)\n" +
+"  timestamp                    time   nTry nFail nTotal  nSuccess (median) nFailed (median) memFail  tomWait inotify other  inUse highWater\n");
             sb.append(majorLoadDatasetsTimeSeriesSB);
             sb.append("\n\n");
         }
@@ -3951,6 +3910,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         try {
             tally.add("Request refused: not authorized (since startup)", datasetID); 
             tally.add("Request refused: not authorized (since last daily report)", datasetID);
+            tally.add("Request refused: not authorized (since last Major LoadDatasets)", datasetID); 
 
             if (datasetID != null && datasetID.length() > 0) 
                 message = MessageFormat.format(
@@ -4008,7 +3968,26 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      *   but &amp;loginInfo; indicates user isn't logged in.
      */
     public static String startBodyHtml(String loggedInAs) {
+        return startBodyHtml(loggedInAs, "");
+    }
+
+    /**
+     * This returns the startBodyHtml (with the user's login info inserted if 
+     * &amp;loginInfo; is present).
+     *
+     * <p>This is safe to use this after outputStream has been written to -- 
+     *     this won't make a session if the user doesn't have one.
+     *
+     * @param loggedInAs  the name of the logged in user (or null if not logged in).
+     *   Special case: "loggedInAsHttps" is for using https without being logged in, 
+     *   but &amp;loginInfo; indicates user isn't logged in.
+     * @param otherBody other content for the &lt;body&gt; tag, e.g., " onload=\"myFunction()\"".
+     *   
+     */
+    public static String startBodyHtml(String loggedInAs, String otherBody) {
         String s = startBodyHtml;
+        if (String2.isSomething(otherBody)) 
+            s = String2.replaceAll(s, "<body>", "<body " + otherBody + ">");
         if (ampLoginInfoPo >= 0) {
             s = startBodyHtml.substring(0, ampLoginInfoPo) +
                 getLoginHtml(loggedInAs) +
@@ -4226,7 +4205,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      *    If false, taskThread will be null.
      */
     public static boolean isTaskThreadRunning() {
-        synchronized(taskList) { //all task-related things synch on taskList
+        synchronized(taskList) {
             if (taskThread == null)
                 return false;
 
@@ -4263,30 +4242,28 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
     }
 
     /** 
-     * This ensures the task thread is running if there are tasks to do
+     * This ensures the task thread is running if there are tasks to do.
+     * This won't throw an exception.
      */
     public static void ensureTaskThreadIsRunningIfNeeded() {
-        synchronized(taskList) { //all task-related things synch on taskList
-            try {
-                //this checks if it is running and not stalled
-                if (isTaskThreadRunning())
-                    return;
-                
-                //taskThread isn't running
-                //Are there no tasks to do? 
-                int nPending = taskList.size() - nextTask;
-                if (nPending <= 0) 
-                    return; //no need to start it
+        synchronized(taskList) {
+            //this checks if it is running and not stalled
+            if (isTaskThreadRunning())
+                return;
+            
+            //taskThread isn't running
+            //Are there no tasks to do? 
+            int nPending = taskList.size() - nextTask;
+            if (nPending <= 0) 
+                return; //no need to start it
 
-                //need to start a new taskThread
-                taskThread = new TaskThread(nextTask);
-                runningThreads.put(taskThread.getName(), taskThread); 
-                String2.log("\n*** new taskThread started at " + 
-                    Calendar2.getCurrentISODateTimeStringLocalTZ() + " nPendingTasks=" + nPending + "\n");
-                taskThread.start();
-                return;            
-            } catch (Throwable t) {
-            }
+            //need to start a new taskThread
+            taskThread = new TaskThread(nextTask);
+            runningThreads.put(taskThread.getName(), taskThread); 
+            String2.log("\n*** new taskThread started at " + 
+                Calendar2.getCurrentISODateTimeStringLocalTZ() + " nPendingTasks=" + nPending + "\n");
+            taskThread.start();
+            return;            
         }
     }
 
@@ -4303,7 +4280,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      *   or -1 if it was a duplicate task.
      */
     public static int addTask(Object taskOA[]) {
-        synchronized(taskList) { //all task-related things synch on taskList
+        synchronized(taskList) {
 
             //Note that all task creators check that
             //   EDStatic.lastFinishedTask >= lastAssignedTask(datasetID).  I.E., tasks are all done,
@@ -4335,7 +4312,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         table.addColumn("acronym", col1);
         table.addColumn("fullName", col2);
         ArrayList<String> lines = String2.readLinesFromFile(
-            contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/OceanicAtmosphericAcronyms.tsv",
+            webInfParentDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/OceanicAtmosphericAcronyms.tsv",
             String2.ISO_8859_1, 1);
         int nLines = lines.size();
         for (int i = 1; i < nLines; i++) { //1 because skip colNames
@@ -4368,7 +4345,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         table.addColumn("variableName", col1);
         table.addColumn("fullName", col2);
         ArrayList<String> lines = String2.readLinesFromFile(
-            contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/OceanicAtmosphericVariableNames.tsv",
+            webInfParentDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/OceanicAtmosphericVariableNames.tsv",
             String2.ISO_8859_1, 1);
         int nLines = lines.size();
         for (int i = 1; i < nLines; i++) {
@@ -4477,7 +4454,8 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
     public static Table fipsCountyTable() throws Exception {
         Table table = new Table();
         table.readASCII(
-            contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/FipsCounty.tsv", 
+            webInfParentDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/FipsCounty.tsv", 
+            String2.ISO_8859_1, "", "",
             0, 1, "", null, null, null, null, false); //false = don't simplify
         return table;
     }
@@ -4490,7 +4468,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      */
     public static Table keywordsCfTable() throws Exception {
         StringArray sa = StringArray.fromFile(
-            contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/cfStdNames.txt");
+            webInfParentDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/cfStdNames.txt");
         Table table = new Table();
         table.addColumn("CfStandardNames", sa);
         return table;
@@ -4504,7 +4482,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      */
     public static Table keywordsGcmdTable() throws Exception {
         StringArray sa = StringArray.fromFile(
-            contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/gcmdScienceKeywords.txt");
+            webInfParentDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/gcmdScienceKeywords.txt");
         Table table = new Table();
         table.addColumn("GcmdScienceKeywords", sa);
         return table;
@@ -4519,7 +4497,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
      */
     public static Table keywordsCfToGcmdTable() throws Exception {
         StringArray sa = StringArray.fromFile(
-            contextDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/CfToGcmd.txt");
+            webInfParentDirectory + "WEB-INF/classes/gov/noaa/pfel/erddap/util/CfToGcmd.txt");
         Table table = new Table();
         table.addColumn("CfToGcmd", sa);
         return table;
@@ -4593,7 +4571,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
     public static Object[] luceneIndexSearcher() {
 
         //synchronize 
-        synchronized (luceneIndexReaderLock) {
+        synchronized(luceneIndexReaderLock) {
 
             //need a new indexReader?
             //(indexReader is thread-safe, but only need one)
@@ -4677,7 +4655,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
 
         //queryParser is not thread-safe, so re-use it in a synchronized block
         //(It is fast, so synchronizing on one parser shouldn't be a bottleneck.
-        synchronized (luceneQueryParser) {
+        synchronized(luceneQueryParser) {
 
             try {
                 //long qTime = System.currentTimeMillis();
@@ -4985,7 +4963,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
             PrimitiveArray pa = addAtts.get(names[i]);
             if (pa == null && sourceAtts != null)
                 pa = sourceAtts.get(names[i]);
-            if (pa != null && pa.size() > 0 && pa.elementClass() == String.class) {
+            if (pa != null && pa.size() > 0 && pa.elementType() == PAType.STRING) {
                 String oValue = pa.getString(0);        
                 String value = updateUrls(oValue);
                 if (!value.equals(oValue))
@@ -5300,11 +5278,12 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
             String fullMsg = 
                 "Error {\n" +
                 "    code=" + errorNo + ";\n" +
-                "    message=" + String2.toJson65536(msg) + ";\n" +
+                "    message=" + String2.toJson(msg, 65536, false) + ";\n" +
                 "}\n";
-            String2.log("*** lowSendError: isCommitted=" + (response == null || response.isCommitted()) + 
-                " fullMessage=\n" +
-                fullMsg); // + MustBe.getStackTrace());
+            if (msg.indexOf(blacklistMsg) < 0)
+                String2.log("*** lowSendError: isCommitted=" + (response == null || response.isCommitted()) + 
+                    " fullMessage=\n" +
+                    fullMsg); // + MustBe.getStackTrace());
 
             //if response isCommitted, nothing more can be done
             if (response == null) {
@@ -5321,7 +5300,7 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
                 OutputStream outputStream = new BufferedOutputStream(response.getOutputStream()); //after all setHeader
                 Writer writer = null;
                 try {
-                    writer = new BufferedWriter(new OutputStreamWriter(outputStream, String2.UTF_8));
+                    writer = String2.getBufferedOutputStreamWriterUtf8(outputStream);
                     //from DAP 2.0 section 7.2.4
                     writer.write(fullMsg);
 
@@ -5377,13 +5356,47 @@ accessibleViaNC4 = ".nc4 is not yet supported.";
         Test.ensureEqual(results, expected, "results=\n" + results);
     }
 
-    /** 
-     * This tests some of the methods in this class.
-     * @throws an Exception if trouble.
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDStatic.test");
-        testUpdateUrls();
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDStatic.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testUpdateUrls();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 
 }

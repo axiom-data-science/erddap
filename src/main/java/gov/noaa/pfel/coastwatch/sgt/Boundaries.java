@@ -10,6 +10,7 @@ import com.cohort.array.IntArray;
 import com.cohort.util.File2;
 import com.cohort.util.LRUCache;
 import com.cohort.util.Math2;
+import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
 
@@ -21,6 +22,9 @@ import gov.noaa.pmel.sgt.dm.*;
 import java.io.File;
 import java.io.*;
 import java.util.Collections;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.Map;
 
 
@@ -48,7 +52,7 @@ public class Boundaries  {
     public static boolean debug = false;
 
     public final static String REF_DIRECTORY = 
-        SSR.getContextDirectory() + //with / separator and / at the end
+        String2.webInfParentDirectory() + //with / separator and / at the end
         "WEB-INF/ref/";
 
     /** 
@@ -59,7 +63,7 @@ public class Boundaries  {
      *    GPL license: http://www.soest.hawaii.edu/pwessel/gshhs/README.TXT
      *    landMaskDir should have slash at end.
      */
-    public String directory = SSR.getContextDirectory() + //with / separator and / at the end
+    public String directory = String2.webInfParentDirectory() + //with / separator and / at the end
         "WEB-INF/ref/";
 
     /**
@@ -182,7 +186,10 @@ public class Boundaries  {
             //  If there are almost simultaneous requests for the same one, 
             //  only one thread will make it.
             //Cache is thread-safe so synch on cachedName, not cache.
-            synchronized(cachedName) {
+            ReentrantLock lock = String2.canonicalLock(cachedName);
+            if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+                throw new TimeoutException("Timeout waiting for lock on Boundaries cachedName.");
+            try {
 
                 //*** is SGTLine in cache?
                 sgtLine = (SGTLine)cache.get(cachedName);
@@ -211,6 +218,8 @@ public class Boundaries  {
                     nSuccesses++;
                     tSuccess = "*(alreadyInCache)";
                 }
+            } finally {
+                lock.unlock();
             }
         }
 
@@ -630,10 +639,10 @@ public class Boundaries  {
     /**
      * This runs a unit test.
      */
-    public static void test() throws Exception {
+    public static void basicTest() throws Exception {
         verbose = true;
 
-        String2.log("\n*** Boundaries.test");
+        String2.log("\n*** Boundaries.basicTest");
 
         Boundaries nationalBoundaries = Boundaries.getNationalBoundaries();
         Boundaries stateBoundaries = Boundaries.getStateBoundaries();
@@ -677,6 +686,47 @@ public class Boundaries  {
         String2.log(nationalBoundaries.statsString() + "\n" +
             stateBoundaries.statsString());
 
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ Boundaries.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

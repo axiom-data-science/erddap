@@ -68,6 +68,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
         String tSosOfferingPrefix = null;
+        String tAddVariablesWhere = null;
 
         ArrayList<Object[]> tDataVariables = new ArrayList<>();
 
@@ -107,6 +108,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
             } else if (localTags.equals("<sosOfferingPrefix>")) {
             } else if (localTags.equals("</sosOfferingPrefix>")) {
                 tSosOfferingPrefix = content;
+            } else if (localTags.equals( "<addVariablesWhere>")) {
+            } else if (localTags.equals("</addVariablesWhere>")) {
+                tAddVariablesWhere = content;
             } else {
                 xmlReader.unexpectedTagException();
             }
@@ -151,7 +155,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         depatts.set("ioos_category", EDV.LOCATION_CATEGORY);
         depatts.set("units", "m");
         depatts.set("positive", "down");
-        tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });        
+        tDataVariables.add(new Object[] { "depth", "depth", depatts, "double" });
         // Station
         Attributes staatts = new Attributes();
         staatts.set("ioos_category", EDV.LOCATION_CATEGORY);
@@ -171,7 +175,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
         valatts.set("missing_value", new Double(-9999.99));
         valatts.set("_FillValue", new Double(-9999.99));
         tDataVariables.add(new Object[] { "value", "value", valatts, "double" });
-        
+
 
         int ndv = tDataVariables.size();
         Object ttDataVariables[][] = new Object[ndv][];
@@ -186,6 +190,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 null, null, null,
                 tSosOfferingPrefix,
                 tDefaultDataQuery, tDefaultGraphQuery,
+                tAddVariablesWhere,
                 tGlobalAttributes,
                 ttDataVariables,
                 tReloadEveryNMinutes, tLocalSourceUrl,
@@ -198,6 +203,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                                              StringArray tOnChange, String tFgdcFile, String tIso19115File,
                                              String tSosOfferingPrefix,
                                              String tDefaultDataQuery, String tDefaultGraphQuery,
+                                             String tAddVariablesWhere,
                                              Attributes tAddGlobalAttributes,
                                              Object[][] tDataVariables,
                                              int tReloadEveryNMinutes, String tLocalSourceUrl,
@@ -208,6 +214,7 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                 tOnChange, tFgdcFile, tIso19115File,
                 tSosOfferingPrefix,
                 tDefaultDataQuery, tDefaultGraphQuery,
+                tAddVariablesWhere,
                 tAddGlobalAttributes,
                 tDataVariables,
                 tReloadEveryNMinutes, tLocalSourceUrl,
@@ -505,15 +512,15 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                         break;
                     }
                 }
-                
+
                 for (int f = 0 ; f < data.length() ; f++) {
                     JSONObject vari = data.getJSONObject(f);
                     if (vari.getJSONObject("metadata").getInt("parameterId") == parameter_id) {
                         // DESIRED PARAMETER
-                        
+
                         // Add times to ongoing array
                         actual_times_array.add(epoch_times_array.toArray());
-                                                
+
                         try {
                             // Column already exists, so we have multiple depths.
                             table.getColumn("value");
@@ -521,9 +528,9 @@ public class EDDTableFromAxiomSensorCSVService extends EDDTableFromAsciiService 
                         } catch (IllegalArgumentException e) {
                             // Column does not exist yet, so we create it
                             table.addColumn("depth", depth_array);
-                            table.addColumn("value", values_array);    
+                            table.addColumn("value", values_array);
                         }
-                                                    
+
                         depth = vari.getJSONObject("metadata").getDouble("depth");
                         JSONArray values = vari.getJSONObject("variableValueCollection").getJSONArray("values");
                         for (int e = 0 ; e < values.length() ; e++) {

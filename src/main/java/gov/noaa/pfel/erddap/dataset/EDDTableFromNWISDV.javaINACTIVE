@@ -57,7 +57,7 @@ import java.util.HashSet;
  *   <br>http://river.sdsc.edu/wiki/Default.aspx?Page=WaterML&NS=&AspxAutoDetectCookieSupport=1
  *   <br>Schema: http://his.cuahsi.org/documents/cuahsiTimeSeries_v1_0.xsd
  *   <br>WaterML is very similar to an OGC standard. They're working to make it so.
- *      OGC Discussion Paper: See CUASHI WaterML at http://www.opengeospatial.org/standards/dp
+ *      OGC Discussion Paper: See CUASHI WaterML at https://www.opengeospatial.org/standards/dp
  *   <br>Programming advice: http://waterservices.usgs.gov/docs/portable_code.html
  * <p>WaterML services:
  *   <ul>
@@ -222,6 +222,7 @@ public class EDDTableFromNWISDV extends EDDTable{
         String tStatisticCode = null;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -263,6 +264,8 @@ public class EDDTableFromNWISDV extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -274,8 +277,8 @@ public class EDDTableFromNWISDV extends EDDTable{
         return new EDDTableFromNWISDV(tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo,
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
-            ttDataVariables,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere, 
+            tGlobalAttributes, ttDataVariables,
             tReloadEveryNMinutes, tLocalSourceUrl);
 
     }
@@ -346,7 +349,7 @@ public class EDDTableFromNWISDV extends EDDTable{
      *      <li> a java.time.format.DateTimeFormatter string
      *        (which is compatible with java.text.SimpleDateFormat) describing how to interpret 
      *        string times  (e.g., the ISO8601TZ_FORMAT "yyyy-MM-dd'T'HH:mm:ssZ", see 
-     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/DateTimeFomatter.html or 
+     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/format/DateTimeFomatter.html or 
      *        https://docs.oracle.com/javase/8/docs/api/index.html?java/text/SimpleDateFormat.html)).
      *      </ul>
      * @param tReloadEveryNMinutes indicates how often the source should
@@ -358,7 +361,7 @@ public class EDDTableFromNWISDV extends EDDTable{
         String tDatasetID, String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
@@ -502,7 +505,7 @@ public class EDDTableFromNWISDV extends EDDTable{
                 stationPA = stationTable.getColumn(stpo);
 
                 //if numeric, set min,max
-                if (edv.sourceDataTypeClass() != String.class) {
+                if (edv.sourceDataPAType() != PAType.STRING) {
                     double stats[] = stationPA.calculateStats();
                     if (stats[PrimitiveArray.STATS_N] > 0) {
                         edv.setDestinationMinMax(
@@ -530,15 +533,19 @@ public class EDDTableFromNWISDV extends EDDTable{
             }
         }
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid  
         //It will read the /subset/ table or fail trying to get the data if the file isn't present.
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
-            (reallyVerbose? "\n" + toString() : "") +
+            (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableFromNWISDV " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -576,7 +583,7 @@ public class EDDTableFromNWISDV extends EDDTable{
                 "Setup error: the subset table MUST have beginDate and endDate columns.");
         PrimitiveArray beginDatePA = stationTable.getColumn(beginDateCol);
         PrimitiveArray endDatePA   = stationTable.getColumn(endDateCol);
-        //String2.log("beginDate class=" + beginDatePA.elementClassString());
+        //String2.log("beginDate class=" + beginDatePA.elementTypeString());
 
         //go through the station table to find the stations of interest
         //and find beginTime>= endTime<= 
@@ -634,7 +641,7 @@ public class EDDTableFromNWISDV extends EDDTable{
         //do special tests (so no test done if stationValue is "")
         if (!Double.isNaN(beginSeconds) && nKeep > 0) {
             //requested beginTime
-            beginTime = Calendar2.epochSecondsToIsoStringT(beginSeconds).substring(0, 10); 
+            beginTime = Calendar2.epochSecondsToIsoDate(beginSeconds); 
             nKeep = 0;
             int row = keep.nextSetBit(0);
             while (row >= 0) {
@@ -653,7 +660,7 @@ public class EDDTableFromNWISDV extends EDDTable{
         }
         if (!Double.isNaN(endSeconds) && nKeep > 0) {
             //requested endTime
-            endTime = Calendar2.epochSecondsToIsoStringT(endSeconds).substring(0, 10); 
+            endTime = Calendar2.epochSecondsToIsoDate(endSeconds); 
             nKeep = 0;
             int row = keep.nextSetBit(0);
             while (row >= 0) {
@@ -732,7 +739,7 @@ public class EDDTableFromNWISDV extends EDDTable{
                 //get data from waterML service
                 if (reallyVerbose) String2.log(encodedSourceUrl);
                 table = getValuesTable(
-                    SSR.getUncompressedUrlInputStream(encodedSourceUrl)); 
+                    SSR.getUncompressedUrlBufferedInputStream(encodedSourceUrl)); 
             } catch (Throwable t) {
                 if (!reallyVerbose)  //if reallyVerbose, it was done above
                     String2.log(encodedSourceUrl);
@@ -772,7 +779,7 @@ public class EDDTableFromNWISDV extends EDDTable{
                     table.addColumn(table.nColumns(), colName,
                         //one value, replicated nRows times
                         PrimitiveArray.factory(
-                            stationTable.getColumn(col).elementClass(),
+                            stationTable.getColumn(col).elementType(),
                             nRows, stationTable.getStringData(col, stationRow)),
                         new Attributes());
                 }
@@ -815,292 +822,294 @@ public class EDDTableFromNWISDV extends EDDTable{
      * @throws Throwable if trouble
      */
     public static Table getValuesTable(InputStream in) throws Throwable {
-
+        in = new BufferedInputStream(in);
         SimpleXMLReader xmlReader = new SimpleXMLReader(in);
-        xmlReader.nextTag();
-        String firstTag = xmlReader.tag(0);
-        if (!firstTag.endsWith("timeSeriesResponse")) {  //e.g., may be ns2:timeSeriesResponse
-            in.close();
-            throw new SimpleException("XML Response ERROR: The first tag=\"" + firstTag + 
-                "\" should have been timeSeriesResponse.");
-        }
-        Table table = new Table();
-        Attributes globalAtts = table.globalAttributes();
-        Attributes variableAtts = new Attributes();
-        StringArray timePA = new StringArray();
-        table.addColumn("time", timePA);
-        HashMap timeRowMap = new HashMap(); //stringTime -> Integer(row)
-        //source info
-        String tSiteCode = null;
-        String tSiteID = null;
-        String tSiteName = null;
-        String tSiteNetwork = null;
-        String tSRS = null;
-        double tLongitude = Double.NaN; //spec says double
-        double tLatitude  = Double.NaN;
-        double tElevation = Double.NaN;
-        String tVerticalDatum = null;
-        StringBuilder sourceNotes     = new StringBuilder();
-        //variable info
-        StringBuilder variableCode    = new StringBuilder();
-        StringBuilder variableOptions = new StringBuilder();
-        StringBuilder variableNotes   = new StringBuilder();
-        String tVariableName = null;
-        String tUnitsAbbrev = null;
-        String tVariableCodeVocabulary = null;
-        //values info
-        StringArray valueTimes      = new StringArray();
-        DoubleArray valueValues     = new DoubleArray();  //spec says decimal
-        StringArray valueQualifiers = new StringArray();
-        String valueMethodID = null;
-        String valueMethodDescription = null;
-        String tQualifierCode = null;
-        StringBuilder valueQualifierDescription  = new StringBuilder();
-        Attributes valueQualifierAtts = new Attributes();
-        int noMethodNumber = 1;
-
-        while (true) {
+        try {
             xmlReader.nextTag();
-            int stackSize = xmlReader.stackSize();
-            if (stackSize == 1) 
-                break; 
-            //String2.log(xmlReader.allTags());
-            if (stackSize < 3 ||
-                //!firstTag.equals(xmlReader.tag(0)) || //not necessary to check. this exits when /firstTag tag is reached
-                !"timeSeries".equals(xmlReader.tag(1))) 
-                continue;
-            String tag2 = xmlReader.tag(2);
-            
-            //skip <timeSeriesResponse><queryInfo>     
+            String firstTag = xmlReader.tag(0);
+            if (!firstTag.endsWith("timeSeriesResponse"))   //e.g., may be ns2:timeSeriesResponse
+                throw new SimpleException("XML Response ERROR: The first tag=\"" + firstTag + 
+                    "\" should have been timeSeriesResponse.");
+            Table table = new Table();
+            Attributes globalAtts = table.globalAttributes();
+            Attributes variableAtts = new Attributes();
+            StringArray timePA = new StringArray();
+            table.addColumn("time", timePA);
+            HashMap timeRowMap = new HashMap(); //stringTime -> Integer(row)
+            //source info
+            String tSiteCode = null;
+            String tSiteID = null;
+            String tSiteName = null;
+            String tSiteNetwork = null;
+            String tSRS = null;
+            double tLongitude = Double.NaN; //spec says double
+            double tLatitude  = Double.NaN;
+            double tElevation = Double.NaN;
+            String tVerticalDatum = null;
+            StringBuilder sourceNotes     = new StringBuilder();
+            //variable info
+            StringBuilder variableCode    = new StringBuilder();
+            StringBuilder variableOptions = new StringBuilder();
+            StringBuilder variableNotes   = new StringBuilder();
+            String tVariableName = null;
+            String tUnitsAbbrev = null;
+            String tVariableCodeVocabulary = null;
+            //values info
+            StringArray valueTimes      = new StringArray();
+            DoubleArray valueValues     = new DoubleArray();  //spec says decimal
+            StringArray valueQualifiers = new StringArray();
+            String valueMethodID = null;
+            String valueMethodDescription = null;
+            String tQualifierCode = null;
+            StringBuilder valueQualifierDescription  = new StringBuilder();
+            Attributes valueQualifierAtts = new Attributes();
+            int noMethodNumber = 1;
 
-            /*read <timeSeriesResponse><timeSeries><sourceInfo>        pg 19
-<sourceInfo xsi:type="SiteInfoType" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <siteName>02N-06E-34 CCD 1 Byrds Mill Spring nr Fittstown,OK</siteName>
-  <siteCode siteID="232418" network="NWISDV">07334200</siteCode>
-  <timeZoneInfo>
-    <defaultTimeZone ZoneOffset="-06:00" ZoneAbbreviation="CST"/>
-    <daylightSavingsTimeZone ZoneOffset="-05:00" ZoneAbbreviation="CDT"/></timeZoneInfo>
-  <geoLocation>
-    <geogLocation xsi:type="LatLonPointType" srs="EPSG:4269">
-      <latitude>34.59453434</latitude>
-      <longitude>-96.6655632</longitude>
-    </geogLocation></geoLocation>
-  <note>Agency:USGS</note>
-</sourceInfo>*/
-            if ("sourceInfo".equals(tag2) && stackSize > 3) {  //page 19
-                String tag3 = xmlReader.tag(3);
-                String tag4 = xmlReader.tag(4);
-                String tag5 = xmlReader.tag(5);
-                if        ("/siteName".equals(tag3))  {tSiteName = xmlReader.content();
-                } else if ("siteCode".equals(tag3) && stackSize == 4) {
-                    tSiteID = xmlReader.attributeValue("siteID");
-                    tSiteNetwork = xmlReader.attributeValue("network");
-                } else if ("/siteCode".equals(tag3))  {tSiteCode = xmlReader.content();
-                //??? store timeZoneInfo?
-                } else if ("geoLocation".equals(tag3) && stackSize > 4) {
-                    if ("geogLocation".equals(tag4) && stackSize == 5) {
-                        tSRS = xmlReader.attributeValue("srs");
-                    } else if ("/longitude".equals(tag5)) {tLongitude = String2.parseDouble(xmlReader.content());
-                    } else if ("/latitude".equals(tag5))  {tLatitude  = String2.parseDouble(xmlReader.content());
-                    }
-                } else if ("/elevation_m".equals(tag3))   {tElevation = String2.parseDouble(xmlReader.content());
-                } else if ("/verticalDatum".equals(tag3)) {tVerticalDatum = xmlReader.content();
-                } else if ("<note>".equals(tag4) && stackSize == 5) { //may be many
-                    if (sourceNotes.length() > 0)
-                        sourceNotes.append('\n');
-                    String s = xmlReader.attributeValue("href");  //optional identifiers
-                    if (s != null) sourceNotes.append( "href=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
-                    s = xmlReader.attributeValue("title"); 
-                    if (s != null) sourceNotes.append( "title=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
-                    s = xmlReader.attributeValue("show");  
-                    if (s != null) sourceNotes.append( "show=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
-                } else if ("</note>".equals(tag4)) { 
-                    sourceNotes.append(xmlReader.content());
-                }
+            while (true) {
+                xmlReader.nextTag();
+                int stackSize = xmlReader.stackSize();
+                if (stackSize == 1) 
+                    break; 
+                //String2.log(xmlReader.allTags());
+                if (stackSize < 3 ||
+                    //!firstTag.equals(xmlReader.tag(0)) || //not necessary to check. this exits when /firstTag tag is reached
+                    !"timeSeries".equals(xmlReader.tag(1))) 
+                    continue;
+                String tag2 = xmlReader.tag(2);
+                
+                //skip <timeSeriesResponse><queryInfo>     
 
-            /* read <timeSeriesResponse><timeSeries><variable>   
-<variable>
-  <variableCode vocabulary="NWISDV">00060</variableCode>
-  <variableName>Discharge</variableName>
-  <variableDescription>Discharge, cubic feet per second</variableDescription>
-  <valueType>Derived Value</valueType>
-  <dataType>Average</dataType>
-  <units unitsAbbreviation="cfs">cubic feet per second</units>
-  <options><option optionCode="00003" name="Statistic">Mean</option></options>
-  <NoDataValue>-999999</NoDataValue>
-  <timeSupport isRegular="true">
-    <unit>
-      <UnitName>day</UnitName>
-      <UnitType>Time</UnitType>
-      <UnitAbbreviation>d</UnitAbbreviation>
-    </unit>
-    <timeInterval>1</timeInterval>
-  </timeSupport>
-</variable>*/
-            } else if ("variable".equals(tag2) && stackSize > 3) {   //page 28
-                //as much as reasonable: make attributes with names identical to WaterML names
-                //  e.g., variableName -> variableName
-                String tag3 = xmlReader.tag(3);
-                if (stackSize == 4 && "variableCode".equals(tag3)) {
-                    tVariableCodeVocabulary = xmlReader.attributeValue("vocabulary");
-                } else if ("/variableCode".equals(tag3)) { // if >1, 1 per line
-                    if (variableCode.length() > 0)
-                        variableCode.append('\n');
-                    variableCode.append(tVariableCodeVocabulary == null? "" : 
-                        (tVariableCodeVocabulary + ":" + xmlReader.content()));
-                } else if ("/variableName".equals(tag3))       {tVariableName = xmlReader.content();
-                } else if ("/variableDescription".equals(tag3)){variableAtts.add("variableDescription", xmlReader.content());
-                } else if ("/valueType".equals(tag3))          {variableAtts.add("valueType",           xmlReader.content());
-                } else if ("/dataType".equals(tag3))           {variableAtts.add("dataType",            xmlReader.content());
-                } else if ("/generalCategory".equals(tag3))    {variableAtts.add("generalCategory",     xmlReader.content());
-                } else if ("/sampleMedium".equals(tag3))       {variableAtts.add("sampleMedium",        xmlReader.content());
-                } else if (stackSize == 4 && "units".equals(tag3)) {
-                    tUnitsAbbrev = xmlReader.attributeValue("unitsAbbreviation");
-                } else if ("/units".equals(tag3)) {
-                    variableAtts.add("long_units", xmlReader.content());
-                    variableAtts.add("units", 
-                        tUnitsAbbrev == null? xmlReader.content() : tUnitsAbbrev);
-                } else if ("options".equals(tag3) && stackSize > 4) { 
+                /*read <timeSeriesResponse><timeSeries><sourceInfo>        pg 19
+    <sourceInfo xsi:type="SiteInfoType" xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance">
+      <siteName>02N-06E-34 CCD 1 Byrds Mill Spring nr Fittstown,OK</siteName>
+      <siteCode siteID="232418" network="NWISDV">07334200</siteCode>
+      <timeZoneInfo>
+        <defaultTimeZone ZoneOffset="-06:00" ZoneAbbreviation="CST"/>
+        <daylightSavingsTimeZone ZoneOffset="-05:00" ZoneAbbreviation="CDT"/></timeZoneInfo>
+      <geoLocation>
+        <geogLocation xsi:type="LatLonPointType" srs="EPSG:4269">
+          <latitude>34.59453434</latitude>
+          <longitude>-96.6655632</longitude>
+        </geogLocation></geoLocation>
+      <note>Agency:USGS</note>
+    </sourceInfo>*/
+                if ("sourceInfo".equals(tag2) && stackSize > 3) {  //page 19
+                    String tag3 = xmlReader.tag(3);
                     String tag4 = xmlReader.tag(4);
-                    if ("option".equals(tag4) && stackSize == 5) { // if >1, 1 per line
-                        if (variableOptions.length() > 0)
-                            variableOptions.append('\n');
-                        String s = xmlReader.attributeValue("name");
-                        if (s != null) variableOptions.append("name=\"" + s + "\" "); //string
-                        s = xmlReader.attributeValue("optionCode");
-                        if (s != null) variableOptions.append("optionCode=\"" + s + "\" "); //token(?)
-                        s = xmlReader.attributeValue("optionID");
-                        if (s != null) variableOptions.append("optionID=" + s + " ");  //int
-                    } else if ("/option".equals(tag4))         {
-                        variableOptions.append(xmlReader.content());
+                    String tag5 = xmlReader.tag(5);
+                    if        ("/siteName".equals(tag3))  {tSiteName = xmlReader.content();
+                    } else if ("siteCode".equals(tag3) && stackSize == 4) {
+                        tSiteID = xmlReader.attributeValue("siteID");
+                        tSiteNetwork = xmlReader.attributeValue("network");
+                    } else if ("/siteCode".equals(tag3))  {tSiteCode = xmlReader.content();
+                    //??? store timeZoneInfo?
+                    } else if ("geoLocation".equals(tag3) && stackSize > 4) {
+                        if ("geogLocation".equals(tag4) && stackSize == 5) {
+                            tSRS = xmlReader.attributeValue("srs");
+                        } else if ("/longitude".equals(tag5)) {tLongitude = String2.parseDouble(xmlReader.content());
+                        } else if ("/latitude".equals(tag5))  {tLatitude  = String2.parseDouble(xmlReader.content());
+                        }
+                    } else if ("/elevation_m".equals(tag3))   {tElevation = String2.parseDouble(xmlReader.content());
+                    } else if ("/verticalDatum".equals(tag3)) {tVerticalDatum = xmlReader.content();
+                    } else if ("<note>".equals(tag4) && stackSize == 5) { //may be many
+                        if (sourceNotes.length() > 0)
+                            sourceNotes.append('\n');
+                        String s = xmlReader.attributeValue("href");  //optional identifiers
+                        if (s != null) sourceNotes.append( "href=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
+                        s = xmlReader.attributeValue("title"); 
+                        if (s != null) sourceNotes.append( "title=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
+                        s = xmlReader.attributeValue("show");  
+                        if (s != null) sourceNotes.append( "show=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
+                    } else if ("</note>".equals(tag4)) { 
+                        sourceNotes.append(xmlReader.content());
                     }
-                } else if ("<note>".equals(tag3) && stackSize == 4) { // if >1, 1 per line
-                    if (variableNotes.length() > 0)
-                        variableNotes.append('\n');
-                    String s = xmlReader.attributeValue("href");  //optional identifiers
-                    if (s != null) variableNotes.append( "href=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
-                    s = xmlReader.attributeValue("title"); 
-                    if (s != null) variableNotes.append( "title=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
-                    s = xmlReader.attributeValue("show");  
-                    if (s != null) variableNotes.append( "show=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
-                } else if ("</note>".equals(tag3)) { 
-                    variableNotes.append(xmlReader.content());
-                } else if ("<related>".equals(tag3)) {
-                    if (reallyVerbose) String2.log("  ignoring <related> tag");
-                } else if ("<extension>".equals(tag3)) {
-                    if (reallyVerbose) String2.log("  ignoring <extension> tag");
-                } else if ("/NoDataValue".equals(tag3))  {
-                    //values are doubles, so mv is, too
-                    double tMV = String2.parseDouble(xmlReader.content());
-                    variableAtts.add("NoDataValue",   tMV);  
-                    variableAtts.add("missing_value", tMV);  
-                } else if ("<timeSupport>".equals(tag3)) {
-                    //if reallyVerbose) String2.log("  ignoring <timeSupport> tag");
-                } 
 
-            /* read <timeSeriesResponse><timeSeries><values>  
-<values count="30">
-<value qualifiers="A" dateTime="2000-11-16T00:00:00">5.4</value>
-<value qualifiers="Ae" dateTime="2000-11-20T00:00:00">5.6</value>
-...
-<qualifier vocabulary="dv_rmk_cd" network="USGS" qualifierCode="A">Approved for publication -- Processing and review completed.</qualifier>
-<qualifier vocabulary="dv_rmk_cd" network="USGS" qualifierCode="e">Value has been estimated.</qualifier>
-<method methodID="4">
-  <MethodDescription>sensor:Creek flow via DCP</MethodDescription></method></values>  */
-            } else if ("values".equals(tag2) && stackSize > 3) {    //page 34
-                //String2.log(" v="+xmlReader.allTags());
-                String tag3 = xmlReader.tag(3);
-                if (stackSize == 4 && "value".equals(tag3)) {
-                    //??? There are lots of other attributes.  Do I need to grab them?
-                    valueQualifiers.add(xmlReader.attributeValue("qualifiers"));
-                    valueTimes.add(xmlReader.attributeValue("dateTime"));
-                } else if ("/value".equals(tag3))  {
-                    valueValues.add(String2.parseDouble(xmlReader.content()));
-                } else if ("qualifier".equals(tag3) && stackSize == 4) {
-                    //??? this assumes all qualifier codes will use same vocabulary and network!
-                    valueQualifierAtts.add("vocabulary", xmlReader.attributeValue("vocabulary"));
-                    valueQualifierAtts.add("network",    xmlReader.attributeValue("network"));
-                    tQualifierCode = xmlReader.attributeValue("qualifierCode");
-                } else if ("/qualifier".equals(tag3)) {
-                    if (valueQualifierDescription.length() > 0)
-                        valueQualifierDescription.append('\n');
-                    valueQualifierDescription.append(tQualifierCode + " = " + xmlReader.content());
-                } else if ("method".equals(tag3)) {
-                    if (stackSize == 4) {
-                        valueMethodID = xmlReader.attributeValue("methodID");
-                    } else if ("/MethodDescription".equals(xmlReader.tag(4))) {
-                        valueMethodDescription = xmlReader.content();
+                /* read <timeSeriesResponse><timeSeries><variable>   
+    <variable>
+      <variableCode vocabulary="NWISDV">00060</variableCode>
+      <variableName>Discharge</variableName>
+      <variableDescription>Discharge, cubic feet per second</variableDescription>
+      <valueType>Derived Value</valueType>
+      <dataType>Average</dataType>
+      <units unitsAbbreviation="cfs">cubic feet per second</units>
+      <options><option optionCode="00003" name="Statistic">Mean</option></options>
+      <NoDataValue>-999999</NoDataValue>
+      <timeSupport isRegular="true">
+        <unit>
+          <UnitName>day</UnitName>
+          <UnitType>Time</UnitType>
+          <UnitAbbreviation>d</UnitAbbreviation>
+        </unit>
+        <timeInterval>1</timeInterval>
+      </timeSupport>
+    </variable>*/
+                } else if ("variable".equals(tag2) && stackSize > 3) {   //page 28
+                    //as much as reasonable: make attributes with names identical to WaterML names
+                    //  e.g., variableName -> variableName
+                    String tag3 = xmlReader.tag(3);
+                    if (stackSize == 4 && "variableCode".equals(tag3)) {
+                        tVariableCodeVocabulary = xmlReader.attributeValue("vocabulary");
+                    } else if ("/variableCode".equals(tag3)) { // if >1, 1 per line
+                        if (variableCode.length() > 0)
+                            variableCode.append('\n');
+                        variableCode.append(tVariableCodeVocabulary == null? "" : 
+                            (tVariableCodeVocabulary + ":" + xmlReader.content()));
+                    } else if ("/variableName".equals(tag3))       {tVariableName = xmlReader.content();
+                    } else if ("/variableDescription".equals(tag3)){variableAtts.add("variableDescription", xmlReader.content());
+                    } else if ("/valueType".equals(tag3))          {variableAtts.add("valueType",           xmlReader.content());
+                    } else if ("/dataType".equals(tag3))           {variableAtts.add("dataType",            xmlReader.content());
+                    } else if ("/generalCategory".equals(tag3))    {variableAtts.add("generalCategory",     xmlReader.content());
+                    } else if ("/sampleMedium".equals(tag3))       {variableAtts.add("sampleMedium",        xmlReader.content());
+                    } else if (stackSize == 4 && "units".equals(tag3)) {
+                        tUnitsAbbrev = xmlReader.attributeValue("unitsAbbreviation");
+                    } else if ("/units".equals(tag3)) {
+                        variableAtts.add("long_units", xmlReader.content());
+                        variableAtts.add("units", 
+                            tUnitsAbbrev == null? xmlReader.content() : tUnitsAbbrev);
+                    } else if ("options".equals(tag3) && stackSize > 4) { 
+                        String tag4 = xmlReader.tag(4);
+                        if ("option".equals(tag4) && stackSize == 5) { // if >1, 1 per line
+                            if (variableOptions.length() > 0)
+                                variableOptions.append('\n');
+                            String s = xmlReader.attributeValue("name");
+                            if (s != null) variableOptions.append("name=\"" + s + "\" "); //string
+                            s = xmlReader.attributeValue("optionCode");
+                            if (s != null) variableOptions.append("optionCode=\"" + s + "\" "); //token(?)
+                            s = xmlReader.attributeValue("optionID");
+                            if (s != null) variableOptions.append("optionID=" + s + " ");  //int
+                        } else if ("/option".equals(tag4))         {
+                            variableOptions.append(xmlReader.content());
+                        }
+                    } else if ("<note>".equals(tag3) && stackSize == 4) { // if >1, 1 per line
+                        if (variableNotes.length() > 0)
+                            variableNotes.append('\n');
+                        String s = xmlReader.attributeValue("href");  //optional identifiers
+                        if (s != null) variableNotes.append( "href=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
+                        s = xmlReader.attributeValue("title"); 
+                        if (s != null) variableNotes.append( "title=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
+                        s = xmlReader.attributeValue("show");  
+                        if (s != null) variableNotes.append( "show=\"" + XML.encodeAsHTMLAttribute(s) + "\" ");
+                    } else if ("</note>".equals(tag3)) { 
+                        variableNotes.append(xmlReader.content());
+                    } else if ("<related>".equals(tag3)) {
+                        if (reallyVerbose) String2.log("  ignoring <related> tag");
+                    } else if ("<extension>".equals(tag3)) {
+                        if (reallyVerbose) String2.log("  ignoring <extension> tag");
+                    } else if ("/NoDataValue".equals(tag3))  {
+                        //values are doubles, so mv is, too
+                        double tMV = String2.parseDouble(xmlReader.content());
+                        variableAtts.add("NoDataValue",   tMV);  
+                        variableAtts.add("missing_value", tMV);  
+                    } else if ("<timeSupport>".equals(tag3)) {
+                        //if reallyVerbose) String2.log("  ignoring <timeSupport> tag");
+                    } 
+
+                /* read <timeSeriesResponse><timeSeries><values>  
+    <values count="30">
+    <value qualifiers="A" dateTime="2000-11-16T00:00:00">5.4</value>
+    <value qualifiers="Ae" dateTime="2000-11-20T00:00:00">5.6</value>
+    ...
+    <qualifier vocabulary="dv_rmk_cd" network="USGS" qualifierCode="A">Approved for publication -- Processing and review completed.</qualifier>
+    <qualifier vocabulary="dv_rmk_cd" network="USGS" qualifierCode="e">Value has been estimated.</qualifier>
+    <method methodID="4">
+      <MethodDescription>sensor:Creek flow via DCP</MethodDescription></method></values>  */
+                } else if ("values".equals(tag2) && stackSize > 3) {    //page 34
+                    //String2.log(" v="+xmlReader.allTags());
+                    String tag3 = xmlReader.tag(3);
+                    if (stackSize == 4 && "value".equals(tag3)) {
+                        //??? There are lots of other attributes.  Do I need to grab them?
+                        valueQualifiers.add(xmlReader.attributeValue("qualifiers"));
+                        valueTimes.add(xmlReader.attributeValue("dateTime"));
+                    } else if ("/value".equals(tag3))  {
+                        valueValues.add(String2.parseDouble(xmlReader.content()));
+                    } else if ("qualifier".equals(tag3) && stackSize == 4) {
+                        //??? this assumes all qualifier codes will use same vocabulary and network!
+                        valueQualifierAtts.add("vocabulary", xmlReader.attributeValue("vocabulary"));
+                        valueQualifierAtts.add("network",    xmlReader.attributeValue("network"));
+                        tQualifierCode = xmlReader.attributeValue("qualifierCode");
+                    } else if ("/qualifier".equals(tag3)) {
+                        if (valueQualifierDescription.length() > 0)
+                            valueQualifierDescription.append('\n');
+                        valueQualifierDescription.append(tQualifierCode + " = " + xmlReader.content());
+                    } else if ("method".equals(tag3)) {
+                        if (stackSize == 4) {
+                            valueMethodID = xmlReader.attributeValue("methodID");
+                        } else if ("/MethodDescription".equals(xmlReader.tag(4))) {
+                            valueMethodDescription = xmlReader.content();
+                        }
                     }
-                }
 
-            } else if ("/values".equals(tag2)) {
-                //String2.log("/v="+xmlReader.allTags() + " nValues=" + valueValues.size());
-                //try to add the data
-                String varName;
-                if (valueMethodID != null && valueMethodID.length() > 0) {
-                    varName = "method" + valueMethodID;
-                } else {
-                    String nmn = noMethodNumber == 1? "" : "" + noMethodNumber;
-                    noMethodNumber++;
-                    varName = tVariableName != null && tVariableName.length() > 0? 
-                        tVariableName + nmn : "values" + nmn;
-                }
-
-                //if this method wasn't static, I could check if methodID is a sourceName
-                //  and create newPA with correct data type
-                DoubleArray newVPA = new DoubleArray(); //values
-                StringArray newQPA = new StringArray(); //qualifiers
-                int nRows = table.nRows();
-                newVPA.addN(nRows, Double.NaN); 
-                newQPA.addN(nRows, ""); 
-                String tLongName = 
-                    (tVariableName == null? "" : tVariableName) +
-                    (tVariableName == null || tVariableName.length() == 0 ||
-                     valueMethodDescription == null || valueMethodDescription.length() == 0 ? "" :
-                        ", ") +
-                    (valueMethodDescription == null? "" : valueMethodDescription);                            
-                Attributes vAttributes = ((Attributes)(variableAtts.clone()))
-                    .add("ioos_category", "Hydrology")
-                    .add("long_name",     tLongName)
-                    .add("note",          variableNotes.toString())  
-                    .add("options",       variableOptions.toString())
-                    .add("variableCode",  variableCode.toString());
-                Attributes qAttributes = ((Attributes)(valueQualifierAtts.clone()))
-                    .add("description",   valueQualifierDescription.toString())
-                    .add("ioos_category", "Quality");
-                table.addColumn(table.nColumns(), varName, 
-                    newVPA, vAttributes);
-                table.addColumn(table.nColumns(), varName + "Qualifiers", 
-                    newQPA, qAttributes);
-                int nValues = valueValues.size();
-                for (int i = 0; i < nValues; i++) {
-                    String tTime = valueTimes.get(i);
-                    if (tTime != null) {
-                        Integer row = (Integer)timeRowMap.get(tTime);
-                        if (row == null) {
-                            //add a row
-                            row = new Integer(nRows);
-                            timeRowMap.put(tTime, row);
-                            table.insertBlankRow(nRows++);
-                            timePA.set(nRows - 1, tTime);
-                        } 
-                        int iRow = row.intValue();
-                        newVPA.set(iRow, valueValues.get(i));
-                        newQPA.set(iRow, valueQualifiers.get(i));
+                } else if ("/values".equals(tag2)) {
+                    //String2.log("/v="+xmlReader.allTags() + " nValues=" + valueValues.size());
+                    //try to add the data
+                    String varName;
+                    if (valueMethodID != null && valueMethodID.length() > 0) {
+                        varName = "method" + valueMethodID;
+                    } else {
+                        String nmn = noMethodNumber == 1? "" : "" + noMethodNumber;
+                        noMethodNumber++;
+                        varName = tVariableName != null && tVariableName.length() > 0? 
+                            tVariableName + nmn : "values" + nmn;
                     }
-                }
 
-                //clear for next <value> 
-                valueTimes.clear();
-                valueValues.clear();
-                valueQualifiers.clear();
-                valueMethodID = null;
-                valueMethodDescription = null;
-                valueQualifierAtts = new Attributes();
-                valueQualifierDescription.setLength(0);
+                    //if this method wasn't static, I could check if methodID is a sourceName
+                    //  and create newPA with correct data type
+                    DoubleArray newVPA = new DoubleArray(); //values
+                    StringArray newQPA = new StringArray(); //qualifiers
+                    int nRows = table.nRows();
+                    newVPA.addN(nRows, Double.NaN); 
+                    newQPA.addN(nRows, ""); 
+                    String tLongName = 
+                        (tVariableName == null? "" : tVariableName) +
+                        (tVariableName == null || tVariableName.length() == 0 ||
+                         valueMethodDescription == null || valueMethodDescription.length() == 0 ? "" :
+                            ", ") +
+                        (valueMethodDescription == null? "" : valueMethodDescription);                            
+                    Attributes vAttributes = ((Attributes)(variableAtts.clone()))
+                        .add("ioos_category", "Hydrology")
+                        .add("long_name",     tLongName)
+                        .add("note",          variableNotes.toString())  
+                        .add("options",       variableOptions.toString())
+                        .add("variableCode",  variableCode.toString());
+                    Attributes qAttributes = ((Attributes)(valueQualifierAtts.clone()))
+                        .add("description",   valueQualifierDescription.toString())
+                        .add("ioos_category", "Quality");
+                    table.addColumn(table.nColumns(), varName, 
+                        newVPA, vAttributes);
+                    table.addColumn(table.nColumns(), varName + "Qualifiers", 
+                        newQPA, qAttributes);
+                    int nValues = valueValues.size();
+                    for (int i = 0; i < nValues; i++) {
+                        String tTime = valueTimes.get(i);
+                        if (tTime != null) {
+                            Integer row = (Integer)timeRowMap.get(tTime);
+                            if (row == null) {
+                                //add a row
+                                row = new Integer(nRows);
+                                timeRowMap.put(tTime, row);
+                                table.insertBlankRow(nRows++);
+                                timePA.set(nRows - 1, tTime);
+                            } 
+                            int iRow = row.intValue();
+                            newVPA.set(iRow, valueValues.get(i));
+                            newQPA.set(iRow, valueQualifiers.get(i));
+                        }
+                    }
+
+                    //clear for next <value> 
+                    valueTimes.clear();
+                    valueValues.clear();
+                    valueQualifiers.clear();
+                    valueMethodID = null;
+                    valueMethodDescription = null;
+                    valueQualifierAtts = new Attributes();
+                    valueQualifierDescription.setLength(0);
+                }
             }
+        } finally {
+            if (xmlReader != null) try {xmlReader.close(); } catch (Exception e) {}
+            if (in        != null) try {in.close();        } catch (Exception e) {}
         }
-        in.close();
 
         //sort based on time values
         table.leftToRightSort(1);
@@ -1130,7 +1139,7 @@ public class EDDTableFromNWISDV extends EDDTable{
 
 /*        //has <method> tags
         //http://interim.waterservices.usgs.gov/NWISQuery/GetDV1?SiteNum=07334200&ParameterCode=00060&StatisticCode=00003&AgencyCode=&StartDate=2000-11-16&EndDate=2000-12-15&action=Submit
-        table = getValuesTable(new FileInputStream("c:/programs/waterML/nwisGetDV1.xml"));
+        table = getValuesTable(File2.getDecompressedBufferedInputStream("c:/programs/waterML/nwisGetDV1.xml"));
         results = table.toCSSVString(5);
         expected = 
 "zztop\n";
@@ -1138,7 +1147,7 @@ public class EDDTableFromNWISDV extends EDDTable{
 */
         //doesn't have <method> tags
         //http://interim.waterservices.usgs.gov/NWISQuery/GetDV1?SiteNum=01010000&ParameterCode=00060&StatisticCode=00003&AgencyCode=&USGSStartDate=2009-01-31&EndDate=2009-02-01&action=Submit
-        table = getValuesTable(new FileInputStream(
+        table = getValuesTable(File2.getDecompressedBufferedInputStream(
             "c:/data/waterML/nwisValues.xml"));
         results = table.toString();
         expected = 
@@ -1278,13 +1287,13 @@ public class EDDTableFromNWISDV extends EDDTable{
         if (verbose) String2.log(valuesUrl);
         Table valuesTable;
         try {
-            valuesTable = getValuesTable(SSR.getUncompressedUrlInputStream(valuesUrl));
+            valuesTable = getValuesTable(SSR.getUncompressedUrlBufferedInputStream(valuesUrl));
         } catch (Throwable t) {
             String2.log(valuesUrl + "\n" +
                 MustBe.throwableToString(t) +
                 "Trying again...");
             Math2.gc(1000); //generateDatasetsXml: if trouble, pause, then try again.
-            valuesTable = getValuesTable(SSR.getUncompressedUrlInputStream(valuesUrl));
+            valuesTable = getValuesTable(SSR.getUncompressedUrlBufferedInputStream(valuesUrl));
         }
 
         if (valuesTable == null || valuesTable.nRows() == 0)
@@ -1316,80 +1325,86 @@ public class EDDTableFromNWISDV extends EDDTable{
         int nCols = dataSourceTable.nColumns();
         StringArray nonQualifierVars = new StringArray();
         for (int col = 0; col < nCols; col++) { 
-           String sourceName = dataSourceTable.getColumnName(col);
-           String destName = sourceName;
+            String sourceName = dataSourceTable.getColumnName(col);
+            String destName = sourceName;
+            Class sourceClass = dataSourceTable.getColumn(col).elementType();
 
-           //move atts from "source" to addAtts
-           Attributes sourceAtts = dataSourceTable.columnAttributes(col);
-           Attributes addAtts = (Attributes)sourceAtts.clone();
-           sourceAtts.clear();
+            //move atts from "source" to addAtts
+            Attributes sourceAtts = dataSourceTable.columnAttributes(col);
+            PrimitiveArray destPA = makeDestPAForGDX(
+                PrimitiveArray.factory(sourceClass, 1, false), 
+                sourceAtts); 
+            Attributes addAtts = (Attributes)sourceAtts.clone();
+            sourceAtts.clear();
 
-           //constructor won't read source atts
-           //so put all atts in add atts
-           Attributes tAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
-               dataSourceTable.globalAttributes(), //but there aren't any
-               addAtts, null, destName, true, true); //addColorBarMinMax, tryToFindLLAT
-           addAtts.add(tAtts);  //tAtts have precedence
+            //constructor won't read source atts
+            //so put all atts in add atts
+            Attributes tAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
+                dataSourceTable.globalAttributes(), //but there aren't any
+                addAtts, null, sourceName, 
+                destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                destPA.elementType() != PAType.STRING, //addColorBarMinMax
+                true); //tryToFindLLAT
+            addAtts.add(tAtts);  //tAtts have precedence
 
-           //add a similar column to dataAddTable
-           dataAddTable.addColumn(col, destName,
-               makeDestPAForGDX( 
-                   PrimitiveArray.factory(dataSourceTable.getColumn(col).elementClass(), 1, false), 
-                   sourceAtts),
-               addAtts); 
+            //add a similar column to dataAddTable
+            dataAddTable.addColumn(col, destName, destPA, addAtts); 
 
-           //modify the addAtts
-           if (destName.endsWith("Qualifiers")) 
-               //add: the entire list of known qualifiers
-               addAtts.add("description", tQualificationCodes);           
-           else if (col > otStationTableNCols) { //=otStationTableNCols column is time
-               nonQualifierVars.add(destName);
-               addAtts.remove("options");
-               //there are probably lots of units that need conversion to UDUNITS, 
-               //I don't have a system for finding/fixing them
-               String tUnits = addAtts.getString("units");
-               if ("deg C".equals(tUnits))
-                   addAtts.set("units", "degree_C");
-               else if ("deg F".equals(tUnits))
-                   addAtts.set("units", "degree_F");
-           }
-
-           if (destName.equals("agency") ||
-               destName.startsWith("site") ||
-               destName.equals("network"))                
-               addAtts.add("ioos_category", "Identifier");
-
-           if (destName.equals("agencySiteCode")) {
-               addAtts.add("cf_role", "timeseries_id");
-               addAtts.add("description", "Unlike any other single variable, agencySiteCode unambiguously identifies a site.");
-               addAtts.add("ioos_category", "Identifier");
-               addAtts.add("long_name", "Agency:SiteCode");
-           }
-
-           if (destName.equals("time")) {
-               addAtts.add("long_name", "Time at Start of Day");
-               addAtts.add("units", "yyyy-MM-dd'T'HH:mm:ss");
-           }
-
-           if (destName.equals("srs")) 
-               addAtts.add("long_name", "Spatial Reference System");
-
-           if (destName.equals("vertDatum")) 
-               addAtts.add("long_name", "Vertical Datum");
-
-           if (destName.equals("beginDate")) {
-               addAtts.add("ioos_category", "Time");
-               addAtts.add("long_name", "Start of Data Collection");
-               addAtts.add("units", "yyyy-MM-dd");
-           }
-
-           if (destName.equals("endDate")) {
-               addAtts.add("comment", "A missing value indicates that data is available to the present.");
-               addAtts.add("ioos_category", "Time");
-               addAtts.add("long_name", "End of Data Collection");
-               addAtts.add("units", "yyyy-MM-dd");
-           }
+            //modify the addAtts
+            if (destName.endsWith("Qualifiers")) 
+                //add: the entire list of known qualifiers
+                addAtts.add("description", tQualificationCodes);           
+            else if (col > otStationTableNCols) { //=otStationTableNCols column is time
+                nonQualifierVars.add(destName);
+                addAtts.remove("options");
+                //there are probably lots of units that need conversion to UDUNITS, 
+                //I don't have a system for finding/fixing them
+                String tUnits = addAtts.getString("units");
+                if ("deg C".equals(tUnits))
+                    addAtts.set("units", "degree_C");
+                else if ("deg F".equals(tUnits))
+                    addAtts.set("units", "degree_F");
+            }
+ 
+            if (destName.equals("agency") ||
+                destName.startsWith("site") ||
+                destName.equals("network"))                
+                addAtts.add("ioos_category", "Identifier");
+ 
+            if (destName.equals("agencySiteCode")) {
+                addAtts.add("cf_role", "timeseries_id");
+                addAtts.add("description", "Unlike any other single variable, agencySiteCode unambiguously identifies a site.");
+                addAtts.add("ioos_category", "Identifier");
+                addAtts.add("long_name", "Agency:SiteCode");
+            }
+ 
+            if (destName.equals("time")) {
+                addAtts.add("long_name", "Time at Start of Day");
+                addAtts.add("units", "yyyy-MM-dd'T'HH:mm:ss");
+            }
+ 
+            if (destName.equals("srs")) 
+                addAtts.add("long_name", "Spatial Reference System");
+ 
+            if (destName.equals("vertDatum")) 
+                addAtts.add("long_name", "Vertical Datum");
+ 
+            if (destName.equals("beginDate")) {
+                addAtts.add("ioos_category", "Time");
+                addAtts.add("long_name", "Start of Data Collection");
+                addAtts.add("units", "yyyy-MM-dd");
+            }
+ 
+            if (destName.equals("endDate")) {
+                addAtts.add("comment", "A missing value indicates that data is available to the present.");
+                addAtts.add("ioos_category", "Time");
+                addAtts.add("long_name", "End of Data Collection");
+                addAtts.add("units", "yyyy-MM-dd");
+            }
         }
+
+        //add missing_value and/or _FillValue if needed
+        addMvFvAttsIfNeeded(dataSourceTable, dataAddTable);
 
         //tryToFindLLAT
         tryToFindLLAT(dataSourceTable, dataAddTable);
@@ -1432,7 +1447,6 @@ public class EDDTableFromNWISDV extends EDDTable{
             tPublicWaterMLUrl + "?" + tParameterCode + "_" + tStatisticCode + "_" +
             nonQualifierVars.toString());
         sb.append(
-            (includeInstructions? directionsForGenerateDatasetsXml() + "-->\n\n" : "") +
             "<dataset type=\"EDDTableFromNWISDV\" datasetID=\"" + tDatasetID + 
                 "\" active=\"true\">\n" +
             "    <sourceUrl>" + XML.encodeAsXML(tLocalWaterMLUrl) + "</sourceUrl>\n" +
@@ -1465,190 +1479,193 @@ public class EDDTableFromNWISDV extends EDDTable{
         String paramCodesFileName = "c:/data/waterML/nwisParametercodes.tsv";
         String outputFileName     = "c:/data/waterML/NWISDVDatasets" + today + ".xml";
         String logFileName        = "c:/data/waterML/NWISDVDatasetFailures" + today + ".txt";
-        FileWriter logFile = new FileWriter(logFileName, true);  //append
-        String subsetDir          = EDStatic.contentDirectory + "subset/";
-        String fileNames[] = RegexFilenameFilter.list(dataStationsDir, ".*\\.json");
-        StringBuilder results  = new StringBuilder();
-        int nSkip = 0;
-        int nFailures = 0;
-        logFile.write("\n*** bobGenerateNWISDVDatasetsXml() " + today + "\n");
+        Writer logFile = new BufferedWriter(new FileWriter(logFileName, true));  //append
+        try {
+            String subsetDir          = EDStatic.contentDirectory + "subset/";
+            String fileNames[] = RegexFilenameFilter.list(dataStationsDir, ".*\\.json");
+            StringBuilder results  = new StringBuilder();
+            int nSkip = 0;
+            int nFailures = 0;
+            logFile.write("\n*** bobGenerateNWISDVDatasetsXml() " + today + "\n");
 
-        //get the parameter codes table
-        Table paramCodes = new Table();
-        paramCodes.readASCII(paramCodesFileName,
-            15, 17, "", null, null, null, null, false);  //don't simplify
-        String2.log("paramCodes=\n" + paramCodes.dataToString(3));
-        Test.ensureEqual(String2.toCSSVString(paramCodes.getColumnNames()), 
-            "parameter_cd, parameter_group_nm, parameter_nm, casrn, srsname, parameter_units", "");
-        StringArray pcParamPA      = (StringArray)paramCodes.getColumn(0);
-        StringArray pcParamName1PA = (StringArray)paramCodes.getColumn(2); //e.g., Discharge
-        StringArray pcParamName2PA = (StringArray)paramCodes.getColumn(4); //e.g., Stream flow...
+            //get the parameter codes table
+            Table paramCodes = new Table();
+            paramCodes.readASCII(paramCodesFileName,
+                15, 17, "", null, null, null, null, false);  //don't simplify
+            String2.log("paramCodes=\n" + paramCodes.dataToString(3));
+            Test.ensureEqual(String2.toCSSVString(paramCodes.getColumnNames()), 
+                "parameter_cd, parameter_group_nm, parameter_nm, casrn, srsname, parameter_units", "");
+            StringArray pcParamPA      = (StringArray)paramCodes.getColumn(0);
+            StringArray pcParamName1PA = (StringArray)paramCodes.getColumn(2); //e.g., Discharge
+            StringArray pcParamName2PA = (StringArray)paramCodes.getColumn(4); //e.g., Stream flow...
 
 
-        //make a dataset for each .json file
-        int nFileNames = fileNames.length;   //or smaller number for testing
-        for (int fileNamei = 0; fileNamei < nFileNames; fileNamei++) {
-            String fileName = fileNames[fileNamei]; //"00010_00001_0.json"
-            String2.log("\n*** " +fileNamei + " of " + nFileNames + ": " + fileName);
-            try {
-                //get param and statistic info from fileName
-                String fileNameParts[] = String2.split(fileName, '_');
-                String tParamCode = fileNameParts[0];
-                //statisticsCode
-                String tStatisticCode = fileNameParts[1];
-                int statistici = String2.parseInt(tStatisticCode);
-                if (statistici < 1 || statistici > 24) {
-                    nSkip++;
-                    String msg = "SKIP: #" + fileNamei + "=" + fileName + " has statisticCode=" + 
-                        tStatisticCode + ".\n";
-                    String2.log(msg);
-                    logFile.write(msg);
-                    continue;
-                }
-                String tStatisticName = NWISStatisticNames[statistici];
-                if (tStatisticName.length() == 0) {
-                    String msg = "WARNING: #" + fileNamei + "=" + fileName + 
-                        " has statisticCode=" + tStatisticCode + " with name=\"\".\n";
-                    String2.log(msg);
-                    logFile.write(msg);
-                }
-                //paramCode
-                int paramCodePo = pcParamPA.indexOf(tParamCode);
-                String tParamName = "";
-                if (paramCodePo < 0) {
-                    String msg = "WARNING: #" + fileNamei + "=" + fileName + " has paramCode=" + 
-                        tParamCode + ": not found.\n";
-                    String2.log(msg);
-                    logFile.write(msg);
-                } else {
-                    tParamName = pcParamName2PA.get(paramCodePo);
-                    if (tParamName.length() == 0) {
-                        String msg = "WARNING: #" + fileNamei + "=" + fileName + " has paramCode=" + 
-                            tParamCode + " with name2=\"\".\n";
+            //make a dataset for each .json file
+            int nFileNames = fileNames.length;   //or smaller number for testing
+            for (int fileNamei = 0; fileNamei < nFileNames; fileNamei++) {
+                String fileName = fileNames[fileNamei]; //"00010_00001_0.json"
+                String2.log("\n*** " +fileNamei + " of " + nFileNames + ": " + fileName);
+                try {
+                    //get param and statistic info from fileName
+                    String fileNameParts[] = String2.split(fileName, '_');
+                    String tParamCode = fileNameParts[0];
+                    //statisticsCode
+                    String tStatisticCode = fileNameParts[1];
+                    int statistici = String2.parseInt(tStatisticCode);
+                    if (statistici < 1 || statistici > 24) {
+                        nSkip++;
+                        String msg = "SKIP: #" + fileNamei + "=" + fileName + " has statisticCode=" + 
+                            tStatisticCode + ".\n";
                         String2.log(msg);
                         logFile.write(msg);
-                        //get name1
-                        tParamName = pcParamName1PA.get(paramCodePo);
+                        continue;
+                    }
+                    String tStatisticName = NWISStatisticNames[statistici];
+                    if (tStatisticName.length() == 0) {
+                        String msg = "WARNING: #" + fileNamei + "=" + fileName + 
+                            " has statisticCode=" + tStatisticCode + " with name=\"\".\n";
+                        String2.log(msg);
+                        logFile.write(msg);
+                    }
+                    //paramCode
+                    int paramCodePo = pcParamPA.indexOf(tParamCode);
+                    String tParamName = "";
+                    if (paramCodePo < 0) {
+                        String msg = "WARNING: #" + fileNamei + "=" + fileName + " has paramCode=" + 
+                            tParamCode + ": not found.\n";
+                        String2.log(msg);
+                        logFile.write(msg);
+                    } else {
+                        tParamName = pcParamName2PA.get(paramCodePo);
                         if (tParamName.length() == 0) {
-                            msg = "WARNING: #" + fileNamei + "=" + fileName + " has paramCode=" + 
-                                tParamCode + " with name1=\"\".\n";
+                            String msg = "WARNING: #" + fileNamei + "=" + fileName + " has paramCode=" + 
+                                tParamCode + " with name2=\"\".\n";
                             String2.log(msg);
                             logFile.write(msg);
+                            //get name1
+                            tParamName = pcParamName1PA.get(paramCodePo);
+                            if (tParamName.length() == 0) {
+                                msg = "WARNING: #" + fileNamei + "=" + fileName + " has paramCode=" + 
+                                    tParamCode + " with name1=\"\".\n";
+                                String2.log(msg);
+                                logFile.write(msg);
+                            }
                         }
                     }
-                }
 
-                //read the proto-stationTable
-                Table stationTable = new Table();
-                stationTable.readJson(dataStationsDir + fileName);
-                Test.ensureEqual(stationTable.getColumnNames(),
-                    new String[]{
-                        "agency", "siteCode", "siteID", "siteName", "siteType", 
-                        "network", "longitude", "latitude", "srs", "altitude", 
-                        "vertDatum", "county", "state", "country", "beginDate", 
-                        "endDate", "variables"}, 
-                    "Unexpected columnNames in stationTable.");
-                StringArray agencyPA   = (StringArray)stationTable.getColumn("agency");
-                StringArray siteCodePA = (StringArray)stationTable.getColumn("siteCode");
-                StringArray endDatePA  = (StringArray)stationTable.getColumn("endDate");
-                PrimitiveArray longitudePA  = stationTable.getColumn("longitude");
-                PrimitiveArray latitudePA   = stationTable.getColumn("latitude");
-                int nRows = endDatePA.size();
+                    //read the proto-stationTable
+                    Table stationTable = new Table();
+                    stationTable.readJson(dataStationsDir + fileName);
+                    Test.ensureEqual(stationTable.getColumnNames(),
+                        new String[]{
+                            "agency", "siteCode", "siteID", "siteName", "siteType", 
+                            "network", "longitude", "latitude", "srs", "altitude", 
+                            "vertDatum", "county", "state", "country", "beginDate", 
+                            "endDate", "variables"}, 
+                        "Unexpected columnNames in stationTable.");
+                    StringArray agencyPA   = (StringArray)stationTable.getColumn("agency");
+                    StringArray siteCodePA = (StringArray)stationTable.getColumn("siteCode");
+                    StringArray endDatePA  = (StringArray)stationTable.getColumn("endDate");
+                    PrimitiveArray longitudePA  = stationTable.getColumn("longitude");
+                    PrimitiveArray latitudePA   = stationTable.getColumn("latitude");
+                    int nRows = endDatePA.size();
 
-                //remove stations with longitude==0 and latitude==0
-                BitSet keep = new BitSet(nRows);
-                for (int row = 0; row < nRows; row++) 
-                    keep.set(row, 
-                        (latitudePA.getDouble(row) == 0 &&
-                         longitudePA.getDouble(row) == 0)? false : true);
-                stationTable.justKeep(keep);
-                nRows = endDatePA.size();
-                                               
-                //add col0= agencySiteCode
-                StringArray agencySiteCode = new StringArray(nRows, false);
-                for (int row = 0; row < nRows; row++) 
-                    agencySiteCode.atInsert(row, agencyPA.get(row) + ":" + siteCodePA.get(row));
-                stationTable.addColumn(0, "agencySiteCode", agencySiteCode, new Attributes());
-                int nCols = stationTable.nColumns();
+                    //remove stations with longitude==0 and latitude==0
+                    BitSet keep = new BitSet(nRows);
+                    for (int row = 0; row < nRows; row++) 
+                        keep.set(row, 
+                            (latitudePA.getDouble(row) == 0 &&
+                             longitudePA.getDouble(row) == 0)? false : true);
+                    stationTable.justKeep(keep);
+                    nRows = endDatePA.size();
+                                                   
+                    //add col0= agencySiteCode
+                    StringArray agencySiteCode = new StringArray(nRows, false);
+                    for (int row = 0; row < nRows; row++) 
+                        agencySiteCode.atInsert(row, agencyPA.get(row) + ":" + siteCodePA.get(row));
+                    stationTable.addColumn(0, "agencySiteCode", agencySiteCode, new Attributes());
+                    int nCols = stationTable.nColumns();
 
-                //revise the stationTable (save it below)
-                //sort by agencySiteCode   //probably already is
-                stationTable.leftToRightSortIgnoreCase(1);
-                //remove 'variables' column at end
-                String variables[] = StringArray.arrayFromCSV(
-                    stationTable.getStringData(nCols - 1, 0));
-                stationTable.removeColumn(nCols - 1);
+                    //revise the stationTable (save it below)
+                    //sort by agencySiteCode   //probably already is
+                    stationTable.leftToRightSortIgnoreCase(1);
+                    //remove 'variables' column at end
+                    String variables[] = StringArray.arrayFromCSV(
+                        stationTable.getStringData(nCols - 1, 0));
+                    stationTable.removeColumn(nCols - 1);
 
-                //make the starterTable for generateDatasetsXml
-                Table starterTable = stationTable.subset(0, 1, 0);
+                    //make the starterTable for generateDatasetsXml
+                    Table starterTable = stationTable.subset(0, 1, 0);
 
-                String tResults = null;
-                int tryStation = 0;
-                while (tResults == null) {
-                    if (tryStation >= nRows)
-                        throw new RuntimeException("!!! No more stations to try!");
-                    try {
-                        tResults = generateDatasetsXml(false, fileNamei == 0,
-                            "http://interim.waterservices.usgs.gov/NWISQuery/GetDV1",
-                            siteCodePA.get(tryStation), //"01018035", 
-                            agencyPA.get(tryStation), //"USGS", 
-                            //???fix up  e.g., Water Temperature?
-                            tParamCode, tParamName, //"00010", "Temperature, water",  
-                            tStatisticCode, tStatisticName, //"00001", "maximum",
-                            variables,
-                            endDatePA.get(tryStation), //"2008-11-14", 
-                            starterTable,
-                            "http://waterservices.usgs.gov/rest/USGS-DV-Service.html", //infoUrl
-                            "USGS", //institution
-                            NWISDVOtherSummary,
-                            "NWIS Daily Values",  //start of title
-                            NWISDailyValueQualificationCodes);                
-                    } catch (Exception e) {
-                        logFile.write("tryStation=" + tryStation + " failed:\n" + 
-                            MustBe.throwableToString(e));
+                    String tResults = null;
+                    int tryStation = 0;
+                    while (tResults == null) {
+                        if (tryStation >= nRows)
+                            throw new RuntimeException("!!! No more stations to try!");
+                        try {
+                            tResults = generateDatasetsXml(false, fileNamei == 0,
+                                "http://interim.waterservices.usgs.gov/NWISQuery/GetDV1",
+                                siteCodePA.get(tryStation), //"01018035", 
+                                agencyPA.get(tryStation), //"USGS", 
+                                //???fix up  e.g., Water Temperature?
+                                tParamCode, tParamName, //"00010", "Temperature, water",  
+                                tStatisticCode, tStatisticName, //"00001", "maximum",
+                                variables,
+                                endDatePA.get(tryStation), //"2008-11-14", 
+                                starterTable,
+                                "http://waterservices.usgs.gov/rest/USGS-DV-Service.html", //infoUrl
+                                "USGS", //institution
+                                NWISDVOtherSummary,
+                                "NWIS Daily Values",  //start of title
+                                NWISDailyValueQualificationCodes);                
+                        } catch (Exception e) {
+                            logFile.write("tryStation=" + tryStation + " failed:\n" + 
+                                MustBe.throwableToString(e));
+                        }
+                        tryStation++;
                     }
-                    tryStation++;
+
+                    results.append(tResults);
+
+                    //if endDate >2010-12-10 (12-15 in the files), set to "" ('present')
+                    //(endDatePA is part of stationTable, which is saved below)
+                    for (int row = 0; row < nRows; row++) {
+                        String date = endDatePA.get(row);
+                        if (String2.max("2010-12-10", date).equals(date))
+                            endDatePA.set(row, "");
+                    }
+
+                    //extract the datasetID and save stationTable with that name
+                    int idPo1 = tResults.indexOf("datasetID=\"");
+                    idPo1 += 11;
+                    int idPo2 = tResults.indexOf('\"', idPo1);
+                    String tDatasetID = tResults.substring(idPo1, idPo2);
+                    stationTable.saveAsJson(subsetDir + tDatasetID + ".json", -1, false);
+
+                } catch (Throwable t) {
+                    String msg = "ERROR for #" + fileNamei + "=" + fileName + ":\n" +
+                        MustBe.throwableToString(t);
+                    String2.log(msg);
+                    nFailures++;
+                    logFile.write(msg);
+                    logFile.write("\n");
                 }
-
-                results.append(tResults);
-
-                //if endDate >2010-12-10 (12-15 in the files), set to "" ('present')
-                //(endDatePA is part of stationTable, which is saved below)
-                for (int row = 0; row < nRows; row++) {
-                    String date = endDatePA.get(row);
-                    if (String2.max("2010-12-10", date).equals(date))
-                        endDatePA.set(row, "");
-                }
-
-                //extract the datasetID and save stationTable with that name
-                int idPo1 = tResults.indexOf("datasetID=\"");
-                idPo1 += 11;
-                int idPo2 = tResults.indexOf('\"', idPo1);
-                String tDatasetID = tResults.substring(idPo1, idPo2);
-                stationTable.saveAsJson(subsetDir + tDatasetID + ".json", -1, false);
-
-            } catch (Throwable t) {
-                String msg = "ERROR for #" + fileNamei + "=" + fileName + ":\n" +
-                    MustBe.throwableToString(t);
-                String2.log(msg);
-                nFailures++;
-                logFile.write(msg);
-                logFile.write("\n");
             }
-        }
 
-        //write the results to 
-        String2.writeToFile(outputFileName, results.toString());
-        String msg = 
-            "\n" +
-            "*** DONE.  nSkip=" + nSkip + " nFailures=" + nFailures + "\n" +
-            "logFileName=" + logFileName + "\n" +
-            "datasets.xml is in " + outputFileName + "\n" +
-            "bobGenerateNWISDVDatasetsXml() finished successfully nDatasets=" + 
-                (fileNames.length - nFailures - nSkip) + " of " + fileNames.length + "\n";
-        String2.log(msg);
-        logFile.write(msg);
-        logFile.close(); 
+            //write the results to 
+            String2.writeToFile(outputFileName, results.toString());
+            String msg = 
+                "\n" +
+                "*** DONE.  nSkip=" + nSkip + " nFailures=" + nFailures + "\n" +
+                "logFileName=" + logFileName + "\n" +
+                "datasets.xml is in " + outputFileName + "\n" +
+                "bobGenerateNWISDVDatasetsXml() finished successfully nDatasets=" + 
+                    (fileNames.length - nFailures - nSkip) + " of " + fileNames.length + "\n";
+            String2.log(msg);
+            logFile.write(msg);
+        } finally {
+            logFile.close(); 
+        }
 
     }
     
@@ -1663,7 +1680,7 @@ public class EDDTableFromNWISDV extends EDDTable{
         //remove 'variables' at end
         starterTable.removeColumn(nCols - 1); 
         starterTable.addColumn(0, "agencySiteCode", 
-            PrimitiveArray.factory(String.class, nRows, ""), //values are irrelevant
+            PrimitiveArray.factory(PAType.STRING, nRows, ""), //values are irrelevant
             new Attributes());
 
         String results = generateDatasetsXml(true, true, //includeInstructions, displayResults
@@ -1681,9 +1698,6 @@ public class EDDTableFromNWISDV extends EDDTable{
             NWISDailyValueQualificationCodes);
 
         String expected = 
-directionsForGenerateDatasetsXml() +
-"-->\n" +
-"\n" +
 "<dataset type=\"EDDTableFromNWISDV\" datasetID=\"usgs_waterservices_5411_c757_e669\" active=\"true\">\n" +
 "    <sourceUrl>http://interim.waterservices.usgs.gov/NWISQuery/GetDV1</sourceUrl>\n" +
 "    <reloadEveryNMinutes>1000000000</reloadEveryNMinutes>\n" +
@@ -2606,7 +2620,7 @@ directionsForGenerateDatasetsXml() +
                 Table data;
                 try {
                     data = getValuesTable(
-                        SSR.getUncompressedUrlInputStream(getDataUrl));
+                        SSR.getUncompressedUrlBufferedInputStream(getDataUrl));
                 } catch (Throwable t) {
                     //wait, then try again
                     String2.log("  ERROR getting data for site=" + site + "\n" + 
@@ -2614,7 +2628,7 @@ directionsForGenerateDatasetsXml() +
                         "Trying again...");
                     Math2.gc(1000); //generateDatasetsXml: if trouble, pause, then try again.
                     data = getValuesTable(
-                        SSR.getUncompressedUrlInputStream(getDataUrl));
+                        SSR.getUncompressedUrlBufferedInputStream(getDataUrl));
                 }
 
                 Attributes gAtts = data.globalAttributes();
@@ -2740,7 +2754,7 @@ String2.log("\ndatasetStations=\n" + datasetStations.dataToString());
                                 String2.toJson(varSeen + "Qualifiers") : 
                                 varSeen + "Qualifiers");
                         subset.setColumn(subset.findColumnNumber("variables"),
-                            PrimitiveArray.factory(String.class, subset.nRows(), tvar));
+                            PrimitiveArray.factory(PAType.STRING, subset.nRows(), tvar));
 
                         //save the subset table
                         String2.log("\nwriting chunk for " + param + "_" + stat + " " + lookFor + 
@@ -3059,7 +3073,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/usgs_waterservices_f8b2_
             int po = msg.indexOf("SimpleException: Your query produced no matching results. " +
                 "(There are no matching sites (time).)");
             if (po < 0)
-                throw new SimpleException("Unexpected Error: " + msg);
+                throw new RuntimeException("Unexpected Error.", t);
         }
 
         //test time in future
@@ -3076,7 +3090,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/usgs_waterservices_f8b2_
             String msg = MustBe.throwableToString(t);
             int po = msg.indexOf("SimpleException: Your query produced no matching results.");
             if (po < 0)
-                throw new SimpleException("Unexpected Error: " + msg);
+                throw new RuntimeException("Unexpected Error.", t);
         }
 
         //test one time: noon (so no data)
@@ -3093,7 +3107,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/usgs_waterservices_f8b2_
             String msg = MustBe.throwableToString(t);
             int po = msg.indexOf("SimpleException: Your query produced no matching results.");
             if (po < 0)
-                throw new SimpleException("Unexpected Error: " + msg);
+                throw new RuntimeException("Unexpected Error.", t);
         }
 
         //test   actual data for more than one station (not allowed)
@@ -3112,7 +3126,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/usgs_waterservices_f8b2_
                 "(not just station information), you must request " +
                 "data for just one station at a time.  (There were 9 matching stations.)");
             if (po < 0)
-                throw new SimpleException("Unexpected Error: " + msg);
+                throw new RuntimeException("Unexpected Error.", t);
         }
 
            
@@ -3209,14 +3223,48 @@ today + " http://localhost:8080/cwexperimental/tabledap/usgs_waterservices_f8b2_
     }
     
 
-    /** This runs all of the tests. */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromNWISDV.test");
-        //testGetValuesTable();
-        testGenerateDatasetsXml();  
-        testBasic();
-        testAvoidStackOverflow();
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ EDDTableFromNWISDV.test(" + interactive + ") test=";
 
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    //if (test ==  0) testGetValuesTable();  //why inactive?
+                    if (test ==  0) testGenerateDatasetsXml();  
+                    if (test ==  1) testBasic();
+                    if (test ==  2) testAvoidStackOverflow();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

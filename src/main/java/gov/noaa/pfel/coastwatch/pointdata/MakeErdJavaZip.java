@@ -41,14 +41,14 @@ public class MakeErdJavaZip  {
         String errorInMethod = String2.ERROR + " while generating ErdJava.zip:\n";
 
         //define directories
-        String baseDir = SSR.getContextDirectory() + //with / separator and / at the end
+        String baseDir = String2.webInfParentDirectory() + //with / separator and / at the end
             "WEB-INF/";
         String classPath = baseDir + "classes/";
         String coastWatchDir = classPath + "gov/noaa/pfel/coastwatch/";
 
         //make the JavaDocs
         String coastWatchClass = "gov.noaa.pfel.coastwatch.";
-        String commandLine0 = "C:\\programs\\jdk8u222-b10\\bin\\javadoc" +
+        String commandLine0 = "C:\\programs\\jdk8u265-b01\\bin\\javadoc" +
             //" -source 1.4" + //use 1.4 for the DODS classes that use "enum" //2011-02-22 Bob Simons changed enum to en.
             " -sourcepath " + classPath +      //root directory of the classes
             " -d "; //+ baseDir + "ConvertTableDoc" + //dir to hold results
@@ -59,6 +59,7 @@ public class MakeErdJavaZip  {
             coastWatchDir + "pointdata/DigirHelper.java " +
             coastWatchDir + "pointdata/DigirIobisTDSP.java " +
             coastWatchDir + "pointdata/DigirObisTDSP.java " +
+            coastWatchDir + "pointdata/ScriptRow.java " +
             coastWatchDir + "pointdata/Table.java " +
             coastWatchDir + "TimePeriods.java " +
             coastWatchDir + "ValidateDataSetProperties.java " +
@@ -108,7 +109,7 @@ public class MakeErdJavaZip  {
             Test.ensureTrue(File2.isFile(tDir + checkNames[i]), errorInMethod + tDir + checkNames[i] + " not found.");
 
         //generate javadocs again for online use
-        tDir = SSR.getContextDirectory() + //with / separator and / at the end
+        tDir = String2.webInfParentDirectory() + //with / separator and / at the end
             "ErdJavaDoc"; //dir to hold results
         SSR.dosShell("del /s /q " + //delete (/s=recursive /q=quiet) previous results
             String2.replaceAll(tDir, "/", "\\"), 60); 
@@ -204,7 +205,7 @@ public class MakeErdJavaZip  {
         //String2.log(String2.toNewlineString(dirNameArray));
 
         //make the zip file
-        String zipName = SSR.getContextDirectory() + //with / separator and / at the end
+        String zipName = String2.webInfParentDirectory() + //with / separator and / at the end
             "ErdJava.zip";
         String2.log("MakeErdJavaZip is making " + zipName + ".");
         File2.delete(zipName);
@@ -228,14 +229,14 @@ public class MakeErdJavaZip  {
 
         //define directories
         destinationDir = File2.addSlash(destinationDir);
-        String baseDir = (SSR.getContextDirectory() + //with / separator and / at the end
+        String baseDir = (String2.webInfParentDirectory() + //with / separator and / at the end
             "WEB-INF\\classes").substring(2);
         String coastWatchDir = "gov\\noaa\\pfel\\coastwatch\\";
 
         //accumulate the file names to be zipped
         String ctName = destinationDir + "converttable.jar";
         StringBuilder cmdLine = new StringBuilder();
-        cmdLine.append("C:\\programs\\jdk8u222-b10\\bin\\jar cvf " + ctName);
+        cmdLine.append("C:\\programs\\jdk8u265-b01\\bin\\jar cvf " + ctName);
         //I thought I could use -C once and have lots of files after it. 
         //But no. I need to use -C for each file.   (maybe just if 'file' is a directory)
         //And can't use *. List files separately.

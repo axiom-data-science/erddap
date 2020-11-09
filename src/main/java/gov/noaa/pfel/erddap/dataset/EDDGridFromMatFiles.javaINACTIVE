@@ -58,7 +58,8 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, int tMatchAxisNDigits, 
-        boolean tFileTableInMemory, boolean tAccessibleViaFiles) 
+        boolean tFileTableInMemory, boolean tAccessibleViaFiles, int tnThreads, 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
         throws Throwable {
 
         super("EDDGridFromMatFiles", tDatasetID, 
@@ -71,7 +72,8 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, 
             tMetadataFrom, tMatchAxisNDigits, 
-            tFileTableInMemory, tAccessibleViaFiles);
+            tFileTableInMemory, tAccessibleViaFiles, 
+            tnThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex);
     }
 
 
@@ -79,8 +81,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
      * This gets sourceGlobalAttributes and sourceDataAttributes from the specified 
      * source file.
      *
-     * @param fileDir
-     * @param fileName
+     * @param tFullName the name of the decompressed data file
      * @param sourceAxisNames If there is a special axis0, this list will be the instances list[1 ... n-1].
      * @param sourceDataNames the names of the desired source data columns.
      * @param sourceDataTypes the data types of the desired source columns 
@@ -91,7 +92,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
      * @throws Throwable if trouble (e.g., invalid file, or a sourceAxisName or sourceDataName not found).
      *   If there is trouble, this doesn't call addBadFile or requestReloadASAP().
      */
-    public void lowGetSourceMetadata(String fileDir, String fileName, 
+    public void lowGetSourceMetadata(String tFullName, 
         StringArray sourceAxisNames,
         StringArray sourceDataNames, String sourceDataTypes[],
         Attributes sourceGlobalAttributes, 
@@ -100,7 +101,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
 
 /*      REMEMBER to deal with special axis0 
 
-        NetcdfFile ncFile = NcHelper.openFile(fileDir + fileName); //may throw exception
+        NetcdfFile ncFile = NcHelper.openFile(tFullName); //may throw exception
         String getWhat = "globalAttributes";
         try {
             NcHelper.getGlobalAttributes(ncFile, sourceGlobalAttributes);
@@ -136,7 +137,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             }
             throw new RuntimeException("Error in EDDGridFromMatFiles.getSourceMetadata" +
                 "\nwhile getting " + getWhat + 
-                "\nfrom " + fileDir + fileName + 
+                "\nfrom " + tFullName + 
                 "\nCause: " + MustBe.throwableToShortString(t),
                 t);
         }
@@ -147,20 +148,21 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
     /**
      * This gets source axis values from one file.
      *
-     * @param fileDir
-     * @param fileName
+     * @param tFullName
      * @param sourceAxisNames the names of the desired source axis variables.
      *    If there is a special axis0, this will not include axis0's name.
+     * @param sourceDataNames When there are unnamed dimensions, this is
+     *   to find out the shape of the variable to make index values 0, 1, size-1.
      * @return a PrimitiveArray[] with the results (with the requested sourceDataTypes).
      *   It needn't set sourceGlobalAttributes or sourceDataAttributes
      *   (but see getSourceMetadata).
      * @throws Throwable if trouble (e.g., invalid file).
      *   If there is trouble, this doesn't call addBadFile or requestReloadASAP().
      */
-    public PrimitiveArray[] lowGetSourceAxisValues(String fileDir, String fileName, 
-        StringArray sourceAxisNames) throws Throwable {
+    public PrimitiveArray[] lowGetSourceAxisValues(String tFullName, 
+        StringArray sourceAxisNames, StringArray sourceDataNames) throws Throwable {
 /*
-        NetcdfFile ncFile = NcHelper.openFile(fileDir + fileName); //may throw exception
+        NetcdfFile ncFile = NcHelper.openFile(tFullName); //may throw exception
         String getWhat = "globalAttributes";
         try {
             PrimitiveArray[] avPa = new PrimitiveArray[sourceAxisNames.size()];
@@ -193,7 +195,7 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             }
             throw new RuntimeException("Error in EDDGridFromMatFiles.getSourceAxisValues" +
                 "\nwhile getting " + getWhat + 
-                "\nfrom " + fileDir + fileName + 
+                "\nfrom " + tFullName + 
                 "\nCause: " + MustBe.throwableToShortString(t),
                 t);
         }
@@ -212,8 +214,8 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
      *   !!! If there is a special axis0, this will not include constraints for axis0.
      * @return a PrimitiveArray[] with an element for each tDataVariable with the dataValues.
      *   <br>The dataValues are straight from the source, not modified.
-     *   <br>The primitiveArray dataTypes are usually the sourceDataTypeClass,
-     *     but can be any type. EDDGridFromFiles will convert to the sourceDataTypeClass.
+     *   <br>The primitiveArray dataTypes are usually the sourceDataPAType,
+     *     but can be any type. EDDGridFromFiles will convert to the sourceDataPAType.
      *   <br>Note the lack of axisVariable values!
      * @throws Throwable if trouble (notably, WaitThenTryAgainException).
      *   If there is trouble, this doesn't call addBadFile or requestReloadASAP().
@@ -299,7 +301,8 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
      */
     public static String generateDatasetsXml(
         String tFileDir, String tFileNameRegex, String sampleFileName, 
-        int tReloadEveryNMinutes, Attributes externalAddGlobalAttributes)
+        int tReloadEveryNMinutes, String tCacheFromUrl, 
+        Attributes externalAddGlobalAttributes)
         throws Throwable {
 
         String2.log("\n*** EDDGridFromMatFiles.generateDatasetsXml" +
@@ -310,6 +313,11 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
         if (!String2.isSomething(tFileDir))
             throw new IllegalArgumentException("fileDir wasn't specified.");
         tFileDir = File2.addSlash(tFileDir); //ensure it has trailing slash
+        tFileNameRegex = String2.isSomething(tFileNameRegex)? 
+            tFileNameRegex.trim() : ".*";
+        if (String2.isRemote(tCacheFromUrl)) 
+            FileVisitorDNLS.sync(tCacheFromUrl, tFileDir, tFileNameRegex,
+                true, ".*", false); //not fullSync
         if (tReloadEveryNMinutes <= 0 || tReloadEveryNMinutes == Integer.MAX_VALUE)
             tReloadEveryNMinutes = 1440; //1440 works well with suggestedUpdateEveryNMillis
 
@@ -319,17 +327,20 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                     tFileDir, tFileNameRegex, true, ".*"))); //recursive, pathRegex
 
         //make tables to hold variables
-        NetcdfFile ncFile = NcHelper.openFile(sampleFileName); //may throw exception
-        Table axisSourceTable = new Table();  
-        Table dataSourceTable = new Table();  
-        Table axisAddTable = new Table();
-        Table dataAddTable = new Table();
-        StringBuilder sb = new StringBuilder();
-
-        //get source global attributes
-        NcHelper.getGlobalAttributes(ncFile, axisSourceTable.globalAttributes());
-
+        String decomSampleFileName = FileVisitorDNLS.decompressIfNeeded(sampleFileName, 
+            tFileDir, EDStatic.fullDecompressedGenerateDatasetsXmlDirectory, 
+            EDStatic.decompressedCacheMaxGB, false); //reuseExisting
+        ...NetcdfFile ncFile = NcHelper.openFile(decomSampleFileName); //may throw exception
         try {
+            Table axisSourceTable = new Table();  
+            Table dataSourceTable = new Table();  
+            Table axisAddTable = new Table();
+            Table dataAddTable = new Table();
+            StringBuilder sb = new StringBuilder();
+
+            //get source global attributes
+            NcHelper.getGlobalAttributes(ncFile, axisSourceTable.globalAttributes());
+
             //look at all variables with dimensions, find ones which share same max nDim
             List allVariables = ncFile.getVariables(); 
             int maxDim = 0;
@@ -341,11 +352,11 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                 if (dimensions == null || dimensions.size() <= 1) 
                     continue;
                 nGridsAtSource++;
-                Class tClass = NcHelper.getElementClass(var.getDataType());
-                if      (tClass == char.class)    tClass = String.class;
-                else if (tClass == boolean.class) tClass = byte.class; 
-                PrimitiveArray pa = PrimitiveArray.factory(tClass, 1, false);
-                int tDim = dimensions.size() - (tClass == String.class? 1 : 0);
+                Class tClass = NcHelper.getElementPAType(var);
+                if      (tClass == PAType.CHAR)    tClass = PAType.STRING;
+                else if (tClass == PAType.BOOLEAN) tClass = PAType.BYTE; 
+                PrimitiveArray sourcePA = PrimitiveArray.factory(tClass, 1, false);
+                int tDim = dimensions.size() - (tClass == PAType.STRING? 1 : 0);
                 if (tDim < maxDim) {
                     continue;
                 } else if (tDim > maxDim) {
@@ -368,7 +379,9 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                         axisAddTable.addColumn(   avi, axisName, new DoubleArray(), //type doesn't matter
                             makeReadyToUseAddVariableAttributesForDatasetsXml(
                                 axisSourceTable.globalAttributes(),
-                                sourceAtts, null, axisName, false, true)); //addColorBarMinMax, tryToFindLLAT
+                                sourceAtts, null, axisName, 
+                                true, //tryToAddStandardName
+                                false, true)); //addColorBarMinMax, tryToFindLLAT
 
                     }
 
@@ -393,13 +406,16 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
 
                 //add the dataVariable
                 Attributes sourceAtts = new Attributes();
-                NcHelper.getVariableAttributes(var, sourceAtts);
-                dataSourceTable.addColumn(dataSourceTable.nColumns(), varName, pa, sourceAtts);
-                dataAddTable.addColumn(   dataAddTable.nColumns(),    varName, 
-                    makeDestPAForGDX(pa, sourceAtts),
+                NcHelper.getVariableAttributes(sourceAtts, var);
+                dataSourceTable.addColumn(dataSourceTable.nColumns(), varName, sourcePA, sourceAtts);
+                PrimitiveArray destPA = makeDestPAForGDX(sourceAtts, sourcePA); 
+                dataAddTable.addColumn(   dataAddTable.nColumns(),    varName, destPA, 
                     makeReadyToUseAddVariableAttributesForDatasetsXml(
                         axisSourceTable.globalAttributes(),
-                        sourceAtts, null, varName, true, false)); //addColorBarMinMax, tryToFindLLAT
+                        sourceAtts, null, varName, 
+                        destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                        destPA.elementType() != PAType.STRING, //addColorBarMinMax
+                        false)); //tryToFindLLAT
             }
 
             //after dataVariables known, add global attributes in the axisAddTable
@@ -413,15 +429,13 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
 
             //gather the results 
             String tDatasetID = suggestDatasetID(tFileDir + tFileNameRegex);
-            sb.append(directionsForGenerateDatasetsXml());
 
             if (nGridsAtSource > dataAddTable.nColumns())
                 sb.append(
-                    "!!! The source for " + tDatasetID + " has nGridVariables=" + nGridsAtSource + ",\n" +
-                    "but this dataset will only serve " + dataAddTable.nColumns() + 
-                    " because the others use different dimensions.\n");
+                    "<!-- NOTE! The source for " + tDatasetID + " has nGridVariables=" + nGridsAtSource + ",\n" +
+                    "  but this dataset will only serve " + dataAddTable.nColumns() + 
+                    " because the others use different dimensions. -->\n");
             sb.append(
-                "-->\n\n" +
                 "<dataset type=\"EDDGridFromMatFiles\" datasetID=\"" + tDatasetID +                      
                     "\" active=\"true\">\n" +
                 "    <reloadEveryNMinutes>" + tReloadEveryNMinutes + "</reloadEveryNMinutes>\n" +  
@@ -431,6 +445,8 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
                 "    <fileNameRegex>" + XML.encodeAsXML(tFileNameRegex) + "</fileNameRegex>\n" +
                 "    <recursive>true</recursive>\n" +
                 "    <pathRegex>.*</pathRegex>\n" +
+                (String2.isRemote(tCacheFromUrl)? 
+                "    <cacheFromUrl>" + XML.encodeAsXML(tCacheFromUrl) + "</cacheFromUrl>\n" : "") +
                 "    <metadataFrom>last</metadataFrom>\n" +
                 "    <fileTableInMemory>false</fileTableInMemory>\n");
 
@@ -450,14 +466,12 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             //I care about this exception
             ncFile.close();
 
-        String2.log("\n\n*** generateDatasetsXml finished successfully.\n\n");
+            String2.log("\n\n*** generateDatasetsXml finished successfully.\n\n");
 
         } catch (Throwable t) {
             try {
                 ncFile.close(); //make sure it is explicitly closed
-            } catch (Throwable t2) {
-                //don't care
-            }
+            } catch (Throwable t2) {}
             throw t;
         }
         return sb.toString();        
@@ -482,15 +496,12 @@ public class EDDGridFromMatFiles extends EDDGridFromFiles {
             "EDDGridFromMatFiles",
             EDStatic.unitTestDataDir + "erdQSwind1day/", ".*_03\\.nc", 
             EDStatic.unitTestDataDir + "erdQSwind1day/erdQSwind1day_20080101_03.nc",
-            "" + DEFAULT_RELOAD_EVERY_N_MINUTES},
+            "" + DEFAULT_RELOAD_EVERY_N_MINUTES, ""}, //cacheFromUrl
             false); //doIt loop?
         Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
 
 
         String expected = 
-directionsForGenerateDatasetsXml() +
-"-->\n" +
-"\n" +
 "<dataset type=\"EDDGridFromNcFiles\" datasetID=\"erdQSwind1day_52db_1ed3_22ce\" active=\"true\">\n" +
 "    <reloadEveryNMinutes>10080</reloadEveryNMinutes>\n" +
 "    <fileDir>" + EDStatic.unitTestDataDir + "erdQSwind1day/</fileDir>\n" +
@@ -505,7 +516,7 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"contributor_name\">Remote Sensing Systems, Inc</att>\n" +
 "        <att name=\"contributor_role\">Source of level 2 data.</att>\n" +
 "        <att name=\"Conventions\">COARDS, CF-1.0, Unidata Dataset Discovery v1.0</att>\n" +
-"        <att name=\"creator_email\">dave.foley@noaa.gov</att>\n" +
+"        <att name=\"creator_email\">erd.data@noaa.gov</att>\n" +
 "        <att name=\"creator_name\">NOAA CoastWatch, West Coast Node</att>\n" +
 "        <att name=\"creator_url\">http://coastwatch.pfel.noaa.gov</att>\n" +
 "        <att name=\"date_created\">2008-08-29Z</att>\n" +
@@ -526,7 +537,7 @@ directionsForGenerateDatasetsXml() +
 "        <att name=\"history\">Remote Sensing Systems, Inc\n" +
 "2008-08-29T00:31:43Z NOAA CoastWatch (West Coast Node) and NOAA SFSC ERD\n" +
 "2009-01-07 https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\n" +
-"2009-01-07 http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.nc?x_wind[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)],y_wind[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)],mod[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)]</att>\n" +
+"2009-01-07 https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.nc?x_wind[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)],y_wind[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)],mod[(2008-01-01T12:00:00Z):1:(2008-01-03T12:00:00Z)][(0.0):1:(0.0)][(-89.875):1:(89.875)][(0.125):1:(359.875)]</att>\n" +
 "        <att name=\"infoUrl\">http://coastwatch.pfel.noaa.gov/infog/QS_ux10_las.html</att>\n" +
 "        <att name=\"institution\">NOAA CoastWatch, West Coast Node</att>\n" +
 "        <att name=\"keywords\">EARTH SCIENCE &gt; Oceans &gt; Ocean Winds &gt; Surface Winds</att>\n" +
@@ -694,8 +705,10 @@ directionsForGenerateDatasetsXml() +
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //ensure it is ready-to-use by making a dataset from it
+        String tDatasetID = "erdQSwind1day_52db_1ed3_22ce";
+        EDD.deleteCachedDatasetInfo(tDatasetID);
         EDD edd = oneFromXmlFragment(null, results);
-        Test.ensureEqual(edd.datasetID(), "erdQSwind1day_52db_1ed3_22ce", "");
+        Test.ensureEqual(edd.datasetID(), tDatasetID, "");
         Test.ensureEqual(edd.title(), "Wind, QuikSCAT, Global, Science Quality (1 Day Composite)", "");
         Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
             "x_wind, y_wind, mod", "");
@@ -821,7 +834,7 @@ directionsForGenerateDatasetsXml() +
 "    String contributor_name \"Remote Sensing Systems, Inc\";\n" +
 "    String contributor_role \"Source of level 2 data.\";\n" +
 "    String Conventions \"COARDS, CF-1.6, ACDD-1.3\";\n" +
-"    String creator_email \"dave.foley@noaa.gov\";\n" +
+"    String creator_email \"erd.data@noaa.gov\";\n" +
 "    String creator_name \"NOAA CoastWatch, West Coast Node\";\n" +
 "    String creator_url \"https://coastwatch.pfeg.noaa.gov\";\n" +
 "    String date_created \"2008-08-29Z\";\n" +
@@ -867,7 +880,7 @@ expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das
 "    String source \"satellite observation: QuikSCAT, SeaWinds\";\n" +
 "    String sourceUrl \"https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/QS/ux10/1day\";\n" +
 "    Float64 Southernmost_Northing -89.875;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v29\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
 "    String summary \"Remote Sensing Inc. distributes science quality wind velocity data from the SeaWinds instrument onboard NASA's QuikSCAT satellite.  SeaWinds is a microwave scatterometer designed to measure surface winds over the global ocean.  Wind velocity fields are provided in zonal, meriodonal, and modulus sets. The reference height for all wind velocities is 10 meters.\";\n" +
 "    String time_coverage_end \"2008-01-10T12:00:00Z\";\n" +
 "    String time_coverage_start \"2008-01-01T12:00:00Z\";\n" +
@@ -933,7 +946,7 @@ expected = " http://localhost:8080/cwexperimental/griddap/testGriddedNcFiles.das
         //String2.log(results);
         expected = 
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
 "time,altitude,latitude,longitude,y_wind\n" +
 "UTC,m,degrees_north,degrees_east,m s-1\n";
 
@@ -962,7 +975,7 @@ String csvExpected =
         //String2.log(results);
         expected = 
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csvp?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csvp?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
 "time (UTC),altitude (m),latitude (degrees_north),longitude (degrees_east),y_wind (m s-1)\n" +
 csvExpected;       
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
@@ -976,7 +989,7 @@ csvExpected;
         //String2.log(results);
         expected = csvExpected;
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv0?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv0?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
 
@@ -989,7 +1002,7 @@ csvExpected;
         //String2.log(results);
         expected = 
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv?y_wind[(1.1991888e9):3:(1.1999664e9)][0][(36.5)][(230)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv?y_wind[(1.1991888e9):3:(1.1999664e9)][0][(36.5)][(230)]
 "time,altitude,latitude,longitude,y_wind\n" +
 "UTC,m,degrees_north,degrees_east,m s-1\n" +
 "2008-01-01T12:00:00Z,0.0,36.625,230.125,7.6282454\n" +
@@ -1008,7 +1021,7 @@ csvExpected;
         //String2.log(results);
         expected = 
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.tsv?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.tsv?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
 "time\taltitude\tlatitude\tlongitude\ty_wind\n" +
 "UTC\tm\tdegrees_north\tdegrees_east\tm s-1\n";
 
@@ -1037,7 +1050,7 @@ String tsvExpected =
         //String2.log(results);
         expected = 
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csvp?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csvp?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
 "time (UTC)\taltitude (m)\tlatitude (degrees_north)\tlongitude (degrees_east)\ty_wind (m s-1)\n" +
 tsvExpected;       
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
@@ -1051,7 +1064,7 @@ tsvExpected;
         //String2.log(results);
         expected = tsvExpected;
 //verified with 
-//http://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv0?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
+//https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwind1day.csv0?y_wind[(1.1999664e9)][0][(36.5)][(230):3:(238)]
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
 

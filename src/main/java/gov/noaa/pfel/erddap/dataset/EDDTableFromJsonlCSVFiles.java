@@ -8,6 +8,7 @@ import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.LongArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -31,7 +32,7 @@ import gov.noaa.pfel.erddap.variable.*;
 
 /** 
  * This class represents a table of data from a collection of jsonlCSV files.
- * See http://jsonlines.org/examples/
+ * See https://jsonlines.org/examples/
  *
  * @author Bob Simons (bob.simons@noaa.gov) 2018-04-09
  */
@@ -73,6 +74,7 @@ public class EDDTableFromJsonlCSVFiles extends EDDTableFromFiles {
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, String tCharset, 
+        String tSkipHeaderToRegex, String tSkipLinesRegex,
         int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
@@ -80,7 +82,8 @@ public class EDDTableFromJsonlCSVFiles extends EDDTableFromFiles {
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
         boolean tAccessibleViaFiles, boolean tRemoveMVRows,
         int tStandardizeWhat, int tNThreads, 
-        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex,
+        String tAddVariablesWhere) 
         throws Throwable {
 
         super("EDDTableFromJsonlCSVFiles", tDatasetID, 
@@ -90,12 +93,14 @@ public class EDDTableFromJsonlCSVFiles extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
+            tCharset, tSkipHeaderToRegex, tSkipLinesRegex,
+            tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
             tRemoveMVRows, tStandardizeWhat, 
-            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex);
+            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex,
+            tAddVariablesWhere);
 
     }
 
@@ -114,7 +119,9 @@ public class EDDTableFromJsonlCSVFiles extends EDDTableFromFiles {
         boolean getMetadata, boolean mustGetData) 
         throws Throwable {
 
-        //Future: more efficient if !mustGetData is handled differently
+        if (!mustGetData) 
+            //Just return a table with columns but no rows. There is never any metadata.
+            return Table.makeEmptyTable(sourceDataNames.toArray(), sourceDataTypes);
 
         //read the file
         Table table = new Table();
@@ -221,8 +228,8 @@ public class EDDTableFromJsonlCSVFiles extends EDDTableFromFiles {
             PrimitiveArray destPA = makeDestPAForGDX(sourcePA, sourceAtts);
             Attributes addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), sourceAtts, null, colName, 
-                destPA.elementClass() != String.class, //tryToAddStandardName
-                destPA.elementClass() != String.class, //addColorBarMinMax
+                destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                destPA.elementType() != PAType.STRING, //addColorBarMinMax
                 true); //tryToFindLLAT
             dataAddTable.addColumn(c, colName, destPA, addAtts);
 
@@ -367,33 +374,32 @@ public class EDDTableFromJsonlCSVFiles extends EDDTableFromFiles {
     public static void testGenerateDatasetsXml() throws Throwable {
         testVerboseOn();
 
-        try {
-            String results = generateDatasetsXml(
-                EDStatic.unitTestDataDir + "jsonl", 
-                "sampleCSV\\.jsonl",
-                "",
-                1440,
-                "","","","", 
-                "ship time", 
-                "", "", "", "", 
-                -1, null, //defaultStandardizeWhat
-                null) + "\n";
+        String results = generateDatasetsXml(
+            EDStatic.unitTestDataDir + "jsonl", 
+            "sampleCSV\\.jsonl",
+            "",
+            1440,
+            "","","","", 
+            "ship time", 
+            "", "", "", "", 
+            -1, null, //defaultStandardizeWhat
+            null) + "\n";
 
-            String2.log(results);
+        String2.log(results);
 
-            //GenerateDatasetsXml
-            String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
-                "EDDTableFromJsonlCSVFiles",
-                EDStatic.unitTestDataDir + "jsonl", 
-                "sampleCSV\\.jsonl",
-                "",
-                "1440",
-                "", "", "", "", 
-                "ship time", 
-                "", "", "", "", 
-                "-1", ""}, //defaultStandardizeWhat
-                false); //doIt loop?
-            Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
+        //GenerateDatasetsXml
+        String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
+            "EDDTableFromJsonlCSVFiles",
+            EDStatic.unitTestDataDir + "jsonl", 
+            "sampleCSV\\.jsonl",
+            "",
+            "1440",
+            "", "", "", "", 
+            "ship time", 
+            "", "", "", "", 
+            "-1", ""}, //defaultStandardizeWhat
+            false); //doIt loop?
+        Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
 
 String expected = 
 "<!-- NOTE! Since JSON Lines CSV files have no metadata, you MUST edit the chunk\n" +
@@ -424,7 +430,7 @@ String expected =
 "        <att name=\"keywords\">data, latitude, local, long, longitude, sea, ship, source, sst, status, surface, temperature, test, testLong, time, time2</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"summary\">Data from a local source.</att>\n" +
 "        <att name=\"title\">Data from a local source.</att>\n" +
 "    </addAttributes>\n" +
@@ -497,12 +503,14 @@ String expected =
 "    <dataVariable>\n" +
 "        <sourceName>testLong</sourceName>\n" +
 "        <destinationName>testLong</destinationName>\n" +
-"        <dataType>String</dataType>\n" +
+"        <dataType>long</dataType>\n" +
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"long\">-9223372036854775808</att>\n" +
 "            <att name=\"ioos_category\">Unknown</att>\n" +
 "            <att name=\"long_name\">Test Long</att>\n" +
+"            <att name=\"missing_value\" type=\"long\">9223372036854775807</att>\n" +
 "        </addAttributes>\n" +
 "    </dataVariable>\n" +
 "    <dataVariable>\n" +
@@ -520,25 +528,20 @@ String expected =
 "    </dataVariable>\n" +
 "</dataset>\n" +
 "\n\n";
-            Test.ensureEqual(results, expected, "results=\n" + results);
-            //Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
-            //    expected, "");
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
+        //    expected, "");
 
-            /* There are several problems that prevent it from being a usable dataset.
-            String tDatasetID = "jsonl_5479_4475_8387";
-            EDD.deleteCachedDatasetInfo(tDatasetID);
-            EDD edd = oneFromXmlFragment(null, results);
-            Test.ensureEqual(edd.datasetID(), tDatasetID, "");
-            Test.ensureEqual(edd.title(), "Data from a local source.", "");
-            Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
-                "ship, time, latitude, longitude, status, testLong, sst", 
-                "");
-                */
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml."); 
-        }
+        /* There are several problems that prevent it from being a usable dataset.
+        String tDatasetID = "jsonl_5479_4475_8387";
+        EDD.deleteCachedDatasetInfo(tDatasetID);
+        EDD edd = oneFromXmlFragment(null, results);
+        Test.ensureEqual(edd.datasetID(), tDatasetID, "");
+        Test.ensureEqual(edd.title(), "Data from a local source.", "");
+        Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
+            "ship, time, latitude, longitude, status, testLong, sst", 
+            "");
+            */
 
     }
 
@@ -611,12 +614,14 @@ String expected =
 "    String units \"degrees_east\";\n" +
 "  }\n" +
 "  status {\n" +
-"    String actual_range \"\t\n" +
+"    String actual_range \"\\t\n" +
 "?\";\n" +
 "    String ioos_category \"Other\";\n" +
 "    String long_name \"Status\";\n" +
 "  }\n" +
 "  testLong {\n" +
+"    Float64 _FillValue 9223372036854775807;\n" +
+"    Float64 actual_range -9223372036854775808, 9223372036854775806;\n" +  
 "    String ioos_category \"Other\";\n" +
 "    String long_name \"Test Long\";\n" +
 "  }\n" +
@@ -645,7 +650,7 @@ String expected =
 
 expected =
 "http://localhost:8080/cwexperimental/tabledap/testJsonlCSV.das\";\n" +
-"    String infoUrl \"http://jsonlines.org/examples/\";\n" +
+"    String infoUrl \"https://jsonlines.org/examples/\";\n" +
 "    String institution \"jsonlines.org\";\n" +
 "    String keywords \"data, latitude, local, long, longitude, sea, ship, source, sst, status, surface, temperature, test, testLong, time\";\n" +
 "    String license \"The data may be used and redistributed for free but is not intended\n" +
@@ -658,7 +663,7 @@ expected =
 "    Float64 Northernmost_Northing 28.0003;\n" +
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing 27.9998;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"ship\";\n" +
 "    String summary \"This is the sample summary.\";\n" +
 "    String time_coverage_end \"2017-03-23T21:45:00Z\";\n" +
@@ -776,20 +781,48 @@ expected =
 
     }
 
-
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromJsonlCSVFiles.test()");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ EDDTableFromJsonlCSVFiles.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml();
-        testBasic(true); //deleteCachedDatasetInfo
-        testBasic(false); //deleteCachedDatasetInfo
-        /* */
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testBasic(true); //deleteCachedDatasetInfo
+                    if (test ==  2) testBasic(false); //deleteCachedDatasetInfo
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 }
 

@@ -5,6 +5,8 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.NDimensionalIndex;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.File2;
 import com.cohort.util.Math2;
@@ -31,7 +33,7 @@ import java.io.RandomAccessFile;
  *   bytes byte[] with utf8 bytes from the string, appended one after another 
  *      (StringArray.writeDos)
  *   offset long[] with offset of end of string. (beginning of first string is offset=0)
- * 3) add  public String getDataValueAsString(int current[], int dv)
+ * 3) add  public String getDataValueAsPAOne(int current[], int dv)
  *   which uses a variant of StringArray.readDis (but from RandomAccessFile).
  * ]
  *
@@ -51,7 +53,7 @@ public class GridDataRandomAccessor {
     //things the constructor generates
     protected NDimensionalIndex gdaTotalIndex;
     protected String rafName;
-    protected Class dataClass[]; //1 per data variable
+    protected PAType dataPAType[]; //1 per data variable
     protected RandomAccessFile dataRaf[]; //1 per data variable
 
     /**
@@ -70,21 +72,22 @@ public class GridDataRandomAccessor {
             EDV dataVars[] = gridDataAccessor.dataVariables();
             int nDv = dataVars.length;
             dataRaf = new RandomAccessFile[nDv];
-            dataClass = new Class[nDv];
+            dataPAType = new PAType[nDv];
             String tQuery = gridDataAccessor.userDapQuery();
             rafName = gridDataAccessor.eddGrid().cacheDirectory() + //dir created by EDD.ensureValid
                 String2.md5Hex12(tQuery == null? "" : tQuery) + "_" +
                 Math2.random(Integer.MAX_VALUE) + "_";
             for (int dv = 0; dv < nDv; dv++) {
-                dataClass[dv] = dataVars[dv].destinationDataTypeClass();
+                dataPAType[dv] = dataVars[dv].destinationDataPAType();
                 dataRaf[dv] = new RandomAccessFile(rafName + dv, "rw");            
             }
 
             //get all the data
             while (gridDataAccessor.increment()) {
                 for (int dv = 0; dv < nDv; dv++)
-                   PrimitiveArray.rafWriteDouble( //this doesn't work for Strings
-                       dataRaf[dv], dataClass[dv], gridDataAccessor.getDataValueAsDouble(dv));
+                    gridDataAccessor.writeToRAF(dv, dataRaf[dv]); //this doesn't work for Strings
+                    //2020-03-12 was PrimitiveArray.rafWriteDouble( //this doesn't work for Strings
+                    //   dataRaf[dv], dataPAType[dv], gridDataAccessor.getDataValueAsDouble(dv));
             }
             gdaTotalIndex = gridDataAccessor.totalIndex();
         } finally {
@@ -92,21 +95,42 @@ public class GridDataRandomAccessor {
         }
     }
 
+    /**
+     * This returns the PAType of the specified data variable.
+     */
+    public PAType dataPAType(int i) {
+        return dataPAType[i];
+    }
 
     /**
-     * Call this after increment() to get a data value (as a double) 
+     * Call this to get the specified (current) data value (as a PAOne) 
      * from the specified dataVariable.
      *
      * @param current  from gridDataAccessor.totalIndex().getCurrent() (or compatible),
      *   but with values changed to what you want.
      * @param dv a dataVariable number (within the request, not the EDD dataVariable number).
-     * @return the data value
+     * @return the PAOne (for convenience)
      * @param throws Throwable if trouble
      */
-    public double getDataValueAsDouble(int current[], int dv) throws Throwable {
-        return PrimitiveArray.rafReadDouble(dataRaf[dv], dataClass[dv], 0,
-            gdaTotalIndex.setCurrent(current));
+    public PAOne getDataValueAsPAOne(int current[], int dv, PAOne paOne) throws Throwable {
+        return paOne.readFromRAF(dataRaf[dv], 0, gdaTotalIndex.setCurrent(current));
     }
+
+    /**
+     * Call this after increment() to get a data value (as a double) 
+     * from the specified dataVariable and add it to the specified PrimitiveArray.
+     *
+     * @param current  from gridDataAccessor.totalIndex().getCurrent() (or compatible),
+     *   but with values changed to what you want.
+     * @param dv a dataVariable number (within the request, not the EDD dataVariable number).
+     * @param throws Throwable if trouble
+     */
+    /* public void getDataValue(int current[], int dv, PrimitiveArray pa) throws Throwable {
+        gdaTotalIndex.setCurrent(current);
+        dataRaf[dv].seek(gdaTotalIndex.getIndex() * (long)pa.elementSize());
+        pa.readFromRAF(dataRaf[dv]);
+    } */
+
 
     /** 
      * This closes the files.

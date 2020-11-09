@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.LongArray;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -74,6 +75,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         String tAccessibleTo = null;
         String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
         String tIso19115File = null;
@@ -106,7 +108,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
             if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -158,6 +160,8 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
             else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<accessibleViaWMS>")) {}
             else if (localTags.equals("</accessibleViaWMS>")) tAccessibleViaWMS = String2.parseBoolean(content);
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals( "<onChange>")) {}
             else if (localTags.equals("</onChange>")) tOnChange.add(content); 
             else if (localTags.equals( "<fgdcFile>")) {}
@@ -179,6 +183,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         //make the main dataset based on the information gathered
         return new EDDGridAggregateExistingDimension(tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
+            tAccessibleViaFiles, 
             tOnChange, tFgdcFile, tIso19115File,
             tDefaultDataQuery, tDefaultGraphQuery,
             firstChild, tLocalSourceUrls.toArray(),
@@ -213,6 +218,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
      */
     public EDDGridAggregateExistingDimension(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS, 
+        boolean tAccessibleViaFiles, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery,
         EDDGrid firstChild, String tLocalSourceUrls[], 
@@ -283,6 +289,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         childStopsAt[0] = cumSV.size() - 1;
 
         //create the siblings
+        boolean childAccessibleViaFiles = childDatasets[0].accessibleViaFiles; //is at least one 'true'?
         for (int sib = 0; sib < nChildren - 1; sib++) {
             if (reallyVerbose) String2.log("\n+++ Creating childDatasets[" + (sib+1) + "]\n");
             EDDGrid sibling = firstChild.sibling(tLocalSourceUrls[sib], 
@@ -295,8 +302,10 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
                 "] #0=" + sourceValues0.getString(0) +
                 " #" + sourceValues0.size() + "=" + sourceValues0.getString(sourceValues0.size() - 1));
                 //sourceValues0=" + sourceValues0 + "\n");
+            if (childDatasets[sib + 1].accessibleViaFiles) 
+                childAccessibleViaFiles = true;
         }
-
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles && childAccessibleViaFiles;
 
         //create the aggregate dataset
         if (reallyVerbose) String2.log("\n+++ Creating the aggregate dataset\n");
@@ -339,10 +348,11 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
                 tryToSubscribeToChildFromErddap(childDatasets[c]);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridAggregateExistingDimension " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -567,6 +577,109 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         return cumResults;
     }
 
+    /** 
+     * This returns a fileTable 
+     * with valid files (or null if unavailable or any trouble).
+     * This is a copy of any internal data, so client can modify the contents.
+     *
+     * @param nextPath is the partial path (with trailing slash) to be appended 
+     *   onto the local fileDir (or wherever files are, even url).
+     * @return null if trouble,
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
+     */
+    public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
+        try {
+            int nChild = childDatasets.length;
+
+            //if nextPath is nothing, return list of child id's as directories
+            if (nextPath.length() == 0) {
+                Table table = new Table();
+                table.addColumn("Name",          new StringArray());
+                table.addColumn("Last modified", new LongArray().setMaxIsMV(true));
+                table.addColumn("Size",          new LongArray().setMaxIsMV(true));            
+                table.addColumn("Description",   new StringArray());
+                StringArray subDirs = new StringArray();
+                for (int child = 0; child < nChild; child++) {
+                    if (childDatasets[child].accessibleViaFiles)
+                        subDirs.add(childDatasets[child].datasetID());
+                }
+                subDirs.sortIgnoreCase();
+                return new Object[]{table, subDirs.toStringArray(), null};
+            }
+
+            //ensure start of nextPath is a child datasetID
+            int po = nextPath.indexOf('/');
+            if (po < 0) {
+                String2.log("ERROR: no slash in nextPath.");
+                return null;
+            }
+
+            //start of nextPath is a child datasetID
+            String tID = nextPath.substring(0, po);
+            nextPath = nextPath.substring(po + 1);
+            for (int child = 0; child < nChild; child++) {
+                EDD edd = childDatasets[child];
+                if (tID.equals(edd.datasetID())) 
+                    return edd.accessibleViaFilesFileTable(nextPath);
+            }
+            //or it isn't
+            String2.log("ERROR: " + tID + " isn't a child's datasetID.");
+            return null;
+
+        } catch (Exception e) {
+            String2.log(MustBe.throwableToString(e));
+            return null;
+        }
+    }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+    public String accessibleViaFilesGetLocal(String relativeFileName) {
+        if (!accessibleViaFiles)
+            return null;
+        String msg = datasetID() + " accessibleViaFilesGetLocal(" + relativeFileName + "): ";
+
+        try {
+
+            //first dir -> childDatasetName
+            int po = relativeFileName.indexOf('/');
+            if (po <= 0) {
+                String2.log(msg + "no '/' in relatveFileName, so no child datasetID.");
+                return null;
+            }
+            String childID           = relativeFileName.substring(0, po);
+            String relativeFileName2 = relativeFileName.substring(po + 1);
+ 
+            //which child?
+            int nChild = childDatasets.length;
+            for (int c = 0; c < nChild; c++) {
+                if (childID.equals(childDatasets[c].datasetID())) {
+                    //then redirect request to that child
+                    return childDatasets[c].accessibleViaFilesGetLocal(relativeFileName2);
+                }
+            }
+            String2.log(msg + "childID=" + childID + " not found.");
+            return null;
+
+        } catch (Exception e) {
+            String2.log(msg + ":\n" +
+                MustBe.throwableToString(e));
+            return null;
+        }
+         
+    }
+
 
     /**
      * This generates datasets.xml for an aggregated dataset from a Hyrax or 
@@ -662,7 +775,6 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         String results, expected;
 
         //******* test thredds -- lame test: the datasets can't actually be aggregated
-        try {
         results = generateDatasetsXml("thredds",
             "https://thredds1.pfeg.noaa.gov/thredds/catalog/Satellite/aggregsatMH/chla/catalog.xml", 
             ".*", 1440); //recursive
@@ -759,7 +871,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
 "        <att name=\"project\">CoastWatch (https://coastwatch.noaa.gov/)</att>\n" +
 "        <att name=\"references\">Aqua/MODIS information: https://oceancolor.gsfc.nasa.gov/ . MODIS information: https://coastwatch.noaa.gov/modis_ocolor_overview.html .</att>\n" +
 "        <att name=\"rows\">null</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"start_time\">null</att>\n" +
 "        <att name=\"title\">Chlorophyll-a, Aqua MODIS, NPP, 0.05 degrees, Global, Science Quality (1day), 2003-2013</att>\n" +
 "    </addAttributes>\n" +
@@ -867,15 +979,10 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
 "</dataset>\n" +
 "\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error."); 
-        }
 
 
 
         //****** test HYRAX
-        try {
         results = generateDatasetsXml("hyrax",
             "https://opendap.jpl.nasa.gov/opendap/allData/ccmp/L3.5a/monthly/flk/1988/contents.html", 
             "month_[0-9]{8}_v11l35flk\\.nc\\.gz", //note: v one one L
@@ -905,7 +1012,7 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
 "        <att name=\"keywords\">atlas, atmosphere, atmospheric, center, component, data, derived, downward, earth, Earth Science &gt; Atmosphere &gt; Atmospheric Winds &gt; Surface Winds, Earth Science &gt; Atmosphere &gt; Atmospheric Winds &gt; Wind Stress, eastward, eastward_wind, flight, flk, goddard, gsfc, latitude, level, longitude, meters, month, nasa, noaa, nobs, northward, northward_wind, number, observations, oceanography, physical, physical oceanography, pseudostress, science, space, speed, statistics, stress, surface, surface_downward_eastward_stress, surface_downward_northward_stress, time, u-component, u-wind, upstr, uwnd, v-component, v-wind, v1.1, v11l35flk, vpstr, vwnd, wind, wind_speed, winds, wspd</att>\n" +
 "        <att name=\"keywords_vocabulary\">GCMD Science Keywords</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"summary\">Time average of level3.0 products for the period: 1988-01-01 to 1988-01-31</att>\n" +
 "        <att name=\"title\">Atlas FLK v1.1 derived surface winds (level 3.5) (month 19880101 v11l35flk), 0.25&#xb0;</att>\n" +
 "    </addAttributes>\n" +
@@ -1071,10 +1178,6 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
 "</dataset>\n" +
 "\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error."); 
-        }
 
 
         String2.log("\n*** EDDGridAggregateExistingDimension.testGenerateDatasetsXml() finished successfully.\n");
@@ -1098,8 +1201,8 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         Test.ensureEqual(sourceUrls.get(740), dir + "20061227.bodas_ts.nc", "");
         String2.log("EDDGridAggregateExistingDimension.testGetDodsIndexUrls finished successfully.");
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nKnown problem: CSIRO bodas now requires authorization. No known examples now."); 
+            Test.knownProblem("CSIRO bodas now requires authorization.", 
+                "No known examples now.", t); 
         }
     }
 
@@ -1114,17 +1217,14 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         testVerboseOn();
         String name, tName, userDapQuery, results, expected, error;
 
-        //one time
-
-        try {
 
         //*** NDBC  is also IMPORTANT UNIQUE TEST of >1 variable in a file
         EDDGrid gridDataset = (EDDGrid)oneFromDatasetsXml(null, "ndbcCWind41002");       
 
         //min max
         EDV edv = gridDataset.findAxisVariableByDestinationName("longitude");
-        Test.ensureEqual(edv.destinationMin(), -75.42, "");
-        Test.ensureEqual(edv.destinationMax(), -75.42, "");
+        Test.ensureEqual(edv.destinationMinDouble(), -75.42, "");
+        Test.ensureEqual(edv.destinationMaxDouble(), -75.42, "");
 
         String ndbcDapQuery = "wind_speed[1:5][0][0]";
         tName = gridDataset.makeNewFileForDapQuery(null, null, ndbcDapQuery, 
@@ -1132,13 +1232,13 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_speed\n" +
-"UTC, degrees_north, degrees_east, m s-1\n" +
-"1989-06-13T16:10:00Z, 32.27, -75.42, 15.7\n" +
-"1989-06-13T16:20:00Z, 32.27, -75.42, 15.0\n" +
-"1989-06-13T16:30:00Z, 32.27, -75.42, 14.4\n" +
-"1989-06-13T16:40:00Z, 32.27, -75.42, 14.0\n" +
-"1989-06-13T16:50:00Z, 32.27, -75.42, 13.6\n";
+"time,latitude,longitude,wind_speed\n"+
+"UTC,degrees_north,degrees_east,m s-1\n"+
+"1989-06-13T16:10:00Z,32.27,-75.42,15.7\n"+
+"1989-06-13T16:20:00Z,32.27,-75.42,15.0\n"+
+"1989-06-13T16:30:00Z,32.27,-75.42,14.4\n"+
+"1989-06-13T16:40:00Z,32.27,-75.42,14.0\n"+
+"1989-06-13T16:50:00Z,32.27,-75.42,13.6\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         ndbcDapQuery = "wind_speed[1:5][0][0]";
@@ -1149,13 +1249,13 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
         String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
         expected = 
 "netcdf EDDGridAggregateExistingDimension.nc {\n" +
-" dimensions:\n" +
-"   time = 5;\n" +   // (has coord.var)\n" +   //changed when switched to netcdf-java 4.0, 2009-02-23
-"   latitude = 1;\n" +   // (has coord.var)\n" +
-"   longitude = 1;\n" +   // (has coord.var)\n" +
-" variables:\n" +
-"   double time(time=5);\n" +
-"     :_CoordinateAxisType = \"Time\";\n";
+"  dimensions:\n" +
+"    time = 5;\n" +   // (has coord.var)\n" +   //changed when switched to netcdf-java 4.0, 2009-02-23
+"    latitude = 1;\n" +   // (has coord.var)\n" +
+"    longitude = 1;\n" +   // (has coord.var)\n" +
+"  variables:\n" +
+"    double time(time=5);\n" +
+"      :_CoordinateAxisType = \"Time\";\n";
         Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
 
 //BUG???!!!
@@ -1163,100 +1263,114 @@ public class EDDGridAggregateExistingDimension extends EDDGrid {
 
 expected = 
 ":axis = \"T\";\n" +
-"     :ioos_category = \"Time\";\n" +
-"     :long_name = \"Epoch Time\";\n" +
-"     :short_name = \"time\";\n" +
-"     :standard_name = \"time\";\n" +
-"     :time_origin = \"01-JAN-1970 00:00:00\";\n" +
-"     :units = \"seconds since 1970-01-01T00:00:00Z\";\n" +
-"   float latitude(latitude=1);\n" +
-"     :_CoordinateAxisType = \"Lat\";\n" +
-"     :actual_range = 32.27f, 32.27f; // float\n" +
-"     :axis = \"Y\";\n" +
-"     :ioos_category = \"Location\";\n" +
-"     :long_name = \"Latitude\";\n" +
-"     :short_name = \"latitude\";\n" +
-"     :standard_name = \"latitude\";\n" +
-"     :units = \"degrees_north\";\n" +
-"   float longitude(longitude=1);\n" +
-"     :_CoordinateAxisType = \"Lon\";\n" +
-"     :actual_range = -75.42f, -75.42f; // float\n" +
-"     :axis = \"X\";\n" +
-"     :ioos_category = \"Location\";\n" +
-"     :long_name = \"Longitude\";\n" +
-"     :short_name = \"longitude\";\n" +
-"     :standard_name = \"longitude\";\n" +
-"     :units = \"degrees_east\";\n" +
-"   float wind_speed(time=5, latitude=1, longitude=1);\n" +
-"     :_FillValue = 99.0f; // float\n" +
-"     :ioos_category = \"Wind\";\n" +
-"     :long_name = \"Wind Speed\";\n" +
-"     :missing_value = 99.0f; // float\n" +
-"     :short_name = \"wspd\";\n" +
-"     :standard_name = \"wind_speed\";\n" +
-"     :units = \"m s-1\";\n" +
+"      :ioos_category = \"Time\";\n" +
+"      :long_name = \"Epoch Time\";\n" +
+"      :short_name = \"time\";\n" +
+"      :standard_name = \"time\";\n" +
+"      :time_origin = \"01-JAN-1970 00:00:00\";\n" +
+"      :units = \"seconds since 1970-01-01T00:00:00Z\";\n" +
 "\n" +
-" :cdm_data_type = \"Grid\";\n" +
-" :comment = \"S HATTERAS - 250 NM East of Charleston, SC\";\n" +
-" :contributor_name = \"NOAA NDBC\";\n" +
-" :contributor_role = \"Source of data.\";\n" +
-" :Conventions = \"COARDS, CF-1.6, ACDD-1.3\";\n" +
-" :Easternmost_Easting = -75.42f; // float\n" +
-" :geospatial_lat_max = 32.27f; // float\n" +
-" :geospatial_lat_min = 32.27f; // float\n" +
-" :geospatial_lon_max = -75.42f; // float\n" +
-" :geospatial_lon_min = -75.42f; // float\n" +
-" :history = \"" + today + " http://dods.ndbc.noaa.gov/thredds/dodsC/data/cwind/41002/41002c1989.nc\n" +
-today + " " + EDStatic.erddapUrl + //in tests, always non-https url
+"    float latitude(latitude=1);\n" +
+"      :_CoordinateAxisType = \"Lat\";\n" +
+"      :actual_range = 32.27f, 32.27f; // float\n" +
+"      :axis = \"Y\";\n" +
+"      :ioos_category = \"Location\";\n" +
+"      :long_name = \"Latitude\";\n" +
+"      :short_name = \"latitude\";\n" +
+"      :standard_name = \"latitude\";\n" +
+"      :units = \"degrees_north\";\n" +
+"\n" +
+"    float longitude(longitude=1);\n" +
+"      :_CoordinateAxisType = \"Lon\";\n" +
+"      :actual_range = -75.42f, -75.42f; // float\n" +
+"      :axis = \"X\";\n" +
+"      :ioos_category = \"Location\";\n" +
+"      :long_name = \"Longitude\";\n" +
+"      :short_name = \"longitude\";\n" +
+"      :standard_name = \"longitude\";\n" +
+"      :units = \"degrees_east\";\n" +
+"\n" +
+"    float wind_speed(time=5, latitude=1, longitude=1);\n" +
+"      :_FillValue = 99.0f; // float\n" +
+"      :ioos_category = \"Wind\";\n" +
+"      :long_name = \"Wind Speed\";\n" +
+"      :missing_value = 99.0f; // float\n" +
+"      :short_name = \"wspd\";\n" +
+"      :standard_name = \"wind_speed\";\n" +
+"      :units = \"m s-1\";\n" +
+"\n" +
+"  // global attributes:\n" +
+"  :cdm_data_type = \"Grid\";\n" +
+"  :comment = \"S HATTERAS - 250 NM East of Charleston, SC\";\n" +
+"  :contributor_name = \"NOAA NDBC\";\n" +
+"  :contributor_role = \"Source of data.\";\n" +
+"  :Conventions = \"COARDS, CF-1.6, ACDD-1.3\";\n" +
+"  :Easternmost_Easting = -75.42f; // float\n" +
+"  :geospatial_lat_max = 32.27f; // float\n" +
+"  :geospatial_lat_min = 32.27f; // float\n" +
+"  :geospatial_lat_units = \"degrees_north\";\n" +
+"  :geospatial_lon_max = -75.42f; // float\n" +
+"  :geospatial_lon_min = -75.42f; // float\n" +
+"  :geospatial_lon_units = \"degrees_east\";\n" +
+"  :history = \"";
+//today + " https://dods.ndbc.noaa.gov/thredds/dodsC/data/cwind/41002/41002c1989.nc\n" +
+//today + " " + EDStatic.erddapUrl + //in tests, always non-https url
+        int po = results.indexOf(":axis =");
+        Test.ensureEqual(results.substring(po, po + expected.length()), expected, "results=\n" + results);
+
+expected = 
 "/griddap/ndbcCWind41002.nc?wind_speed[1:5][0][0]\";\n" +
-" :infoUrl = \"https://www.ndbc.noaa.gov/cwind.shtml\";\n" +
-" :institution = \"NOAA NDBC\";\n" +
-" :license = \"The data may be used and redistributed for free but is not intended\n" +
+"  :infoUrl = \"https://www.ndbc.noaa.gov/cwind.shtml\";\n" +
+"  :institution = \"NOAA NDBC\";\n" +
+"  :keywords = \"Earth Science > Atmosphere > Atmospheric Winds > Surface Winds\";\n" +
+"  :keywords_vocabulary = \"GCMD Science Keywords\";\n" +
+"  :license = \"The data may be used and redistributed for free but is not intended\n" +
 "for legal use, since it may contain inaccuracies. Neither the data\n" +
 "Contributor, ERD, NOAA, nor the United States Government, nor any\n" +
 "of their employees or contractors, makes any warranty, express or\n" +
 "implied, including warranties of merchantability and fitness for a\n" +
 "particular purpose, or assumes any legal liability for the accuracy,\n" +
 "completeness, or usefulness, of this information.\";\n" +
-" :location = \"32.27 N 75.42 W \";\n" +
-" :Northernmost_Northing = 32.27f; // float\n" +
-" :quality = \"Automated QC checks with manual editing and comprehensive monthly QC\";\n" +
-" :sourceUrl = \"http://dods.ndbc.noaa.gov/thredds/dodsC/data/cwind/41002/41002c1989.nc\";\n" +
-" :Southernmost_Northing = 32.27f; // float\n" +
-" :station = \"41002\";\n" +
-" :summary = \"These continuous wind measurements from the NOAA National Data Buoy Center (NDBC) stations are 10-minute average values of wind speed (in m/s) and direction (in degrees clockwise from North).\";\n" +
-" :time_coverage_end = \"1989-06-13T16:50:00Z\";\n" +
-" :time_coverage_start = \"1989-06-13T16:10:00Z\";\n" +
-" :title = \"Wind Data from NDBC 41002\";\n" +
-" :url = \"http://dods.ndbc.noaa.gov\";\n" +
-" :Westernmost_Easting = -75.42f; // float\n" +
-" data:\n" +
-"time =\n" +
-"  {6.137574E8, 6.13758E8, 6.137586E8, 6.137592E8, 6.137598E8}\n" +
-"latitude =\n" +
-"  {32.27}\n" +
-"longitude =\n" +
-"  {-75.42}\n" +
-"wind_speed =\n" +
-"  {\n" +
-"    {\n" +
-"      {15.7}\n" +
-"    },\n" +
-"    {\n" +
-"      {15.0}\n" +
-"    },\n" +
-"    {\n" +
-"      {14.4}\n" +
-"    },\n" +
-"    {\n" +
-"      {14.0}\n" +
-"    },\n" +
-"    {\n" +
-"      {13.6}\n" +
-"    }\n" +
-"  }\n" +
+"  :location = \"32.27 N 75.42 W\";\n" +
+"  :Northernmost_Northing = 32.27f; // float\n" +
+"  :quality = \"Automated QC checks with manual editing and comprehensive monthly QC\";\n" +
+"  :sourceUrl = \"https://dods.ndbc.noaa.gov/thredds/dodsC/data/cwind/41002/41002c1989.nc\";\n" +
+"  :Southernmost_Northing = 32.27f; // float\n" +
+"  :station = \"41002\";\n" +
+"  :summary = \"These continuous wind measurements from the NOAA National Data Buoy Center (NDBC) stations are 10-minute average values of wind speed (in m/s) and direction (in degrees clockwise from North).\";\n" +
+"  :time_coverage_end = \"1989-06-13T16:50:00Z\";\n" +
+"  :time_coverage_start = \"1989-06-13T16:10:00Z\";\n" +
+"  :title = \"Wind Data from NDBC 41002\";\n" +
+"  :url = \"https://dods.ndbc.noaa.gov\";\n" +
+"  :Westernmost_Easting = -75.42f; // float\n" +
+"\n" +
+"  data:\n" +
+"    time = \n" +
+"      {6.137574E8, 6.13758E8, 6.137586E8, 6.137592E8, 6.137598E8}\n" +
+"    latitude = \n" +
+"      {32.27}\n" +
+"    longitude = \n" +
+"      {-75.42}\n" +
+"    wind_speed = \n" +
+"      {\n" +
+"        {\n" +
+"          {15.7}\n" +
+"        },\n" +
+"        {\n" +
+"          {15.0}\n" +
+"        },\n" +
+"        {\n" +
+"          {14.4}\n" +
+"        },\n" +
+"        {\n" +
+"          {14.0}\n" +
+"        },\n" +
+"        {\n" +
+"          {13.6}\n" +
+"        }\n" +
+"      }\n" +
 "}\n";
-        int po = results.indexOf(":axis =");
+        po = results.indexOf(expected.substring(0, 50));
         Test.ensureEqual(results.substring(po), expected, "results=\n" + results);
 
         ndbcDapQuery = "wind_direction[1:5][0][0]";
@@ -1265,13 +1379,13 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_direction\n" +
-"UTC, degrees_north, degrees_east, degrees_true\n" +
-"1989-06-13T16:10:00Z, 32.27, -75.42, 234\n" +
-"1989-06-13T16:20:00Z, 32.27, -75.42, 233\n" +
-"1989-06-13T16:30:00Z, 32.27, -75.42, 233\n" +
-"1989-06-13T16:40:00Z, 32.27, -75.42, 235\n" +
-"1989-06-13T16:50:00Z, 32.27, -75.42, 235\n";
+"time,latitude,longitude,wind_direction\n"+
+"UTC,degrees_north,degrees_east,degrees_true\n"+
+"1989-06-13T16:10:00Z,32.27,-75.42,234\n"+
+"1989-06-13T16:20:00Z,32.27,-75.42,233\n"+
+"1989-06-13T16:30:00Z,32.27,-75.42,233\n"+
+"1989-06-13T16:40:00Z,32.27,-75.42,235\n"+
+"1989-06-13T16:50:00Z,32.27,-75.42,235\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         ndbcDapQuery = "wind_speed[1:5][0][0],wind_direction[1:5][0][0]";
@@ -1280,13 +1394,13 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_speed, wind_direction\n" +
-"UTC, degrees_north, degrees_east, m s-1, degrees_true\n" +
-"1989-06-13T16:10:00Z, 32.27, -75.42, 15.7, 234\n" +
-"1989-06-13T16:20:00Z, 32.27, -75.42, 15.0, 233\n" +
-"1989-06-13T16:30:00Z, 32.27, -75.42, 14.4, 233\n" +
-"1989-06-13T16:40:00Z, 32.27, -75.42, 14.0, 235\n" +
-"1989-06-13T16:50:00Z, 32.27, -75.42, 13.6, 235\n";
+"time,latitude,longitude,wind_speed,wind_direction\n"+
+"UTC,degrees_north,degrees_east,m s-1,degrees_true\n"+
+"1989-06-13T16:10:00Z,32.27,-75.42,15.7,234\n"+
+"1989-06-13T16:20:00Z,32.27,-75.42,15.0,233\n"+
+"1989-06-13T16:30:00Z,32.27,-75.42,14.4,233\n"+
+"1989-06-13T16:40:00Z,32.27,-75.42,14.0,235\n"+
+"1989-06-13T16:50:00Z,32.27,-75.42,13.6,235\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         ndbcDapQuery = "wind_direction[1:5][0][0],wind_speed[1:5][0][0]";
@@ -1295,13 +1409,13 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_direction, wind_speed\n" +
-"UTC, degrees_north, degrees_east, degrees_true, m s-1\n" +
-"1989-06-13T16:10:00Z, 32.27, -75.42, 234, 15.7\n" +
-"1989-06-13T16:20:00Z, 32.27, -75.42, 233, 15.0\n" +
-"1989-06-13T16:30:00Z, 32.27, -75.42, 233, 14.4\n" +
-"1989-06-13T16:40:00Z, 32.27, -75.42, 235, 14.0\n" +
-"1989-06-13T16:50:00Z, 32.27, -75.42, 235, 13.6\n";
+"time,latitude,longitude,wind_direction,wind_speed\n"+
+"UTC,degrees_north,degrees_east,degrees_true,m s-1\n"+
+"1989-06-13T16:10:00Z,32.27,-75.42,234,15.7\n"+
+"1989-06-13T16:20:00Z,32.27,-75.42,233,15.0\n"+
+"1989-06-13T16:30:00Z,32.27,-75.42,233,14.4\n"+
+"1989-06-13T16:40:00Z,32.27,-75.42,235,14.0\n"+
+"1989-06-13T16:50:00Z,32.27,-75.42,235,13.6\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         tName = gridDataset.makeNewFileForDapQuery(null, null, ndbcDapQuery, EDStatic.fullTestCacheDirectory, 
@@ -1311,48 +1425,48 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = results.substring(dataPo);
         expected = 
 "data:\n" +
-"time =\n" +
-"  {6.137574E8, 6.13758E8, 6.137586E8, 6.137592E8, 6.137598E8}\n" +
-"latitude =\n" +
-"  {32.27}\n" +
-"longitude =\n" +
-"  {-75.42}\n" +
-"wind_direction =\n" +
-"  {\n" +
-"    {\n" +
-"      {234}\n" +
-"    },\n" +
-"    {\n" +
-"      {233}\n" +
-"    },\n" +
-"    {\n" +
-"      {233}\n" +
-"    },\n" +
-"    {\n" +
-"      {235}\n" +
-"    },\n" +
-"    {\n" +
-"      {235}\n" +
-"    }\n" +
-"  }\n" +
-"wind_speed =\n" +
-"  {\n" +
-"    {\n" +
-"      {15.7}\n" +
-"    },\n" +
-"    {\n" +
-"      {15.0}\n" +
-"    },\n" +
-"    {\n" +
-"      {14.4}\n" +
-"    },\n" +
-"    {\n" +
-"      {14.0}\n" +
-"    },\n" +
-"    {\n" +
-"      {13.6}\n" +
-"    }\n" +
-"  }\n" +
+"    time = \n" +
+"      {6.137574E8, 6.13758E8, 6.137586E8, 6.137592E8, 6.137598E8}\n" +
+"    latitude = \n" +
+"      {32.27}\n" +
+"    longitude = \n" +
+"      {-75.42}\n" +
+"    wind_direction = \n" +
+"      {\n" +
+"        {\n" +
+"          {234}\n" +
+"        },\n" +
+"        {\n" +
+"          {233}\n" +
+"        },\n" +
+"        {\n" +
+"          {233}\n" +
+"        },\n" +
+"        {\n" +
+"          {235}\n" +
+"        },\n" +
+"        {\n" +
+"          {235}\n" +
+"        }\n" +
+"      }\n" +
+"    wind_speed = \n" +
+"      {\n" +
+"        {\n" +
+"          {15.7}\n" +
+"        },\n" +
+"        {\n" +
+"          {15.0}\n" +
+"        },\n" +
+"        {\n" +
+"          {14.4}\n" +
+"        },\n" +
+"        {\n" +
+"          {14.0}\n" +
+"        },\n" +
+"        {\n" +
+"          {13.6}\n" +
+"        }\n" +
+"      }\n" +
 "}\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
@@ -1363,16 +1477,16 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_direction, wind_speed\n" +
-"UTC, degrees_north, degrees_east, degrees_true, m s-1\n" +
-"1989-12-05T05:20:00Z, 32.27, -75.42, 232, 23.7\n" +
-"1989-12-05T05:30:00Z, 32.27, -75.42, 230, 24.1\n" +
-"1989-12-05T05:40:00Z, 32.27, -75.42, 225, 23.5\n" +
-"1989-12-05T05:50:00Z, 32.27, -75.42, 233, 23.3\n" +
-"1992-04-28T23:00:00Z, 32.27, -75.42, 335, 29.4\n" +
-"1992-04-28T23:10:00Z, 32.27, -75.42, 335, 30.5\n" +
-"1992-04-28T23:20:00Z, 32.27, -75.42, 330, 32.3\n" +
-"1992-04-28T23:30:00Z, 32.27, -75.42, 331, 33.2\n";
+"time,latitude,longitude,wind_direction,wind_speed\n"+
+"UTC,degrees_north,degrees_east,degrees_true,m s-1\n"+
+"1989-12-05T05:20:00Z,32.27,-75.42,232,23.7\n"+
+"1989-12-05T05:30:00Z,32.27,-75.42,230,24.1\n"+
+"1989-12-05T05:40:00Z,32.27,-75.42,225,23.5\n"+
+"1989-12-05T05:50:00Z,32.27,-75.42,233,23.3\n"+
+"1992-04-28T23:00:00Z,32.27,-75.42,335,29.4\n"+
+"1992-04-28T23:10:00Z,32.27,-75.42,335,30.5\n"+
+"1992-04-28T23:20:00Z,32.27,-75.42,330,32.3\n"+
+"1992-04-28T23:30:00Z,32.27,-75.42,331,33.2\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //test seam of two datasets   with stride
@@ -1382,12 +1496,12 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_direction, wind_speed\n" +
-"UTC, degrees_north, degrees_east, degrees_true, m s-1\n" +
-"1989-12-05T05:20:00Z, 32.27, -75.42, 232, 23.7\n" +
-"1989-12-05T05:40:00Z, 32.27, -75.42, 225, 23.5\n" +
-"1992-04-28T23:00:00Z, 32.27, -75.42, 335, 29.4\n" +
-"1992-04-28T23:20:00Z, 32.27, -75.42, 330, 32.3\n";
+"time,latitude,longitude,wind_direction,wind_speed\n"+
+"UTC,degrees_north,degrees_east,degrees_true,m s-1\n"+
+"1989-12-05T05:20:00Z,32.27,-75.42,232,23.7\n"+
+"1989-12-05T05:40:00Z,32.27,-75.42,225,23.5\n"+
+"1992-04-28T23:00:00Z,32.27,-75.42,335,29.4\n"+
+"1992-04-28T23:20:00Z,32.27,-75.42,330,32.3\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
         // */
 
@@ -1399,15 +1513,11 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
         results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
         //String2.log(results);
         expected = 
-"time, latitude, longitude, wind_direction, wind_speed\n" +
-"UTC, degrees_north, degrees_east, degrees_true, m s-1\n" +
-"2007-12-31T22:40:00Z, 32.27, -75.42, 36, 4.0\n" +
-"2007-12-31T22:50:00Z, 32.27, -75.42, 37, 4.3\n";
+"time,latitude,longitude,wind_direction,wind_speed\n"+
+"UTC,degrees_north,degrees_east,degrees_true,m s-1\n"+
+"2007-12-31T22:40:00Z,32.27,-75.42,36,4.0\n"+
+"2007-12-31T22:50:00Z,32.27,-75.42,37,4.3\n";
         Test.ensureEqual(results, expected, "results=\n" + results);
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error."); 
-        }
 
         String2.log("\n*** EDDGridAggregateExistingDimension.test finished.");
 
@@ -1419,7 +1529,6 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
      */
     public static void testRtofs() throws Throwable {
         String2.log("\n****************** EDDGridAggregateExistingDimension.testRtofs() *****************\n");
-        try {
         testVerboseOn();
         String tName, results, expected;
         EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "RTOFSWOC1");
@@ -1433,29 +1542,165 @@ today + " " + EDStatic.erddapUrl + //in tests, always non-https url
 "2009-07-01T00:00:00Z\n" +
 "2009-07-02T00:00:00Z\n";
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
+    }
+
+    /**
+     * This tests the /files/ "files" system.
+     * This requires nceiOisst2Agg in the localhost ERDDAP.
+     */
+    public static void testFiles() throws Throwable {
+
+        String2.log("\n*** EDDGridSideBySide.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
+
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"nceiOisst2Agg_nc3/,NaN,NaN,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/");
+            Test.ensureTrue(results.indexOf("nceiOisst2Agg&#x5f;nc3&#x2f;") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("nceiOisst2Agg_nc3/")      > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/nceiOisst2Agg_nc3/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"avhrr-only-v2.20170330.nc,1493422520000,8305496,\n" +
+"avhrr-only-v2.20170331.nc,1493422536000,8305496,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //download a file in root
+ 
+            //download a file in subdir
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/nceiOisst2Agg_nc3/avhrr-only-v2.20170331.nc").substring(0, 50));
+            expected = 
+"CDF[1][0][0][0][0][0][0][0][10]\n" +
+"[0][0][0][4][0][0][0][4]time[0][0][0][1][0][0][0][4]zlev[0][0][0][1][0][0][0][3]lat[0][0][0][end]"; 
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/nceiOisst2Agg/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/nceiOisst2Agg/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existant subdir
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/nceiOisst2Agg/subdir/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/nceiOisst2Agg/subdir/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+ 
+
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error."); 
-        }        
+            throw new Exception("Unexpected error. This test requires nceiOisst2Agg in the localhost ERDDAP.", t); 
+        } 
     }
 
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ EDDGridAggregateExistingDimensione.test(" + interactive + ") test=";
 
-        String2.log("\n****************** EDDGridAggregateExistingDimension.test() *****************\n");
-/* for releases, this line should have open/close comment */       
-        testGenerateDatasetsXml();
-        testBasic();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        //not usually run
-        //testRtofs();  //worked but needs to be updated; datasets are removed after ~1 month
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testBasic();  //slow!
+                    if (test ==  2) testFiles();  //slow!
+
+                    //not usually run
+                    //if (test == 1000) testRtofs();  //worked but needs to be updated; datasets are removed after ~1 month
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
-
-
 
 }

@@ -5,8 +5,10 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.CharArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.Calendar2;
+import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
@@ -89,12 +91,11 @@ public class TableWriterDodsAscii extends TableWriter {
         if (firstTime) {
 
             //write the dds    //DAP 2.0, 7.2.3
-            OutputStream outputStream = outputStreamSource.outputStream("");
+            OutputStream outputStream = outputStreamSource.outputStream(String2.ISO_8859_1);
             table.saveAsDDS(outputStream, sequenceName);  
 
             //see OpendapHelper.EOL for comments
-            writer = new BufferedWriter(new OutputStreamWriter(outputStream,
-                String2.ISO_8859_1)); //DAP 2.0 section 3.2.3 says US-ASCII (7bit), so might as well go for compatible common 8bit
+            writer = String2.getBufferedOutputStreamWriter88591(outputStream); //DAP 2.0 section 3.2.3 says US-ASCII (7bit), so might as well go for compatible common 8bit
             writer.write("---------------------------------------------" + 
                 OpendapHelper.EOL); //this exactly mimics the example
 
@@ -102,8 +103,8 @@ public class TableWriterDodsAscii extends TableWriter {
             isCharOrString = new boolean[nColumns];
             for (int col = 0; col < nColumns; col++) {
                 isCharOrString[col] = 
-                    pas[col].elementClass() == char.class ||
-                    pas[col].elementClass() == String.class;
+                    pas[col].elementType() == PAType.CHAR ||
+                    pas[col].elementType() == PAType.STRING;
                 writer.write(sequenceName + "." + table.getColumnName(col) +
                     (col == nColumns - 1? OpendapHelper.EOL : ", "));
             }
@@ -113,27 +114,27 @@ public class TableWriterDodsAscii extends TableWriter {
         //leave missing values as destinationMissingValues or destinationFillValues
 
         //avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
+        boolean flushAfterward = totalNRows == 0; //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
-        EDStatic.ensureArraySizeOkay(totalNRows, "DODS Ascii sequence");
+        Math2.ensureArraySizeOkay(totalNRows, "DODS Ascii sequence");
 
         //write the data  //DAP 2.0, 7.3.2.3
         //write elements of the sequence, in dds order
         for (int row = 0; row < nRows; row++) {
             for (int col = 0; col < nColumns; col++) {
-                String s = pas[col].getString(row);
+                String s = pas[col].getRawestString(row);  //so Int.MAX_VALUE appears as the value and Double.NaN appears as NaN
                 if (isCharOrString[col]) {
                     //see DODS Appendix A, quoted-string, with \\ and \"
-                    s = String2.replaceAll(s, "\\", "\\\\");
-                    s = "\"" + String2.replaceAll(s, "\"", "\\\"") + "\"";
+                    //2020-03-26 was just those 2 encoded chars. Now, I assume it implies json-like encoding of special chars.
+                    s = String2.toJson(s);
                 }
                 writer.write(s);
                 writer.write(col == nColumns - 1? OpendapHelper.EOL : ", ");
             }
         }
 
-        //so data gets to user right away
-        writer.flush(); 
-
+        if (flushAfterward)
+            writer.flush(); 
     }
 
     

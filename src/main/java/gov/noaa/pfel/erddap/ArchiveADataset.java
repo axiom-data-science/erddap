@@ -319,8 +319,8 @@ public class ArchiveADataset {
                 if (bagitMode) {
                     manifestFullFileName = archiveDir + "manifest-" + 
                         digestExtension1 + ".txt"; //md5 or sha256
-                    manifestFileWriter = new BufferedWriter(new OutputStreamWriter(
-                        new BufferedOutputStream(new FileOutputStream(manifestFullFileName)), String2.UTF_8));            
+                    manifestFileWriter = String2.getBufferedOutputStreamWriterUtf8(
+                        new FileOutputStream(manifestFullFileName));            
 
                     aadSettings = 
                         "ArchiveADataset_container_type: " + mode + "\n" +
@@ -391,6 +391,7 @@ public class ArchiveADataset {
                         try {
                             String fullName = archiveDataDir + fileName + ".nc";
                             eddGrid.saveAsNc(NetcdfFileWriter.Version.netcdf3,
+                                "ArchiveADataset", //pseudo ipAddress
                                 baseRequestUrl + ".nc", query.toString(),                        
                                 fullName, true, 0); //keepUnusedAxes, lonAdjust
                             nDataFilesCreated++;
@@ -518,8 +519,8 @@ public class ArchiveADataset {
                 if (bagitMode) {
                     manifestFullFileName = archiveDir + "manifest-" + 
                         digestExtension1 + ".txt"; //md5 or sha256
-                    manifestFileWriter = new BufferedWriter(new OutputStreamWriter(
-                        new BufferedOutputStream(new FileOutputStream(manifestFullFileName)), String2.UTF_8));            
+                    manifestFileWriter = String2.getBufferedOutputStreamWriterUtf8(
+                        new FileOutputStream(manifestFullFileName));            
 
                     aadSettings = 
                         "ArchiveADataset_container_type: " + mode + "\n" +
@@ -677,8 +678,8 @@ public class ArchiveADataset {
                 manifestFileWriter = null;
 
                 //create required bagit.txt
-                Writer tw = new BufferedWriter(new OutputStreamWriter(
-                    new BufferedOutputStream(new FileOutputStream(archiveDir + "bagit.txt")), String2.UTF_8));            
+                Writer tw = String2.getBufferedOutputStreamWriterUtf8(
+                    new FileOutputStream(archiveDir + "bagit.txt"));            
                 try {
                     tw.write(
                         "BagIt-Version: 0.97\n" +
@@ -688,8 +689,8 @@ public class ArchiveADataset {
                 }
 
                 //create optional bag-info.txt
-                tw = new BufferedWriter(new OutputStreamWriter(
-                    new BufferedOutputStream(new FileOutputStream(archiveDir + "bag-info.txt")), String2.UTF_8));            
+                tw = String2.getBufferedOutputStreamWriterUtf8(
+                    new FileOutputStream(archiveDir + "bag-info.txt"));            
                 try {
                     tw.write(
                         "Contact-Email: " + contactEmail + "\n" +
@@ -700,8 +701,8 @@ public class ArchiveADataset {
                 }
 
                 //create optional tagmanifest-md5.txt
-                tw = new BufferedWriter(new OutputStreamWriter(
-                    new BufferedOutputStream(new FileOutputStream(archiveDir + "tagmanifest-" + digestExtension1 + ".txt")), String2.UTF_8));            
+                tw = String2.getBufferedOutputStreamWriterUtf8(
+                    new FileOutputStream(archiveDir + "tagmanifest-" + digestExtension1 + ".txt"));            
                 try {
                     tw.write(
                         String2.fileDigest(digestType, archiveDir + "bag-info.txt")                + 
@@ -1549,23 +1550,55 @@ public class ArchiveADataset {
         //String2.pressEnterToContinue("\n"); 
     }
 
-    /** This tests this class. */
-    public static void test() throws Throwable {
-        String2.log("*** ArchiveADataset.test()");
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 9;
+        String msg = "\n^^^ ArchiveADataset.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testOriginalNcCF();
-        testOriginalTrajectoryProfile();
-        testOriginalGridAll();
-        testOriginalGridSubset(); 
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        testBagItNcCF();
-        testBagItTrajectoryProfile();
-        testBagItGridAll();
-        testBagItGridSubset(); 
-        testBagItNcCFMA();  //w NCEI preferences
-        testBagItGridSubset2();  //w NCEI preferences
-        /* */
+                } else {
+                    if (test ==  0 && doSlowTestsToo) testOriginalNcCF();
+                    if (test ==  1 && doSlowTestsToo) testOriginalTrajectoryProfile();
+                    if (test ==  2 && doSlowTestsToo) testOriginalGridAll();
+                    if (test ==  3 && doSlowTestsToo) testOriginalGridSubset(); 
+
+                    if (test ==  4 && doSlowTestsToo) testBagItNcCF();
+                    if (test ==  5 && doSlowTestsToo) testBagItTrajectoryProfile();
+                    if (test ==  6 && doSlowTestsToo) testBagItGridAll();
+                    if (test ==  7 && doSlowTestsToo) testBagItGridSubset(); 
+                    if (test ==  8 && doSlowTestsToo) testBagItNcCFMA();       //w NCEI preferences
+                    if (test ==  9 && doSlowTestsToo) testBagItGridSubset2();  //w NCEI preferences
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

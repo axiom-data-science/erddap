@@ -75,7 +75,7 @@ public class EDDTableFromAllDatasets extends EDDTable{
         sosOfferingPrefix = null;
         defaultDataQuery = null;
         defaultGraphQuery = "maxLongitude,maxLatitude";
-        publicSourceUrl = EDStatic.erddapUrl(null); //the public, not-logged-in URL 
+        publicSourceUrl = EDStatic.preferredErddapUrl; 
         setReloadEveryNMinutes(1000000000);  //i.e. never
         localSourceUrl = null;
 
@@ -97,13 +97,13 @@ public class EDDTableFromAllDatasets extends EDDTable{
             Attributes atts = table.columnAttributes(dv);            
             PrimitiveArray pa = table.getColumn(dv);
             if (Calendar2.SECONDS_SINCE_1970.equals(atts.getString("units"))) {
-                 dataVariables[dv] = new EDVTimeStamp(colName, colName, 
+                 dataVariables[dv] = new EDVTimeStamp(datasetID, colName, colName, 
                     atts, null, //sourceAtts, addAtts
-                    pa.elementClassString()); //this constructor gets source / sets destination actual_range
+                    pa.elementTypeString()); //this constructor gets source / sets destination actual_range
             } else {
-                dataVariables[dv] = new EDV(colName, colName, 
+                dataVariables[dv] = new EDV(datasetID, colName, colName, 
                     atts, null, //sourceAtts, addAtts
-                    pa.elementClassString()); 
+                    pa.elementTypeString()); 
                 //actual_range of vars in this table always NaN,NaN
                 dataVariables[dv].setActualRangeFromDestinationMinMax(); 
             }
@@ -118,11 +118,12 @@ public class EDDTableFromAllDatasets extends EDDTable{
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) 
             String2.log(
                 (debugMode? "\n" + toString() : "") +
                 "\n*** EDDTableFromAllDatasets constructor finished. TIME=" + 
-                (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+                cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
     }
 
     /** 
@@ -480,15 +481,15 @@ public class EDDTableFromAllDatasets extends EDDTable{
             EDV tedv;
             tedv = isGrid &&  eddGrid.lonIndex() >= 0 ?  eddGrid.axisVariables[ eddGrid.lonIndex()] :
                   !isGrid && eddTable.lonIndex() >= 0 ? eddTable.dataVariables[eddTable.lonIndex()] : null;
-            minLongitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMin());
-            maxLongitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMax());
+            minLongitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMinDouble());
+            maxLongitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMaxDouble());
             longitudeSpacing.add(graphsAccessible && isGrid && tedv != null ? ((EDVGridAxis)tedv).averageSpacing() : Double.NaN);
 
             //lat
             tedv = isGrid &&  eddGrid.latIndex() >= 0 ?  eddGrid.axisVariables[ eddGrid.latIndex()] :
                   !isGrid && eddTable.latIndex() >= 0 ? eddTable.dataVariables[eddTable.latIndex()] : null;
-            minLatitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMin());
-            maxLatitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMax());
+            minLatitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMinDouble());
+            maxLatitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMaxDouble());
             latitudeSpacing.add(graphsAccessible && isGrid && tedv != null ? ((EDVGridAxis)tedv).averageSpacing() : Double.NaN);
 
             //alt or depth
@@ -498,19 +499,19 @@ public class EDDTableFromAllDatasets extends EDDTable{
                 //depth?
                 tedv = isGrid &&  eddGrid.depthIndex() >= 0 ?  eddGrid.axisVariables[ eddGrid.depthIndex()] :
                       !isGrid && eddTable.depthIndex() >= 0 ? eddTable.dataVariables[eddTable.depthIndex()] : null;
-                minAltitude.add(!graphsAccessible || tedv == null? Double.NaN : -tedv.destinationMin());
-                maxAltitude.add(!graphsAccessible || tedv == null? Double.NaN : -tedv.destinationMax());
+                minAltitude.add(!graphsAccessible || tedv == null? Double.NaN : -tedv.destinationMinDouble());
+                maxAltitude.add(!graphsAccessible || tedv == null? Double.NaN : -tedv.destinationMaxDouble());
             } else {
                 //alt
-                minAltitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMin());
-                maxAltitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMax());
+                minAltitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMinDouble());
+                maxAltitude.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMaxDouble());
             }
 
             //time
             tedv = isGrid &&  eddGrid.timeIndex() >= 0 ?  eddGrid.axisVariables[ eddGrid.timeIndex()] :
                   !isGrid && eddTable.timeIndex() >= 0 ? eddTable.dataVariables[eddTable.timeIndex()] : null;
-            minTime.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMin());
-            double tMaxTime = !graphsAccessible || tedv == null? Double.NaN : tedv.destinationMax();
+            minTime.add(!graphsAccessible || tedv == null? Double.NaN : tedv.destinationMinDouble());
+            double tMaxTime = !graphsAccessible || tedv == null? Double.NaN : tedv.destinationMaxDouble();
             maxTime.add(tMaxTime);
             timeSpacing.add(graphsAccessible && isGrid && tedv != null ? ((EDVGridAxis)tedv).averageSpacing() : Double.NaN);
 
@@ -546,7 +547,7 @@ public class EDDTableFromAllDatasets extends EDDTable{
                 tErddapUrl + "/wcs/" + tId + "/" + EDDGrid.wcsServer : "");
             wmsCol.add(graphsAccessible && edd.accessibleViaWMS().length() == 0? //graphs
                 tErddapUrl + "/wms/" + tId + "/" + EDD.WMS_SERVER : "");
-            filesCol.add(isAccessible && edd.accessibleViaFilesDir().length() > 0? 
+            filesCol.add(isAccessible && edd.accessibleViaFiles? 
                 tErddapUrl + "/files/" + tId + "/" : "");
             fgdcCol.add(graphsAccessible && edd.accessibleViaFGDC().length() == 0? 
                 tErddapUrl + "/" + EDStatic.fgdcXmlDirectory     + 
@@ -599,17 +600,47 @@ public class EDDTableFromAllDatasets extends EDDTable{
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n****************** EDDTableFromAllDatasets.test() *****************\n");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDTableFromAllDatasets.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        //tests usually run
-        testBasic();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testBasic();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
+
 
 
 }

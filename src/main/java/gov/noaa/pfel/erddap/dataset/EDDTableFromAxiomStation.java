@@ -249,6 +249,8 @@ class EDDTableFromAxiomStationUtils {
         tGlobalAttributes.set("geospatial_lat_min", station.latitude);
         tGlobalAttributes.set("geospatial_lat_max", station.latitude);
 
+        ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
+
         // Time
         Attributes tatts = new Attributes();
         tatts.set("units", "seconds since 1970-01-01T00:00:00");
@@ -270,8 +272,10 @@ class EDDTableFromAxiomStationUtils {
         staatts.set("ioos_category", "Identifier");
         staatts.set("cf_role", "timeseries_id");
         tDataVariables.add(new Object[] { "station", "station", staatts, "String" });
+        // From ERDDAP: For cdm_data_type=TimeSeries, the variable with cf_role=timeseries_id
+        // must be in the cdm_timeseries_variables list.
+        cdm_timeseries_variables.add("station");
         // Devices
-        ArrayList<String> cdm_timeseries_variables = new ArrayList<>();
         Attributes dvaatts;
         ArrayList<Double> depths = new ArrayList<>();
         for (OikosDeviceV1 d : d_list) {
@@ -428,6 +432,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
         String tSosOfferingPrefix = null;
+        String tAddVariablesWhere = null;
 
         ArrayList<Object[]> tDataVariables = new ArrayList<>();
 
@@ -464,6 +469,9 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
             } else if (localTags.equals("<sosOfferingPrefix>")) {
             } else if (localTags.equals("</sosOfferingPrefix>")) {
                 tSosOfferingPrefix = content;
+            } else if (localTags.equals( "<addVariablesWhere>")) {
+            } else if (localTags.equals("</addVariablesWhere>")) {
+                tAddVariablesWhere = content;
             } else {
                 xmlReader.unexpectedTagException();
             }
@@ -510,6 +518,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 null, null, null,
                 tSosOfferingPrefix,
                 tDefaultDataQuery, tDefaultGraphQuery,
+                tAddVariablesWhere,
                 tGlobalAttributes,
                 ttDataVariables,
                 tReloadEveryNMinutes, tLocalSourceUrl,
@@ -523,6 +532,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                                     StringArray tOnChange, String tFgdcFile, String tIso19115File,
                                     String tSosOfferingPrefix,
                                     String tDefaultDataQuery, String tDefaultGraphQuery,
+                                    String tAddVariablesWhere,
                                     Attributes tAddGlobalAttributes,
                                     Object[][] tDataVariables,
                                     int tReloadEveryNMinutes, String tLocalSourceUrl,
@@ -534,6 +544,7 @@ public class EDDTableFromAxiomStation extends EDDTableFromAsciiService {
                 tOnChange, tFgdcFile, tIso19115File,
                 tSosOfferingPrefix,
                 tDefaultDataQuery, tDefaultGraphQuery,
+                tAddVariablesWhere,
                 tAddGlobalAttributes,
                 tDataVariables,
                 tReloadEveryNMinutes, tLocalSourceUrl,

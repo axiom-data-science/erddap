@@ -40,6 +40,14 @@ import java.util.Enumeration;
  */
 public class EDDTableCopyPost extends EDDTableCopy { 
 
+    /**
+     * This returns the default value for standardizeWhat for this subclass.
+     * See Attributes.unpackVariable for options.
+     * The default was chosen to mimic the subclass' behavior from
+     * before support for standardizeWhat options was added.
+     */
+    public int defaultStandardizeWhat() {return DEFAULT_STANDARDIZEWHAT; } 
+    public static int DEFAULT_STANDARDIZEWHAT = 0;
 
     //inactive: protected String variableDescriptionTable = null;
 
@@ -73,6 +81,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         boolean tFileTableInMemory = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -116,10 +125,12 @@ public class EDDTableCopyPost extends EDDTableCopy {
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
             else if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -152,7 +163,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
         return new EDDTableCopyPost(tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, 
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
+            tReloadEveryNMinutes, 
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
             tSourceEdd, tFileTableInMemory);
     }
@@ -166,7 +178,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
     public EDDTableCopyPost(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         int tReloadEveryNMinutes,
         String tExtractDestinationNames, String tOrderExtractBy, 
         Boolean tSourceNeedsExpandedFP_EQ,
@@ -174,7 +186,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
         super(tDatasetID, tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
             tReloadEveryNMinutes,
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ, 
             tSourceEdd, tFileTableInMemory);
@@ -199,7 +211,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames,
-        boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory) 
+        boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, int tStandardizeWhat) 
         throws Throwable {
 
         return new EDDTableFromPostNcFiles(tDatasetID, 
@@ -207,7 +219,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix, 
             "", "", //tDefaultDataQuery, tDefaultGraphQuery
             tAddGlobalAttributes, 
-            tDataVariables, tReloadEveryNMinutes, 0, //updateEveryNMillis
+            tDataVariables, tReloadEveryNMinutes, tStandardizeWhat, 
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
             tCharset, tColumnNamesRow, tFirstDataRow,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, 
@@ -864,7 +876,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
                         fastSwimmerResultsTagPa.add(String2.left(tag, 23));
                         fastSwimmerResultsErrorPa.add( 
                             " FS!" +
-                            " at " + Calendar2.epochSecondsToIsoStringT(time1) +
+                            " at " + Calendar2.epochSecondsToIsoStringTZ(time1) +
                             " deg="       + String2.left("" + (float)dist, 13) + 
                             " days="      + String2.left("" + (float)days, 13) +
                             " deg/day="   + (float)(dist/days)); 
@@ -925,7 +937,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
                     fastSwimmerResultsTagPa.add(String2.left(tag, 23));
                     fastSwimmerResultsErrorPa.add( 
                         "YFS!" +
-                        " at " + Calendar2.epochSecondsToIsoStringT(youngTime1) +
+                        " at " + Calendar2.epochSecondsToIsoStringTZ(youngTime1) +
                         " deg=" + String2.left("" + (float)youngLatDegrees, 13) +
                         " days=" + String2.left("" + (float)youngDays, 13) +
                         " deg/day=" + (float)(youngLatDegrees/youngDays));
@@ -1144,11 +1156,12 @@ public class EDDTableCopyPost extends EDDTableCopy {
                             String2.right("" + elevation, 6)         + " at lon=" +
                             String2.right("" + (float)tLon, 10) + " lat=" +
                             String2.right("" + (float)tLat, 10) + " time=" +
-                            Calendar2.epochSecondsToIsoStringT(time.getDouble(row)) + "Z";
+                            Calendar2.epochSecondsToIsoStringTZ(time.getDouble(row));
                         String2.log(msg);
                         results.append(msg + "\n");
                         //break;
                     }
+                    gda.releaseResources();
                 }
                 if (nTimesUpstream > 1 || nTimesDownstream > 1) {
                     nOdd++;
@@ -1227,8 +1240,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
                     double surgTime = surgStats[PrimitiveArray.STATS_MAX];
                     if (minTime < surgTime) {
                         nBefore++;
-                        error = "detectionTime=" + Calendar2.epochSecondsToIsoStringT(minTime) + 
-                            " before surgeryTime=" + Calendar2.epochSecondsToIsoStringT(surgTime);
+                        error = "detectionTime=" + Calendar2.epochSecondsToIsoStringTZ(minTime) + 
+                          " before surgeryTime=" + Calendar2.epochSecondsToIsoStringTZ(surgTime);
                     }
                 }
 
@@ -1345,7 +1358,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
         //find activation_time is after surgery_time
         TableWriterAll twa = new TableWriterAll(tedd, null, 
-            "c:/u00/cwatch/erddap2/cache/cPostSurg3/", "findSurgeryBeforeActivation");
+            "c:/data/_erddapBPD/cache/cPostSurg3/", "findSurgeryBeforeActivation");
         tedd.getDataForDapQuery(loggedInAs, "requestUrl", 
             "unique_tag_id,activation_time,surgery_time,PI", twa);
         Table table = twa.cumulativeTable();
@@ -1373,8 +1386,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
             
             if (error == null && actTime > surgTime) {
                 error = "activation_timestamp=" +
-                    Calendar2.epochSecondsToIsoStringT(actTime) + " > surgery_timestamp=" +
-                    Calendar2.epochSecondsToIsoStringT(surgTime);
+                    Calendar2.epochSecondsToIsoStringTZ(actTime) + " > surgery_timestamp=" +
+                    Calendar2.epochSecondsToIsoStringTZ(surgTime);
                 nAGS++;
             }
 
@@ -1426,7 +1439,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
 
         //read from file
         Table table = new Table();
-        table.readFlatNc(dir + name, null, 1);
+        table.readFlatNc(dir + name, null, 1); //standardizeWhat=1
         Test.ensureEqual(table.getColumnName(0), "unique_tag_id", "");
         StringArray tags = (StringArray)table.getColumn(0);
         tags.sort();
@@ -1504,7 +1517,7 @@ public class EDDTableCopyPost extends EDDTableCopy {
 "\n\n****** Issue #24: Incorrect Absolute Time\n" +
 "\n" +
 "Unless great care is taken at every step of processing,\n" +
-"time values can easily be wrong by 1 hour (daylight savings),\n" +
+"time values can easily be wrong by 1 hour (daylight saving time),\n" +
 "or 7 or 8 hours (time zone issues).\n" +
 "This test checks that the time values returned by ERDDAP\n" +
 "match the official time values provided by Jose in an email\n" +
@@ -1832,8 +1845,8 @@ public class EDDTableCopyPost extends EDDTableCopy {
                 } 
 
                 if (error == null && stime != dtime) {
-                    String stimes = Calendar2.epochSecondsToIsoStringT(stime);
-                    String dtimes = Calendar2.epochSecondsToIsoStringT(dtime);
+                    String stimes = Calendar2.epochSecondsToIsoStringTZ(stime);
+                    String dtimes = Calendar2.epochSecondsToIsoStringTZ(dtime);
                     if (dtime < stime) {
                         nAfter++;
                         error = "Surgery release_time=" + stimes + 

@@ -11,6 +11,8 @@ import com.cohort.array.DoubleArray;
 import com.cohort.array.FloatArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.NDimensionalIndex;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -23,6 +25,7 @@ import com.cohort.util.Test;
 
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.SimpleXMLReader;
+import gov.noaa.pfel.coastwatch.util.SSR;
 
 import gov.noaa.pfel.erddap.Erddap;
 import gov.noaa.pfel.erddap.GenerateDatasetsXml;
@@ -72,6 +75,7 @@ public class EDDGridFromEDDTable extends EDDGrid {
         String tAccessibleTo = null;
         String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
         String tIso19115File = null;
@@ -106,7 +110,7 @@ public class EDDGridFromEDDTable extends EDDGrid {
             if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -141,6 +145,8 @@ public class EDDGridFromEDDTable extends EDDGrid {
             else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<accessibleViaWMS>")) {}
             else if (localTags.equals("</accessibleViaWMS>")) tAccessibleViaWMS = String2.parseBoolean(content);
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content);
             else if (localTags.equals( "<reloadEveryNMinutes>")) {}
             else if (localTags.equals("</reloadEveryNMinutes>")) tReloadEveryNMinutes = String2.parseInt(content); 
             else if (localTags.equals( "<updateEveryNMillis>")) {}
@@ -175,7 +181,8 @@ public class EDDGridFromEDDTable extends EDDGrid {
             ttDataVariables[i] = (Object[])tDataVariables.get(i);
 
         return new EDDGridFromEDDTable(tDatasetID, 
-            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
+            tAccessibleTo, tGraphsAccessibleTo, 
+            tAccessibleViaWMS, tAccessibleViaFiles,
             tOnChange, tFgdcFile, tIso19115File,
             tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
             ttAxisVariables,
@@ -265,7 +272,8 @@ public class EDDGridFromEDDTable extends EDDGrid {
      * @throws Throwable if trouble
      */
     public EDDGridFromEDDTable(String tDatasetID, 
-        String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS, 
+        String tAccessibleTo, String tGraphsAccessibleTo, 
+        boolean tAccessibleViaWMS, boolean tAccessibleViaFiles,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery,
         Attributes tAddGlobalAttributes,
@@ -289,6 +297,7 @@ public class EDDGridFromEDDTable extends EDDGrid {
         if (!tAccessibleViaWMS) 
             accessibleViaWMS = String2.canonical(
                 MessageFormat.format(EDStatic.noXxx, "WMS"));
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles && tEDDTable.accessibleViaFiles;
         onChange = tOnChange;
         fgdcFile = tFgdcFile;
         iso19115File = tIso19115File;
@@ -364,7 +373,7 @@ public class EDDGridFromEDDTable extends EDDGrid {
                         "Invalid " + avsss + ": start=" + tStart + ", stride=" + tStride + 
                             ", stop=" + tStop);
                 int n = Math2.roundToInt((tStop - tStart)/(double)tStride) + 3; //2 extra
-                tSourceValues = PrimitiveArray.factory(sss.elementClass(), n, false);
+                tSourceValues = PrimitiveArray.factory(sss.elementType(), n, false);
                 for (int i = 0; i < n; i++) {
                     double d = tStart + i * tStride; //more accurate than repeatedly add
                     if (d > tStop)
@@ -415,12 +424,12 @@ public class EDDGridFromEDDTable extends EDDGrid {
                 throw new RuntimeException(errorInMethod +
                     "No EDDGrid dataVariable may have destinationName=" + EDV.TIME_NAME);
             else if (EDVTime.hasTimeUnits(tSourceAtts, tAddAtts)) 
-                dataVariables[dv] = new EDVTimeStamp(tSourceName, tDestName,
+                dataVariables[dv] = new EDVTimeStamp(datasetID, tSourceName, tDestName,
                     tSourceAtts, tAddAtts, dvSourceDataType);  
             else dataVariables[dv] = new EDV(
-                tSourceName, tDestName, 
+                datasetID, tSourceName, tDestName, 
                 tSourceAtts, tAddAtts, dvSourceDataType, 
-                Double.NaN, Double.NaN);  //hard to get min and max
+                PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));  //hard to get min and max
             dataVariables[dv].extractAndSetActualRange();
         }
 
@@ -432,10 +441,11 @@ public class EDDGridFromEDDTable extends EDDGrid {
             tryToSubscribeToChildFromErddap(eddTable);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridFromEDDTable " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -561,7 +571,7 @@ public class EDDGridFromEDDTable extends EDDGrid {
             EDV edv = tDataVariables[dv];
             double smv = edv.safeDestinationMissingValue();
             results[nav + dv] = PrimitiveArray.factory(
-                edv.sourceDataTypeClass(), willKeepNRows, 
+                edv.sourceDataPAType(), willKeepNRows, 
                 Double.isNaN(smv)? "" : "" + smv); //filled with missing values
         }
 
@@ -700,25 +710,25 @@ public class EDDGridFromEDDTable extends EDDGrid {
                 System.arraycopy(axisIndex, 0, oAxisIndex, 0, nav);
                 for (int av = 0; av < nav; av++) {
 
-                    double avDouble = twaPA[av].getDouble(0);                
-                    if (debugMode) String2.log("row=" + row + " av=" + av + " value=" + avDouble);
+                    PAOne twaPAOne = new PAOne(twaPA[av], 0);                
+                    if (debugMode) String2.log("row=" + row + " av=" + av + " value=" + twaPAOne);
                     int navPA = results[av].size();
                     int insertAt;
                     int precision = avPrecision[av];
                     int oIndex = oAxisIndex[av];
                     if (precision == fullPrecision) {
-                        if (results[av].getDouble(oIndex) == avDouble) //same as last row?
+                        if (twaPAOne.equals(results[av], oIndex)) //same as last row?
                             insertAt = oIndex;
                         else
-                            insertAt = results[av].binarySearch(0, navPA - 1, avDouble);
+                            insertAt = results[av].binarySearch(0, navPA - 1, twaPAOne);
                     } else {
-                        if (Math2.almostEqual(precision, results[av].getDouble(oIndex), avDouble)) {
+                        if (twaPAOne.almostEqual(precision, new PAOne(results[av], oIndex))) {
                             insertAt = oIndex;
                         } else {
-                            insertAt = results[av].binaryFindFirstGAE(0, navPA - 1, avDouble,
+                            insertAt = results[av].binaryFindFirstGAE(0, navPA - 1, twaPAOne,
                                 precision);
                             if (insertAt >= navPA || //not close
-                                !Math2.almostEqual(precision, avDouble, results[av].getDouble(insertAt)))
+                                !twaPAOne.almostEqual(precision, new PAOne(results[av], insertAt)))
                                 insertAt = -1;
                         }
                     }
@@ -752,6 +762,43 @@ public class EDDGridFromEDDTable extends EDDGrid {
             " out of TableWriterAll nRows=" + nRows);
         return results;
     }
+
+    /** 
+     * This returns a fileTable 
+     * with valid files (or null if unavailable or any trouble).
+     * This is a copy of any internal data, so client can modify the contents.
+     *
+     * @param nextPath is the partial path (with trailing slash) to be appended 
+     *   onto the local fileDir (or wherever files are, even url).
+     * @return null if trouble,
+     *   or Object[3]
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
+     */
+    public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
+        //Get childDataset or localChildDataset. Work with stable local reference.
+        EDDTable tChildDataset = eddTable; //getChildDataset();
+        return tChildDataset.accessibleViaFilesFileTable(nextPath);
+    }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+     public String accessibleViaFilesGetLocal(String relativeFileName) {
+         if (!accessibleViaFiles)
+             return null;
+        //Get childDataset or localChildDataset. Work with stable local reference.
+        EDDTable tChildDataset = eddTable; //getChildDataset();
+        return tChildDataset.accessibleViaFilesGetLocal(relativeFileName);
+     }
 
     /** 
      * This creates a rough draft of a datasets.xml entry for an EDDGridFromEDDTable.
@@ -796,7 +843,7 @@ public class EDDGridFromEDDTable extends EDDGrid {
         for (int dv = 0; dv < ndv; dv++) {
             EDV sourceEdv = eddTable.dataVariables()[dv];
             String destName = sourceEdv.destinationName();
-            Class tClass = sourceEdv.destinationDataTypeClass();
+            PAType tPAType = sourceEdv.destinationDataPAType();
             Attributes sourceAtts = sourceEdv.combinedAttributes();
             Attributes destAtts = new Attributes();
             if (destName.equals(EDV.TIME_NAME) ||
@@ -806,9 +853,9 @@ public class EDDGridFromEDDTable extends EDDGrid {
                 sourceAtts.get("sample_dimension") != null) {
                 //make it an axisVariable
                 sourceAxisTable.addColumn(sourceAxisTable.nColumns(), destName,
-                    PrimitiveArray.factory(tClass, 1, false), sourceAtts);
+                    PrimitiveArray.factory(tPAType, 1, false), sourceAtts);
                 addAxisTable.addColumn(addAxisTable.nColumns(), destName,
-                    PrimitiveArray.factory(tClass, 1, false), destAtts);
+                    PrimitiveArray.factory(tPAType, 1, false), destAtts);
                 if (sourceAtts.get("cf_role") != null)
                     destAtts.set("cf_role", "null");
                 if (sourceAtts.get("instance_dimension") != null)
@@ -818,9 +865,9 @@ public class EDDGridFromEDDTable extends EDDGrid {
             } else {
                 //leave it as a dataVariable
                 sourceDataTable.addColumn(sourceDataTable.nColumns(), destName,
-                    PrimitiveArray.factory(tClass, 1, false), sourceAtts);
+                    PrimitiveArray.factory(tPAType, 1, false), sourceAtts);
                 addDataTable.addColumn(addDataTable.nColumns(), destName,
-                    makeDestPAForGDX(PrimitiveArray.factory(tClass, 1, false), sourceAtts), 
+                    makeDestPAForGDX(PrimitiveArray.factory(tPAType, 1, false), sourceAtts), 
                     destAtts);
 
                 //Don't call because presumably already good:
@@ -911,12 +958,12 @@ String expected =
 "        <att name=\"references\">Schroeder, Isaac D., Bryan A. Black, William J. Sydeman, Steven J. Bograd, Elliott L. Hazen, Jarrod A. Santora, and Brian K. Wells. &quot;The North Pacific High and wintertime pre-conditioning of California current productivity&quot;, Geophys. Res. Letters, VOL. 40, 541-546, doi:10.1002/grl.50100, 2013</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
 "        <att name=\"Southernmost_Northing\" type=\"double\">23.3</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"subsetVariables\">time, year, month</att>\n" +
 "        <att name=\"summary\">Variations in large-scale atmospheric forcing influence upwelling dynamics and ecosystem productivity in the California Current System (CCS). In this paper, we characterize interannual variability of the North Pacific High over 40 years and investigate how variation in its amplitude and position affect upwelling and biology. We develop a winter upwelling &quot;pre-conditioning&quot; index and demonstrate its utility to understanding biological processes. Variation in the winter NPH can be well described by its areal extent and maximum pressure, which in turn is predictive of winter upwelling. Our winter pre-conditioning index explained 64&#37; of the variation in biological responses (fish and seabirds). Understanding characteristics of the NPH in winter is therefore critical to predicting biological responses in the CCS.</att>\n" +
 "        <att name=\"time_coverage_end\">2014-01-16</att>\n" +
 "        <att name=\"time_coverage_start\">1967-01-16</att>\n" +
-"        <att name=\"title\">North Pacific High, 1967 - present</att>\n" +
+"        <att name=\"title\">North Pacific High, 1967 - 2014</att>\n" +
 "        <att name=\"Westernmost_Easting\" type=\"double\">201.3</att>\n" +
 "    </sourceAttributes -->\n" +
 "    <addAttributes>\n" +
@@ -956,6 +1003,7 @@ String expected =
 "        <sourceName>year</sourceName>\n" +
 "        <destinationName>year</destinationName>\n" +
 "        <!-- sourceAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"short\">32767</att>\n" +
 "            <att name=\"actual_range\" type=\"shortList\">1967 2014</att>\n" +
 "            <att name=\"ioos_category\">Time</att>\n" +
 "            <att name=\"long_name\">Year</att>\n" +
@@ -967,6 +1015,7 @@ String expected =
 "        <sourceName>month</sourceName>\n" +
 "        <destinationName>month</destinationName>\n" +
 "        <!-- sourceAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"actual_range\" type=\"byteList\">1 12</att>\n" +
 "            <att name=\"ioos_category\">Time</att>\n" +
 "            <att name=\"long_name\">Month (1 - 12)</att>\n" +
@@ -1041,26 +1090,20 @@ String expected =
 "</dataset>\n" +
 "\n\n";
 
-        try {
-            String results = generateDatasetsXml(tid, -1, null) + "\n";
-            
-            Test.ensureEqual(results, expected, "results=\n" + results);
+        String results = generateDatasetsXml(tid, -1, null) + "\n";        
+        Test.ensureEqual(results, expected, "results=\n" + results);
 
-            //int po = results.indexOf(expected2.substring(0, 40));
-            //Test.ensureEqual(results.substring(po), expected2, "results=\n" + results);
+        //int po = results.indexOf(expected2.substring(0, 40));
+        //Test.ensureEqual(results.substring(po), expected2, "results=\n" + results);
 
-            //GenerateDatasetsXml
-            String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{
-                "-verbose", "EDDGridFromEDDTable", tid, 
-                "-1"}, //default reloadEvery, 
-                false); //doIt loop?
-            Test.ensureEqual(gdxResults, expected,
-                "Unexpected results from GenerateDatasetsXml.doIt.");
+        //GenerateDatasetsXml
+        String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{
+            "-verbose", "EDDGridFromEDDTable", tid, 
+            "-1"}, //default reloadEvery, 
+            false); //doIt loop?
+        Test.ensureEqual(gdxResults, expected,
+            "Unexpected results from GenerateDatasetsXml.doIt.");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml."); 
-        }
     
     }
 
@@ -1236,7 +1279,7 @@ String expected =
 "  depth {\n" +
 "    String _CoordinateAxisType \"Height\";\n" +
 "    String _CoordinateZisPositive \"down\";\n" +
-"    Float64 _FillValue 9999.0;\n" +
+//"    Float64 _FillValue 9999.0;\n" + //2020-08-10 I removed this via addAttributes because axisVariables can't have missing values
 "    Float64 actual_range -1.8, 16.2;\n" +
 "    String axis \"Z\";\n" +
 "    String description \"Relative to Mean Sea Level (MSL)\";\n" +
@@ -1255,6 +1298,7 @@ String expected =
 "    String units \"%\";\n" +
 "  }\n" +
 "  DataQuality_flag {\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    String description \"flag for data column, 0: no problems, 1: bad data due to malfunction or fouling, 2: suspicious data, 9: missing data\";\n" +
 "    String ioos_category \"Quality\";\n" +
@@ -1272,6 +1316,7 @@ String expected =
 "    String units \"m s-1\";\n" +
 "  }\n" +
 "  Eastward_flag {\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    String description \"flag for data column, 0: no problems, 1: bad data due to malfunction or fouling, 2: suspicious data, 9: missing data\";\n" +
 "    String ioos_category \"Quality\";\n" +
@@ -1287,6 +1332,7 @@ String expected =
 "    String units \"m s-1\";\n" +
 "  }\n" +
 "  ErrorVelocity_flag {\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    String description \"flag for data column, 0: no problems, 1: bad data due to malfunction or fouling, 2: suspicious data, 9: missing data\";\n" +
 "    String ioos_category \"Quality\";\n" +
@@ -1301,6 +1347,7 @@ String expected =
 "    String units \"count\";\n" +
 "  }\n" +
 "  Intensity_flag {\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    String description \"flag for data column, 0: no problems, 1: bad data due to malfunction or fouling, 2: suspicious data, 9: missing data\";\n" +
 "    String ioos_category \"Quality\";\n" +
@@ -1318,6 +1365,7 @@ String expected =
 "    String units \"m s-1\";\n" +
 "  }\n" +
 "  Northward_flag {\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    String description \"flag for data column, 0: no problems, 1: bad data due to malfunction or fouling, 2: suspicious data, 9: missing data\";\n" +
 "    String ioos_category \"Quality\";\n" +
@@ -1334,6 +1382,7 @@ String expected =
 "    String units \"m s-1\";\n" +
 "  }\n" +
 "  Upwards_flag {\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    String description \"flag for data column, 0: no problems, 1: bad data due to malfunction or fouling, 2: suspicious data, 9: missing data\";\n" +
 "    String ioos_category \"Quality\";\n" +
@@ -1371,7 +1420,7 @@ expected=
 "    Float64 Northernmost_Northing 34.04017;\n" +
 "    String sourceUrl \"https://data.nodc.noaa.gov/thredds/catalog/nmsp/wcos/catalog.xml\";\n" +
 "    Float64 Southernmost_Northing 34.04017;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"longitude, latitude\";\n" +
 "    String summary \"The West Coast Observing System (WCOS) project provides access to temperature and currents data collected at four of the five National Marine Sanctuary sites, including Olympic Coast, Gulf of the Farallones, Monterey Bay, and Channel Islands. A semi-automated end-to-end data management system transports and transforms the data from source to archive, making the data acessible for discovery, access and analysis from multiple Internet points of entry.\n" +
 "\n" +
@@ -1537,22 +1586,164 @@ expected=
         String2.log("\n*** EDDGridFromEDDTable.testBasic finished successfully\n");
     }
 
-
     /**
-     * This tests the methods in this class.
-     *
-     * @throws Throwable if trouble
+     * This tests the /files/ "files" system.
+     * This requires testGridFromTable in the localhost ERDDAP.
      */
-    public static void test() throws Throwable {
+    public static void testFiles() throws Throwable {
 
-        String2.log("\n****************** EDDGridFromEDDTable.test() *****************\n");
-        // standard tests 
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml(); 
-        testBasic();
-        /* */
+        String2.log("\n*** EDDGridFromEDDTable.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
 
-        String2.log("\n*** EDDGridFromEDDTable.test finished.");
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromTable/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"2004/,NaN,NaN,\n" +
+"2005/,NaN,NaN,\n" +
+"2006/,NaN,NaN,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromTable/");
+            Test.ensureTrue(results.indexOf("2004&#x2f;")             > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("2004/")                  > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromTable/2005/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"BAYXXX_015ADCP015R00_20050302.nc,1337283378000,55283216,\n" +
+"BAYXXX_015ADCP015R00_20050613.nc,1337477650000,65127016,\n" +
+"BAYXXX_015ADCP015R00_20050929.nc,1337416274000,49365084,\n" +
+"BAYXXX_015ADCP015R00_20051215.nc,1337422794000,64554832,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //download a file in root
+
+            //download a file in subdir
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromTable/2005/BAYXXX_015ADCP015R00_20050613.nc").substring(0, 50));
+            expected = 
+"CDF[1][0][0][0][0][0][0][0][10]\n" +
+"[0][0][0][4][0][0][0][4]Time[0][1][22]N[0][0][0][5]Depth[0][0][0][0][0][0][19][0][0][0][8]La[end]"; 
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromTable/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testGridFromTable/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromTable/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testGridFromTable/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existant subdir
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromTable/2005/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testGridFromTable/2005/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+ 
+
+        } catch (Throwable t) {
+            throw new RuntimeException("Unexpected error. This test requires testGridFromTable in the localhost ERDDAP.", t); 
+        } 
     }
 
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ EDDGridFromEDDTable.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml(); 
+                    if (test ==  1) testBasic();
+                    if (test ==  2) testFiles();
+
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
 }

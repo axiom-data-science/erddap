@@ -9,6 +9,9 @@ import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.FloatArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.LongArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -37,11 +40,14 @@ import gov.noaa.pfel.erddap.util.EDStatic;
 import gov.noaa.pfel.erddap.util.Subscriptions;
 import gov.noaa.pfel.erddap.variable.*;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.FileWriter;
+import java.io.InputStream;
 import java.io.StringWriter;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Enumeration;
 
 /**
@@ -92,6 +98,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         String tAccessibleTo = null;
         String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         boolean tSubscribeToRemoteErddapDataset = EDStatic.subscribeToRemoteErddapDataset;
         boolean tRedirect = true;
         StringArray tOnChange = new StringArray();
@@ -133,6 +140,8 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<accessibleViaWMS>")) {}
             else if (localTags.equals("</accessibleViaWMS>")) tAccessibleViaWMS = String2.parseBoolean(content);
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals( "<subscribeToRemoteErddapDataset>")) {}
             else if (localTags.equals("</subscribeToRemoteErddapDataset>")) 
                 tSubscribeToRemoteErddapDataset = String2.parseBoolean(content);
@@ -159,7 +168,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             else xmlReader.unexpectedTagException();
         }
         return new EDDGridFromErddap(tDatasetID, 
-            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
+            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS, tAccessibleViaFiles, 
             tOnChange, tFgdcFile, tIso19115File,
             tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tLocalSourceUrl, tSubscribeToRemoteErddapDataset, tRedirect, 
@@ -187,6 +196,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
      */
     public EDDGridFromErddap(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS,
+        boolean tAccessibleViaFiles,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
@@ -225,6 +235,22 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         redirect = tRedirect;
         nThreads = tnThreads; //interpret invalid values (like -1) as EDStatic.nGridThreads
         dimensionValuesInMemory = tDimensionValuesInMemory; 
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles;
+        if (accessibleViaFiles) {
+            try {
+                //this will only work if remote ERDDAP is v2.10+
+                int po = localSourceUrl.indexOf("/griddap/");
+                Test.ensureTrue(po > 0, "localSourceUrl doesn't have /griddap/.");
+                InputStream is = SSR.getUrlBufferedInputStream(
+                    String2.replaceAll(localSourceUrl, "/griddap/", "/files/") + 
+                    "/.csv");
+                try {is.close();} catch (Exception e2) {}
+            } catch (Exception e) {
+                String2.log("accessibleViaFiles=false because remote ERDDAP dataset isn't accessible via /files/ (or is <v2.10 so no support for /files/.csv):\n" +
+                    MustBe.throwableToString(e));
+                accessibleViaFiles = false;
+            }
+        }
 
         //quickRestart
         Attributes quickRestartAttributes = null;       
@@ -237,7 +263,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             //  which is good because it allows quick loading of other datasets to continue.
             //This will fail (good) if dataset has changed significantly and
             //  quickRestart file has outdated information.
-            quickRestartAttributes = NcHelper.readAttributesFromNc(quickRestartFullFileName());
+            quickRestartAttributes = NcHelper.readAttributesFromNc3(quickRestartFullFileName());
 
             if (verbose)
                 String2.log("  using info from quickRestartFile");
@@ -290,8 +316,8 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                 if (dataType.equals("String")) {
                     tSourceAttributes.add(attName, value);
                 } else {
-                    Class tClass = PrimitiveArray.elementStringToClass(dataType);
-                    PrimitiveArray pa = PrimitiveArray.csvFactory(tClass, value);
+                    PAType tPAType = PAType.fromCohortString(dataType);
+                    PrimitiveArray pa = PrimitiveArray.csvFactory(tPAType, value);
                     tSourceAttributes.add(attName, pa);
                 }
 
@@ -346,11 +372,11 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                     throw new RuntimeException(errorInMethod +
                         "No EDDGrid dataVariable may have destinationName=" + EDV.TIME_NAME);
                 else if (EDVTime.hasTimeUnits(tSourceAttributes, tAddAttributes)) 
-                    edv = new EDVTimeStamp(varName, varName,
+                    edv = new EDVTimeStamp(datasetID, varName, varName,
                         tSourceAttributes, tAddAttributes, dataType);  
-                else edv = new EDV(varName, varName, 
+                else edv = new EDV(datasetID, varName, varName, 
                     tSourceAttributes, tAddAttributes, dataType, 
-                    Double.NaN, Double.NaN);  //hard to get min and max
+                    PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));  //hard to get min and max
                 edv.extractAndSetActualRange();
                 tDataVariables.add(edv);
    
@@ -421,7 +447,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                         axisVariables[av].sourceValues());
                 }
                 File2.makeDirectory(File2.getDirectory(quickRestartFullFileName()));
-                NcHelper.writeAttributesToNc(quickRestartFullFileName(), 
+                NcHelper.writeAttributesToNc3(quickRestartFullFileName(), 
                     quickRestartAttributes);
             } catch (Throwable t) {
                 String2.log(MustBe.throwableToString(t));
@@ -432,10 +458,11 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         tryToSubscribeToRemoteErddapDataset(subscribeToRemoteErddapDataset, localSourceUrl);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridFromErddap " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -508,7 +535,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
 
         //newSize > oldSize, get last old value (for testing below) and new values
         PrimitiveArray newValues = null;
-        if (edvga.sourceDataTypeClass() == int.class &&                  //not a perfect test
+        if (edvga.sourceDataPAType() == PAType.INT &&                  //not a perfect test
             "count".equals(edvga.sourceAttributes().getString("units"))) 
             newValues = new IntArray(oldSize - 1, newSize - 1);  //0 based
         else {
@@ -530,11 +557,11 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                 "expected=" + (newSize - oldSize) + ").");
             return false;
         }
-        if (oldValues.elementClass() != newValues.elementClass())  //they're canonical, so != works
+        if (oldValues.elementType() != newValues.elementType())  
             throw new WaitThenTryAgainException(EDStatic.waitThenTryAgain + 
                 "\n(" + msg + edvga.destinationName() + " dataType changed: " +
-                   " new=" + newValues.elementClassString() +
-                " != old=" + oldValues.elementClassString() + ")"); 
+                   " new=" + newValues.elementTypeString() +
+                " != old=" + oldValues.elementTypeString() + ")"); 
 
         //ensure last old value is unchanged 
         if (oldValues.getDouble(oldSize - 1) != newValues.getDouble(0))  //they should be exactly equal
@@ -544,22 +571,22 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
                           " != new=" + newValues.getDouble(0)); 
 
         //prepare changes to update the dataset
-        double newMin = oldValues.getDouble(0);
-        double newMax = newValues.getDouble(newValues.size() - 1);
+        PAOne newMin = new PAOne(oldValues, 0);
+        PAOne newMax = new PAOne(newValues, newValues.size() - 1);
         if (edvtsga != null) {
-            newMin = edvtsga.sourceTimeToEpochSeconds(newMin);
-            newMax = edvtsga.sourceTimeToEpochSeconds(newMax);
+            newMin = PAOne.fromDouble(edvtsga.sourceTimeToEpochSeconds(newMin.getDouble()));
+            newMax = PAOne.fromDouble(edvtsga.sourceTimeToEpochSeconds(newMax.getDouble()));
         } else if (edvga.scaleAddOffset()) {
-            newMin = newMin * edvga.scaleFactor() + edvga.addOffset();
-            newMax = newMax * edvga.scaleFactor() + edvga.addOffset();
+            newMin = PAOne.fromDouble(newMin.getDouble() * edvga.scaleFactor() + edvga.addOffset());
+            newMax = PAOne.fromDouble(newMax.getDouble() * edvga.scaleFactor() + edvga.addOffset());
         }
 
         //first, calculate newAverageSpacing (destination units, will be negative if isDescending)
-        double newAverageSpacing = (newMax - newMin) / (newSize - 1);
+        double newAverageSpacing = (newMax.getDouble() - newMin.getDouble()) / (newSize - 1);
 
         //second, test for min>max after extractScaleAddOffset, since order may have changed
-        if (newMin > newMax) { 
-            double d = newMin; newMin = newMax; newMax = d;
+        if (newMin.compareTo(newMax) > 0) { 
+            PAOne d = newMin; newMin = newMax; newMax = d;
         }
 
         //test isAscending  (having last old value is essential)
@@ -615,7 +642,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         if (edvga instanceof EDVTimeGridAxis) 
             combinedGlobalAttributes.set("time_coverage_end",   
                 Calendar2.epochSecondsToLimitedIsoStringT(
-                    edvga.combinedAttributes().getString(EDV.TIME_PRECISION), newMax, ""));
+                    edvga.combinedAttributes().getString(EDV.TIME_PRECISION), newMax.getDouble(), ""));
         edvga.clearSliderCsvValues();  //do last, to force recreation next time needed
 
         updateCount++;
@@ -664,7 +691,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
      *    If 1, this tests if sourceValues for axis-variable #1+ are same.
      * @param shareInfo if true, this ensures that the sibling's 
      *    axis and data variables are basically the same as this datasets,
-     *    and then makes the new dataset point to the this instance's data structures
+     *    and then makes the new dataset point to this instance's data structures
      *    to save memory. (AxisVariable #0 isn't duplicated.)
      *    Saving memory is important if there are 1000's of siblings in ERDDAP.
      * @return EDDGrid
@@ -690,6 +717,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
         EDDGridFromErddap newEDDGrid = new EDDGridFromErddap(
             tDatasetID, 
             String2.toSSVString(accessibleTo), "auto", false, //accessibleViaWMS
+            accessibleViaFiles, 
             shareInfo? onChange : (StringArray)onChange.clone(), 
             "", "", "", "", //fgdc, iso19115, defaultDataQuery, defaultGraphQuery,
             getReloadEveryNMinutes(), getUpdateEveryNMillis(), tLocalSourceUrl,
@@ -774,9 +802,10 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             } catch (Throwable t) {
                 EDStatic.rethrowClientAbortException(t);  //first thing in catch{}
 
-                //if too much data, rethrow t
+                //if OutOfMemoryError or too much data, rethrow t
                 String tToString = t.toString();
-                if (tToString.indexOf(Math2.memoryTooMuchData) >= 0)
+                if (t instanceof java.lang.OutOfMemoryError ||
+                    tToString.indexOf(Math2.memoryTooMuchData) >= 0)
                     throw t;
 
                 //request should be valid, so any other error is trouble with dataset
@@ -810,6 +839,73 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
     }
 
     /** 
+     * This returns a fileTable 
+     * with valid files (or null if unavailable or any trouble).
+     * This is a copy of any internal data, so client can modify the contents.
+     *
+     * @param nextPath is the partial path (with trailing slash) to be appended 
+     *   onto the local fileDir (or wherever files are, even url).
+     * @return null if trouble,
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
+     */
+    public Object[] accessibleViaFilesFileTable(String nextPath) {
+        //almost identical code in EDDGridFromFiles and EDDTableFromFiles ("grid" vs "table")
+        if (!accessibleViaFiles)
+            return null;
+        try {
+
+            //get the .csv table from remote fromErddap dataset
+            String url = String2.replaceAll(localSourceUrl, "/griddap/", "/files/") + "/" + nextPath + ".csv";
+            BufferedReader reader = SSR.getBufferedUrlReader(url);
+            Table table = new Table();
+            table.readASCII(url, reader, "", "", 0, 1, ",", 
+                null, null, null, null, false); //testColumns[], testMin[], testMax[], loadColumns[], simplify)
+            String colNames = table.getColumnNamesCSVString();
+            Test.ensureEqual(colNames, "Name,Last modified,Size,Description", "");
+            table.setColumn(1, new LongArray(table.getColumn(1)));
+            table.setColumn(2, new LongArray(table.getColumn(2)));
+
+            //separate out the subdirs
+            StringArray subdirs = new StringArray();
+            BitSet keep = new BitSet();  //all false
+            int nRows = table.nRows();
+            StringArray names = (StringArray)table.getColumn(0);
+            for (int row = 0; row < nRows; row++) {
+                String name = names.get(row);
+                if (name.endsWith("/")) {
+                    subdirs.add(name.substring(0, name.length() - 1));
+                } else {
+                    keep.set(row);
+                }
+            }
+            table.justKeep(keep);
+            return new Object[]{table, subdirs.toStringArray(), null}; //not a local dir
+
+        } catch (Exception e) {
+            String2.log(MustBe.throwableToString(e));
+            return null;
+        }
+    }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+    public String accessibleViaFilesGetLocal(String relativeFileName) {
+        //almost identical code in EDDGridFromFiles and EDDTableFromFiles ("grid" vs "table")
+        if (!accessibleViaFiles)
+             return null;
+        return String2.replaceAll(publicSourceErddapUrl, "/griddap/", "/files/") + "/" + relativeFileName;
+    }
+
+    /** 
      * This generates datasets.xml entries for all EDDGrid from a remote ERDDAP.
      * The XML can then be edited by hand (if desired) and added to the datasets.xml file.
      *
@@ -828,13 +924,14 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
 
         //make the StringBuilder to hold the results and add documentation
         StringBuilder sb = new StringBuilder();
-        sb.append(  //there is very similar text in EDDGridFromErddap
+/*        sb.append(  //there is very similar text in EDDGridFromErddap
 "<!-- Directions:\n" +
 " * The ready-to-use XML below includes information for all of the EDDGrid datasets\n" +
 "   at the remote ERDDAP " + XML.encodeAsXML(url) + "\n" +
 "   (except for etopo180 and etopo360, which are built into every ERDDAP).\n" +
 " * If you want to add all of these datasets to your ERDDAP, just paste the XML\n" +
 "   into your datasets.xml file.\n" +
+
 " * The datasetIDs listed below are not the same as the remote datasets' datasetIDs.\n" +
 "   They are generated automatically from the sourceURLs in a way that ensures that they are unique.\n" +
 " * !!!reloadEveryNMinutes is left as the default 10080=oncePerWeek on the assumption\n" +
@@ -848,7 +945,7 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
 "   If you want to alter a dataset's metadata or make other changes to a dataset,\n" +
 "   use EDDGridFromDap to access the dataset instead of EDDGridFromErddap.\n" +
 "-->\n");
-
+*/
         //get the griddap datasets in a json table
         String jsonUrl = url + "/griddap/index.json";
         String sourceInfo = SSR.getUrlResponseStringUnchanged(jsonUrl);
@@ -934,18 +1031,10 @@ public class EDDGridFromErddap extends EDDGrid implements FromErddap {
             Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
 
 String expected = 
-"<!-- Directions:\n" +
-" * The ready-to-use XML below includes information for all of the EDDGrid datasets\n";
-
-            Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
-                expected, "results=\n" + results);
-
-expected = 
 "<dataset type=\"EDDGridFromErddap\" datasetID=\"localhost_8f86_303c_35ff\" active=\"true\">\n" +
 "    <!-- SST, Blended, Global, 2002-2014, EXPERIMENTAL (5 Day Composite) -->\n" +
 "    <sourceUrl>http://localhost:8080/cwexperimental/griddap/erdBAssta5day</sourceUrl>\n" +
 "</dataset>";
-
             int po = results.indexOf(expected.substring(0, 80));
             Test.ensureEqual(results.substring(po, po + expected.length()), expected, "results=\n" + results);
 
@@ -958,29 +1047,25 @@ expected =
                 "\nTHIS TEST REQUIRES rMHchla8day TO BE ACTIVE ON THE localhost ERDDAP.");
 
             //ensure it is ready-to-use by making a dataset from it
-            try {
-                String tDatasetID = "localhost_b73a_a4a6_4f4a";
-                EDD.deleteCachedDatasetInfo(tDatasetID);
-                EDD edd = oneFromXmlFragment(null, results);    
-                String2.log(
-                    "\n!!! The first dataset will vary, depending on which are currently active!!!\n" +
-                    "title=" + edd.title() + "\n" +
-                    "datasetID=" + edd.datasetID() + "\n" +
-                    "vars=" + String2.toCSSVString(edd.dataVariableDestinationNames()));
-                Test.ensureEqual(edd.title(), 
-                    "Audio data from a local source.", "");
-                Test.ensureEqual(edd.datasetID(), tDatasetID, "");
-                Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
-                    "channel_1", "");
-            } catch (Exception e) {
-                String2.pressEnterToContinue(MustBe.throwableToString(e));
-            }
+            String tDatasetID = "localhost_b73a_a4a6_4f4a";
+            EDD.deleteCachedDatasetInfo(tDatasetID);
+            EDD edd = oneFromXmlFragment(null, results);    
+            String2.log(
+                "\n!!! The first dataset will vary, depending on which are currently active!!!\n" +
+                "title=" + edd.title() + "\n" +
+                "datasetID=" + edd.datasetID() + "\n" +
+                "vars=" + String2.toCSSVString(edd.dataVariableDestinationNames()));
+            Test.ensureEqual(edd.title(), 
+                "Audio data from a local source.", "");
+            Test.ensureEqual(edd.datasetID(), tDatasetID, "");
+            Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
+                "channel_1", "");
 
 
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml on " + EDStatic.erddapUrl + 
-                "\nThis test requires |testGridWav|erdBAssta5day|rMHchla8day in the localhost ERDDAP.\n"); //in tests, always non-https url
+            throw new RuntimeException( 
+                "Error using generateDatasetsXml on " + EDStatic.erddapUrl + 
+                "\nThis test requires |testGridWav|erdBAssta5day|rMHchla8day in the localhost ERDDAP.", t); //in tests, always non-https url
         }
 
     }
@@ -992,9 +1077,9 @@ expected =
         String name, tName, axisDapQuery, query, results, expected, expected2, error;
         int tPo;
         String today = Calendar2.getCurrentISODateTimeStringZulu().substring(0, 10);
-        String userDapQuery  = "chlorophyll[(2007-02-06)][][(29):10:(50)][(225):10:(247)]";
-        String graphDapQuery = "chlorophyll[0:10:200][][(29)][(225)]"; 
-        String mapDapQuery   = "chlorophyll[200][][(29):(50)][(225):(247)]"; //stride irrelevant 
+        String userDapQuery  = SSR.minimalPercentEncode("chlorophyll[(2007-02-06)][][(29):10:(50)][(225):10:(247)]");
+        String graphDapQuery = SSR.minimalPercentEncode("chlorophyll[0:10:200][][(29)][(225)]"); 
+        String mapDapQuery   = SSR.minimalPercentEncode("chlorophyll[200][][(29):(50)][(225):(247)]"); //stride irrelevant 
         StringArray destinationNames = new StringArray();
         IntArray constraints = new IntArray();
         String localUrl = EDStatic.erddapUrl + "/griddap/rMHchla8day"; //in tests, always non-https url
@@ -1132,7 +1217,7 @@ expected2 =
 "    String source \"satellite observation: Aqua, MODIS\";\n" +
 "    String sourceUrl \"https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/MH/chla/8day\";\n" +
 "    Float64 Southernmost_Northing -90.0;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String summary \"NOAA CoastWatch distributes chlorophyll-a concentration data from NASA's Aqua Spacecraft.  Measurements are gathered by the Moderate Resolution Imaging Spectroradiometer \\(MODIS\\) carried aboard the spacecraft.   This is Science Quality data.\";\n" +
 "    String time_coverage_end \"20.{8}T00:00:00Z\";\n" + //changes
 "    String time_coverage_start \"2002-07-08T00:00:00Z\";\n" +
@@ -1140,7 +1225,17 @@ expected2 =
 "    Float64 Westernmost_Easting 0.0;\n" +
 "  }\n" +
 "}\n";
-            try {
+            tPo = results.indexOf("history \"NASA GSFC (OBPG)");
+            Test.ensureTrue(tPo >= 0, "tPo=-1 results=" + results);
+            Test.repeatedlyTestLinesMatch(results.substring(0, tPo + 25), expected, 
+                "\nresults=\n" + results);
+
+            tPo = results.indexOf("    String infoUrl ");
+            Test.ensureTrue(tPo >= 0, "tPo=-1 results=" + results);
+            Test.repeatedlyTestLinesMatch(results.substring(tPo), expected2, "\nresults=\n" + results);
+
+            if (testLocalErddapToo) {
+                results = SSR.getUrlResponseStringUnchanged(localUrl + ".das");
                 tPo = results.indexOf("history \"NASA GSFC (OBPG)");
                 Test.ensureTrue(tPo >= 0, "tPo=-1 results=" + results);
                 Test.repeatedlyTestLinesMatch(results.substring(0, tPo + 25), expected, 
@@ -1148,26 +1243,8 @@ expected2 =
 
                 tPo = results.indexOf("    String infoUrl ");
                 Test.ensureTrue(tPo >= 0, "tPo=-1 results=" + results);
-                Test.repeatedlyTestLinesMatch(results.substring(tPo), expected2, "\nresults=\n" + results);
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-            }
-
-            try {
-                if (testLocalErddapToo) {
-                    results = SSR.getUrlResponseStringUnchanged(localUrl + ".das");
-                    tPo = results.indexOf("history \"NASA GSFC (OBPG)");
-                    Test.ensureTrue(tPo >= 0, "tPo=-1 results=" + results);
-                    Test.repeatedlyTestLinesMatch(results.substring(0, tPo + 25), expected, 
-                        "\nresults=\n" + results);
-
-                    tPo = results.indexOf("    String infoUrl ");
-                    Test.ensureTrue(tPo >= 0, "tPo=-1 results=" + results);
-                    Test.repeatedlyTestLinesMatch(results.substring(tPo), expected2, 
-                        "\nresults=\n" + results);
-                }
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
+                Test.repeatedlyTestLinesMatch(results.substring(tPo), expected2, 
+                    "\nresults=\n" + results);
             }
 
             //*** test getting dds for entire dataset
@@ -1232,7 +1309,7 @@ expected2 =
 
             //.csv
             String2.log("\n*** EDDGridFromErddap test get .CSV axis data\n");
-            query = "time[0:100:200],longitude[last]";
+            query = SSR.minimalPercentEncode("time[0:100:200],longitude[last]");
             tName = gridDataset.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
                 gridDataset.className() + "_Axis", ".csv"); 
             results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
@@ -1247,18 +1324,13 @@ expected2 =
             Test.ensureEqual(results, expected, "RESULTS=\n" + results);
 
             if (testLocalErddapToo) {
-                try {
-                    results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv?" + query);
-                    Test.ensureEqual(results, expected, "\nresults=\n" + results);
-                } catch (Throwable t) {
-                    String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                        "\nUnexpected error.");
-                }
+                results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv?" + query);
+                Test.ensureEqual(results, expected, "\nresults=\n" + results);
             }
 
             //.csv  test of gridName.axisName notation
             String2.log("\n*** EDDGridFromErddap test get .CSV axis data\n");
-            query = "chlorophyll.time[0:100:200],chlorophyll.longitude[last]";
+            query = SSR.minimalPercentEncode("chlorophyll.time[0:100:200],chlorophyll.longitude[last]");
             tName = gridDataset.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
                 gridDataset.className() + "_AxisG.A", ".csv"); 
             results = String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName);
@@ -1273,18 +1345,13 @@ expected2 =
             Test.ensureEqual(results, expected, "RESULTS=\n" + results);
 
             if (testLocalErddapToo) {
-                try {
-                    results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv?" + query);
-                    Test.ensureEqual(results, expected, "\nresults=\n" + results);
-                } catch (Throwable t) {
-                    String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                        "\nUnexpected error.");
-                }
+                results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv?" + query);
+                Test.ensureEqual(results, expected, "\nresults=\n" + results);
             }
 
             //.dods
             String2.log("\n*** EDDGridFromErddap test get .DODS axis data\n");
-            query = "time[0:100:200],longitude[last]";
+            query = SSR.minimalPercentEncode("time[0:100:200],longitude[last]");
             tName = gridDataset.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
                 gridDataset.className() + "_Axis", ".dods"); 
             results = String2.annotatedString(String2.directReadFrom88591File(EDStatic.fullTestCacheDirectory + tName));
@@ -1308,7 +1375,7 @@ expected2 =
             //.mat
             //octave> load('c:/temp/griddap/EDDGridFromErddap_Axis.mat');
             //octave> erdMHchla8day
-            String matlabAxisQuery = "time[0:100:200],longitude[last]"; 
+            String matlabAxisQuery = SSR.minimalPercentEncode("time[0:100:200],longitude[last]"); 
             String2.log("\n*** EDDGridFromErddap test get .MAT axis data\n");
             tName = gridDataset.makeNewFileForDapQuery(null, null, matlabAxisQuery, EDStatic.fullTestCacheDirectory, 
                 gridDataset.className() + "_Axis", ".mat"); 
@@ -1348,7 +1415,7 @@ expected2 =
 
             //.ncHeader
             String2.log("\n*** EDDGridFromErddap test get .NCHEADER axis data\n");
-            query = "time[0:100:200],longitude[last]";
+            query = SSR.minimalPercentEncode("time[0:100:200],longitude[last]");
             tName = gridDataset.makeNewFileForDapQuery(null, null, query, EDStatic.fullTestCacheDirectory, 
                 gridDataset.className() + "_Axis", ".ncHeader"); 
             results = String2.directReadFromUtf8File(EDStatic.fullTestCacheDirectory + tName);
@@ -1393,18 +1460,13 @@ expected2 =
 "}\n";
             Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
 
-            try {
-                if (testLocalErddapToo) {
-                    results = SSR.getUrlResponseStringUnchanged(localUrl + ".ncHeader?" + query);
-                    tPo = results.indexOf("  variables:\n");
-                    Test.ensureTrue(tPo >= 0, "tPo=-1 results=\n" + results);
-                    Test.ensureEqual(results.substring(tPo, tPo + expected.length()), expected, 
-                        "\nresults=\n" + results);
-                    Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
-                }
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                    "\n*** THIS WILL FAIL UNTIL AFTER RELEASE 2.00."); 
+            if (testLocalErddapToo) {
+                results = SSR.getUrlResponseStringUnchanged(localUrl + ".ncHeader?" + query);
+                tPo = results.indexOf("  variables:\n");
+                Test.ensureTrue(tPo >= 0, "tPo=-1 results=\n" + results);
+                Test.ensureEqual(results.substring(tPo, tPo + expected.length()), expected, 
+                    "\nresults=\n" + results);
+                Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
             }
 
             //********************************************** test getting grid data
@@ -1442,14 +1504,9 @@ expected2 =
             Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
 
             if (testLocalErddapToo) {
-                try {
-                    results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv?" + userDapQuery);
-                    Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-                    Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
-                } catch (Throwable t) {
-                    String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                        "\nUnexpected error.");
-                }
+                results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv?" + userDapQuery);
+                Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
+                Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
             }
 
             //.csv   test gridName.gridName notation
@@ -1486,14 +1543,9 @@ expected2 =
             Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
 
             if (testLocalErddapToo) {
-                try {
-                    results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv" + "?chlorophyll." + userDapQuery);
-                    Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
-                    Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
-                } catch (Throwable t) {
-                    String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                        "\nUnexpected error.");
-                }
+                results = SSR.getUrlResponseStringUnchanged(localUrl + ".csv" + "?chlorophyll." + userDapQuery);
+                Test.ensureEqual(results.substring(0, expected.length()), expected, "\nresults=\n" + results);
+                Test.ensureTrue(results.indexOf(expected2) > 0, "RESULTS=\n" + results);
             }
 
             //.nc
@@ -1629,30 +1681,31 @@ expected2 =
 "  :source = \"satellite observation: Aqua, MODIS\";\n" +
 "  :sourceUrl = \"https://oceanwatch.pfeg.noaa.gov/thredds/dodsC/satellite/MH/chla/8day\";\n" +
 "  :Southernmost_Northing = 28.985876360268577; // double\n" +
-"  :standard_name_vocabulary = \"CF Standard Name Table v55\";\n" +
+"  :standard_name_vocabulary = \"CF Standard Name Table v70\";\n" +
 "  :summary = \"NOAA CoastWatch distributes chlorophyll-a concentration data from NASA's Aqua Spacecraft.  Measurements are gathered by the Moderate Resolution Imaging Spectroradiometer \\(MODIS\\) carried aboard the spacecraft.   This is Science Quality data.\";\n" +
 "  :time_coverage_end = \"2007-02-06T00:00:00Z\";\n" +
 "  :time_coverage_start = \"2007-02-06T00:00:00Z\";\n" +
 "  :title = \"Chlorophyll-a, Aqua MODIS, NPP, 2002-2013, DEPRECATED OLDER VERSION \\(8 Day Composite\\)\";\n" +
 "  :Westernmost_Easting = 224.98437319134158; // double\n" +
-" data:\n" +
-"time =\n" +
-"  \\{1.17072E9\\}\n" +
-"altitude =\n" +
-"  \\{0.0\\}\n" +
-"latitude =\n" +
-"  \\{28.985876360268577, 29.40263949988423, 29.81940263949987, 30.236165779115524, 30.652928918731178, 31.06969205834683, 31.486455197962485, 31.90321833757814, 32.31998147719379, 32.73674461680943, 33.153507756425086, 33.57027089604074, 33.98703403565639, 34.40379717527205, 34.8205603148877, 35.237323454503354, 35.65408659411899, 36.07084973373465, 36.4876128733503, 36.904376012965955, 37.32113915258161, 37.73790229219726, 38.1546654318129, 38.571428571428555, 38.98819171104421, 39.40495485065986, 39.821717990275516, 40.23848112989117, 40.655244269506824, 41.07200740912248, 41.48877054873813, 41.905533688353785, 42.32229682796944, 42.73905996758509, 43.155823107200746, 43.57258624681637, 43.989349386432025, 44.40611252604768, 44.82287566566333, 45.239638805278986, 45.65640194489464, 46.07316508451029, 46.48992822412595, 46.9066913637416, 47.323454503357254, 47.74021764297291, 48.15698078258856, 48.573743922204216, 48.99050706181987, 49.407270201435495, 49.82403334105115\\}\n" +
-"longitude =\n" +
-"  \\{224.98437319134158, 225.40108808889917, 225.81780298645677, 226.23451788401434, 226.65123278157193, 227.06794767912953, 227.4846625766871, 227.9013774742447, 228.3180923718023, 228.73480726935986, 229.15152216691746, 229.56823706447506, 229.98495196203262, 230.40166685959022, 230.81838175714782, 231.2350966547054, 231.65181155226298, 232.06852644982058, 232.48524134737815, 232.90195624493575, 233.31867114249334, 233.7353860400509, 234.1521009376085, 234.5688158351661, 234.98553073272367, 235.40224563028127, 235.81896052783887, 236.23567542539644, 236.65239032295403, 237.06910522051163, 237.48582011806923, 237.9025350156268, 238.3192499131844, 238.735964810742, 239.15267970829956, 239.56939460585716, 239.98610950341475, 240.40282440097232, 240.81953929852992, 241.23625419608751, 241.65296909364508, 242.06968399120268, 242.48639888876028, 242.90311378631785, 243.31982868387544, 243.73654358143304, 244.1532584789906, 244.5699733765482, 244.9866882741058, 245.40340317166337, 245.82011806922097, 246.23683296677856, 246.65354786433613\\}\n" +
-"chlorophyll =\n" +
-"  \\{\n" +
-"    \\{\n" +
+"\n" +
+"  data:\n" +
+"    time = \n" +
+"      \\{1.17072E9\\}\n" +
+"    altitude = \n" +
+"      \\{0.0\\}\n" +
+"    latitude = \n" +
+"      \\{28.985876360268577, 29.40263949988423, 29.81940263949987, 30.236165779115524, 30.652928918731178, 31.06969205834683, 31.486455197962485, 31.90321833757814, 32.31998147719379, 32.73674461680943, 33.153507756425086, 33.57027089604074, 33.98703403565639, 34.40379717527205, 34.8205603148877, 35.237323454503354, 35.65408659411899, 36.07084973373465, 36.4876128733503, 36.904376012965955, 37.32113915258161, 37.73790229219726, 38.1546654318129, 38.571428571428555, 38.98819171104421, 39.40495485065986, 39.821717990275516, 40.23848112989117, 40.655244269506824, 41.07200740912248, 41.48877054873813, 41.905533688353785, 42.32229682796944, 42.73905996758509, 43.155823107200746, 43.57258624681637, 43.989349386432025, 44.40611252604768, 44.82287566566333, 45.239638805278986, 45.65640194489464, 46.07316508451029, 46.48992822412595, 46.9066913637416, 47.323454503357254, 47.74021764297291, 48.15698078258856, 48.573743922204216, 48.99050706181987, 49.407270201435495, 49.82403334105115\\}\n" +
+"    longitude = \n" +
+"      \\{224.98437319134158, 225.40108808889917, 225.81780298645677, 226.23451788401434, 226.65123278157193, 227.06794767912953, 227.4846625766871, 227.9013774742447, 228.3180923718023, 228.73480726935986, 229.15152216691746, 229.56823706447506, 229.98495196203262, 230.40166685959022, 230.81838175714782, 231.2350966547054, 231.65181155226298, 232.06852644982058, 232.48524134737815, 232.90195624493575, 233.31867114249334, 233.7353860400509, 234.1521009376085, 234.5688158351661, 234.98553073272367, 235.40224563028127, 235.81896052783887, 236.23567542539644, 236.65239032295403, 237.06910522051163, 237.48582011806923, 237.9025350156268, 238.3192499131844, 238.735964810742, 239.15267970829956, 239.56939460585716, 239.98610950341475, 240.40282440097232, 240.81953929852992, 241.23625419608751, 241.65296909364508, 242.06968399120268, 242.48639888876028, 242.90311378631785, 243.31982868387544, 243.73654358143304, 244.1532584789906, 244.5699733765482, 244.9866882741058, 245.40340317166337, 245.82011806922097, 246.23683296677856, 246.65354786433613\\}\n" +
+"    chlorophyll = \n" +
 "      \\{\n" +
+"        \\{\n" +
+"          \\{\n" +
 //pre 2010-10-26 was 
 //"        {-9999999.0, -9999999.0, 0.099, 0.118, -9999999.0, 0.091, -9999999.0, 0.088, 0.085, 0.088, -9999999.0, 0.098, -9999999.0, 0.076, -9999999.0, 0.07, 0.071, -9999999.0, -9999999.0, -9999999.0, 0.078, -9999999.0, 0.09, 0.084, -9999999.0, -9999999.0, 0.098, -9999999.0, 0.079, 0.076, 0.085, -9999999.0, 0.086, 0.127, 0.199, 0.167, 0.191, 0.133, 0.14, 0.173, 0.204, 0.239, 0.26, 0.252, 0.274, 0.289, 0.367, 0.37, 0.65, 0.531, -9999999.0, -9999999.0, 1.141},";
 //pre 2012-08-17 was
 //"        {-9999999.0, -9999999.0, 0.10655, 0.12478, -9999999.0, 0.09398, -9999999.0, 0.08919, 0.09892, 0.10007, -9999999.0, 0.09986, -9999999.0, 0.07119, -9999999.0, 0.08288, 0.08163, -9999999.0, -9999999.0, -9999999.0, 0.08319, -9999999.0, 0.09706, 0.08309, -9999999.0, -9999999.0, 0.0996, -9999999.0, 0.08962, 0.08329, 0.09101, -9999999.0, 0.08679, 0.13689, 0.21315, 0.18729, 0.21642, 0.15069, 0.15123, 0.18849, 0.22975, 0.27075, 0.29062, 0.27878, 0.31141, 0.32663, 0.41135, 0.40628, 0.65426, 0.4827, -9999999.0, -9999999.0, 1.16268},";
-  "        \\{-9999999.0, -9999999.0, 0.11093, 0.12439, -9999999.0, 0.09554, -9999999.0, 0.09044, 0.10009, 0.10116, -9999999.0, 0.10095, -9999999.0, 0.07243, -9999999.0, 0.08363, 0.08291, -9999999.0, -9999999.0, -9999999.0, 0.08885, -9999999.0, 0.09632, 0.0909, -9999999.0, -9999999.0, 0.09725, -9999999.0, 0.09978, 0.09462, 0.09905, -9999999.0, 0.09937, 0.12816, 0.20255, 0.17595, 0.20562, 0.14333, 0.15073, 0.18803, 0.22673, 0.27252, 0.29005, 0.28787, 0.31865, 0.33447, 0.43293, 0.43297, 0.68101, 0.48409, -9999999.0, -9999999.0, 1.20716\\},"; //no \n
+  "            \\{-9999999.0, -9999999.0, 0.11093, 0.12439, -9999999.0, 0.09554, -9999999.0, 0.09044, 0.10009, 0.10116, -9999999.0, 0.10095, -9999999.0, 0.07243, -9999999.0, 0.08363, 0.08291, -9999999.0, -9999999.0, -9999999.0, 0.08885, -9999999.0, 0.09632, 0.0909, -9999999.0, -9999999.0, 0.09725, -9999999.0, 0.09978, 0.09462, 0.09905, -9999999.0, 0.09937, 0.12816, 0.20255, 0.17595, 0.20562, 0.14333, 0.15073, 0.18803, 0.22673, 0.27252, 0.29005, 0.28787, 0.31865, 0.33447, 0.43293, 0.43297, 0.68101, 0.48409, -9999999.0, -9999999.0, 1.20716\\},"; //no \n
             tPo = results.indexOf("  :infoUrl");
             int tPo2 = results.indexOf("1.20716},", tPo + 1);
             if (tPo < 0 || tPo2 < 0)
@@ -1662,23 +1715,19 @@ expected2 =
         /* */
 
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\n*** This EDDGridFromErddap test requires erdMHchla8day on coastwatch's erddap" +
-                (testLocalErddapToo? "\n    AND rMHchla8day on localhost's erddap." : "")); 
+            throw new RuntimeException( 
+                "*** This EDDGridFromErddap test requires erdMHchla8day on coastwatch's erddap" +
+                (testLocalErddapToo? "\n    AND rMHchla8day on localhost's erddap." : ""),
+                t); 
         }
     }
 
     public static void testDataVarOrder() throws Throwable {
         String2.log("\n*** EDDGridFromErddap.testDataVarOrder()");
-        try {
-            EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "testDataVarOrder"); 
-            String results = String2.toCSSVString(eddGrid.dataVariableDestinationNames());
-            String expected = "SST, mask, analysis_error";
-            Test.ensureEqual(results, expected, "RESULTS=\n" + results);
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error"); 
-        }
+        EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "testDataVarOrder"); 
+        String results = String2.toCSSVString(eddGrid.dataVariableDestinationNames());
+        String expected = "SST, mask, analysis_error";
+        Test.ensureEqual(results, expected, "RESULTS=\n" + results);
     }
 
 
@@ -1692,28 +1741,276 @@ expected2 =
 
     }
 
+    /**
+     * This tests the /files/ "files" system.
+     * This requires nceiPH53sstn1day and testGridFromErddap in the local ERDDAP.
+     *
+     * EDDGridFromNcFiles.testFiles() has more tests than any other testFiles().
+     */
+    public static void testFiles() throws Throwable {
+
+        String2.log("\n*** EDDGridFromErddap.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
+
+        try {
+            //get /files/.csv
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/.csv"));
+            Test.ensureTrue(results.indexOf("Name,Last modified,Size,Description[10]") 
+                == 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("nceiPH53sstn1day/,NaN,NaN,\"AVHRR Pathfinder Version 5.3 L3-Collated (L3C) SST, Global, 0.0417\\u00b0, 1981-present, Nighttime (1 Day Composite)\"[10]") 
+                > 0,  "results=\n" + results);
+            Test.ensureTrue(results.indexOf("testGridFromErddap/,NaN,NaN,\"AVHRR Pathfinder Version 5.3 L3-Collated (L3C) SST, Global, 0.0417\\u00b0, 1981-present, Nighttime (1 Day Composite)\"[10]")               
+                > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("documentation.html,") 
+                > 0, "results=\n" + results);
+
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromErddap/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"1981/,NaN,NaN,\n" +
+"1994/,NaN,NaN,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromErddap/");
+            Test.ensureTrue(results.indexOf("1981&#x2f;") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("1981/")      > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("1994&#x2f;") > 0, "results=\n" + results);
+
+            //get /files/datasetID  //missing trailing slash will be redirected
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromErddap");
+            Test.ensureTrue(results.indexOf("1981&#x2f;") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("1981/")      > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("1994&#x2f;") > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromErddap/1994/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"data/,NaN,NaN,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //get /files/datasetID/subdir/subdir.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromErddap/1994/data/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"19940913000030-NCEI-L3C_GHRSST-SSTskin-AVHRR_Pathfinder-PFV5.3_NOAA09_G_1994256_night-v02.0-fv01.0.nc,1471330800000,12484412,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //download a file in root -- none available
+
+            //download a file in subdir
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testGridFromErddap/1994/data/" +
+                "19940913000030-NCEI-L3C_GHRSST-SSTskin-AVHRR_Pathfinder-PFV5.3_NOAA09_G_1994256_night-v02.0-fv01.0.nc").substring(0, 50));
+            expected = 
+"[137]HDF[10]\n" +
+"[26][10]\n" +
+"[2][8][8][0][0][0][0][0][0][0][0][0][255][255][255][255][255][255][255][255]<[127][190][0][0][0][0][0]0[0][0][0][0][0][0][0][199](*yOHD[end]";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //query with // at start fails
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files//.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=400 for URL: http://localhost:8080/cwexperimental/files//.csv\n" +
+"(Error {\n" +
+"    code=400;\n" +
+"    message=\"Bad Request: Query error: // is not allowed!\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //query with // later fails
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromErddap//.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=400 for URL: http://localhost:8080/cwexperimental/files/testGridFromErddap//.csv\n" +
+"(Error {\n" +
+"    code=400;\n" +
+"    message=\"Bad Request: Query error: // is not allowed!\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //query with /../ fails
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromErddap/../");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=400 for URL: http://localhost:8080/cwexperimental/files/testGridFromErddap/../\n" +
+"(Error {\n" +
+"    code=400;\n" +
+"    message=\"Bad Request: Query error: /../ is not allowed!\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent datasetID
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download an existent subdirectory but without trailing slash
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromErddap/GLsubdir");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: ERROR from url=http://localhost:8080/cwexperimental/files/testGridFromErddap/GLsubdir : " +
+    "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: " +
+    "http://localhost:8080/cwexperimental/files/nceiPH53sstn1day/GLsubdir\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: GLsubdir .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromErddap/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: " +
+    "http://localhost:8080/cwexperimental/files/testGridFromErddap/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in root
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromErddap/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: ERROR from url=http://localhost:8080/cwexperimental/files/testGridFromErddap/gibberish.csv : " +
+    "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: " +
+    "http://localhost:8080/cwexperimental/files/nceiPH53sstn1day/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existent subdir
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testGridFromErddap/GLsubdir/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: ERROR from url=http://localhost:8080/cwexperimental/files/testGridFromErddap/GLsubdir/gibberish.csv : " +
+    "java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: " +
+    "http://localhost:8080/cwexperimental/files/nceiPH53sstn1day/GLsubdir/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+
+        } catch (Throwable t) {
+            throw new RuntimeException("Unexpected error. This test requires nceiPH53sstn1day and testGridFromErddap in the localhost ERDDAP.", t); 
+        } 
+    }
+
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 5;
+        String msg = "\n^^^ EDDGridFromErddap.test(" + interactive + ") test=";
 
-        String2.log("\n****************** EDDGridFromErddap.test() *****************\n");
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        //standard tests 
-/* for releases, this line should have open/close comment */
-        testBasic(false);
-        testBasic(true);
-        testGenerateDatasetsXml();
-        testDataVarOrder();
-        testGridNoIoosCat();
+                } else {
+                    if (test ==  0) testBasic(false);
+                    if (test ==  1) testBasic(true);
+                    if (test ==  2) testGenerateDatasetsXml();
+                    if (test ==  3) testDataVarOrder();
+                    if (test ==  4) testGridNoIoosCat();
+                    if (test ==  5) testFiles();
+                }
 
-        //not regularly done
-
-        String2.log("\n*** EDDGridFromErddap.test finished.");
-
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

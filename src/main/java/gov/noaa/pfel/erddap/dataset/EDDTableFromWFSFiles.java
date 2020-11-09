@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.FloatArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -77,6 +78,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, String tCharset, 
+        String tSkipHeaderToRegex, String tSkipLinesRegex,
         int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
@@ -84,7 +86,8 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
         boolean tAccessibleViaFiles, boolean tRemoveMVRows, 
         int tStandardizeWhat, int tNThreads, 
-        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex,
+        String tAddVariablesWhere) 
         throws Throwable {
 
         super("EDDTableFromWFSFiles", tDatasetID, 
@@ -94,12 +97,16 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
+            tCharset, tSkipHeaderToRegex, tSkipLinesRegex,
+            tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
             tRemoveMVRows, tStandardizeWhat, 
-            tNThreads, null, -1, null); //tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex);
+            tNThreads, 
+            //don't allow caching from remote site because this dataset already does caching from remote site
+            null, -1, null, //tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex, 
+            tAddVariablesWhere);
     }
 
     /**
@@ -253,8 +260,8 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             //make addAtts
             Attributes addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), sourceAtts, null, colName, 
-                destPA.elementClass() != String.class, //tryToAddStandardName
-                destPA.elementClass() != String.class, //addColorBarMinMax
+                destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                destPA.elementType() != PAType.STRING, //addColorBarMinMax
                 true); //tryToFindLLAT
 
             //put time units
@@ -312,8 +319,7 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
             //"    <fileDir>" + EDStatic.fullCopyDirectory + tDatasetID + "/</fileDir>\n" +
             "    <metadataFrom>last</metadataFrom>\n" +
             "    <standardizeWhat>" + tStandardizeWhat + "</standardizeWhat>\n" +
-            "    <fileTableInMemory>false</fileTableInMemory>\n" +
-            "    <accessibleViaFiles>false</accessibleViaFiles>\n");
+            "    <fileTableInMemory>false</fileTableInMemory>\n");
             //"    <charset>UTF-8</charset>\n" +
             //"    <columnNamesRow>1</columnNamesRow>\n" +
             //"    <firstDataRow>3</firstDataRow>\n" +
@@ -348,7 +354,6 @@ public class EDDTableFromWFSFiles extends EDDTableFromAsciiFiles {
         testVerboseOn();
         boolean oDevelopmentMode = developmentMode;
         developmentMode = tDevelopmentMode;
-        try {
 
         Attributes externalAddAttributes = new Attributes();
         externalAddAttributes.add("title", "Old Title!");
@@ -372,7 +377,6 @@ String expected =
 "    <metadataFrom>last</metadataFrom>\n" +
 "    <standardizeWhat>0</standardizeWhat>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "    </sourceAttributes -->\n" +
 "    <!-- Please specify the actual cdm_data_type (TimeSeries?) and related info below, for example...\n" +
@@ -390,7 +394,7 @@ String expected =
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"rowElementXPath\">/wfs:FeatureCollection/wfs:member</att>\n" +
 "        <att name=\"sourceUrl\">https://kgs.uky.edu/usgin/services/aasggeothermal/WVBoreholeTemperatures/MapServer/WFSServer?request=GetFeature&amp;service=WFS&amp;typename=aasg:BoreholeTemperature&amp;format=&quot;text/xml;&#37;20subType=gml/3.1.1/profiles/gmlsf/1.0.0/0&quot;</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"subsetVariables\">State, UTM_E, UTM_N, SRS, LocationUncertaintyRadius, LengthUnits, ElevationKB, ElevationDF, BitDiameterTD, MaximumRecordedTemperature, CorrectedTemperature, TemperatureUnits, CirculationDuration, MeasurementSource, CasingBottomDepthDriller, CasingTopDepth, CasingPipeDiameter, CasingWeight, CasingThickness, pH</att>\n" +
 "        <att name=\"summary\">The summary. Kentucky Geological Survey data from a local source.</att>\n" +
 "        <att name=\"title\">The Title</att>\n" +
@@ -420,10 +424,11 @@ String expected =
 "    <dataVariable>\n" +
 "        <sourceName>aasg:BoreholeTemperature/aasg:APINo</sourceName>\n" +
 "        <destinationName>APINo</destinationName>\n" +
-"        <dataType>String</dataType>\n" +
+"        <dataType>long</dataType>\n" +
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"long\">9223372036854775807</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
 "            <att name=\"long_name\">APINo</att>\n" +
 "        </addAttributes>\n" +
@@ -453,10 +458,11 @@ String expected =
 "    <dataVariable>\n" +
 "        <sourceName>aasg:BoreholeTemperature/aasg:Label</sourceName>\n" +
 "        <destinationName>Label</destinationName>\n" +
-"        <dataType>String</dataType>\n" +
+"        <dataType>long</dataType>\n" +
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"long\">9223372036854775807</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
 "            <att name=\"long_name\">Label</att>\n" +
 "        </addAttributes>\n" +
@@ -740,6 +746,7 @@ String expected =
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"short\">32767</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
 "            <att name=\"long_name\">Elevation GL</att>\n" +
 "        </addAttributes>\n" +
@@ -839,6 +846,7 @@ String expected =
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"int\">2147483647</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
 "            <att name=\"long_name\">Depth Of Measurement</att>\n" +
 "        </addAttributes>\n" +
@@ -1160,9 +1168,6 @@ String expected =
             pa2 = new FloatArray(table.getColumn("aasg:BoreholeTemperature/aasg:Shape/gml:Point/longitude"));
             Test.ensureEqual(pa1, pa2, "");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-        }
         developmentMode = oDevelopmentMode;
 
     }
@@ -1174,7 +1179,6 @@ String expected =
     public static void testBasic() throws Throwable {
 
         String2.log("\n*** EDDTableFromWFSFiles.testBasic");
-        try {
 
         EDDTable tedd = (EDDTable)oneFromDatasetsXml(null, "kgsBoreTempWVTRUE"); //should work
         String tName, error, results, tResults, expected;
@@ -1273,18 +1277,16 @@ String expected =
 "    String long_name \"State\";\n" +
 "  }\n" +
 "  UTM_E {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"UTM E\";\n" +
 "  }\n" +
 "  UTM_N {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"UTM N\";\n" +
 "  }\n" +
 "  latitude {\n" +
 "    String _CoordinateAxisType \"Lat\";\n" +
-"    Float64 actual_range 37.246728999, 39.982674999;\n" +
+"    Float64 actual_range 37.24672899900003, 39.98267499900004;\n" +
 "    String axis \"Y\";\n" +
 "    String ioos_category \"Location\";\n" +
 "    String long_name \"Lat Degree\";\n" +
@@ -1294,7 +1296,7 @@ String expected =
 "  }\n" +
 "  longitude {\n" +
 "    String _CoordinateAxisType \"Lon\";\n" +
-"    Float64 actual_range -82.549986, -78.803193;\n" +
+"    Float64 actual_range -82.54998599999999, -78.80319299999996;\n" +
 "    String axis \"X\";\n" +
 "    String ioos_category \"Location\";\n" +
 "    String long_name \"Long Degree\";\n" +
@@ -1311,12 +1313,11 @@ String expected =
 "    String long_name \"Location Uncertainty Statement\";\n" +
 "  }\n" +
 "  LocationUncertaintyRadius {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Quality\";\n" +
 "    String long_name \"Location Uncertainty Radius\";\n" +
 "  }\n" +
 "  DrillerTotalDepth {\n" +
-"    Float32 actual_range 0.0, 12996.0;\n" +
+"    Float32 actual_range 1161.0, 12996.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Driller Total Depth\";\n" +
 "  }\n" +
@@ -1333,21 +1334,20 @@ String expected =
 "    String long_name \"Well Bore Shape\";\n" +
 "  }\n" +
 "  TrueVerticalDepth {\n" +
-"    Float32 actual_range 0.0, 11792.0;\n" +
+"    Float32 actual_range 1161.0, 11792.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"True Vertical Depth\";\n" +
 "  }\n" +
 "  ElevationKB {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Elevation KB\";\n" +
 "  }\n" +
 "  ElevationDF {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Elevation DF\";\n" +
 "  }\n" +
 "  ElevationGL {\n" +
+"    Int16 _FillValue 32767;\n" + 
 "    Int16 actual_range 568, 4333;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Elevation GL\";\n" +
@@ -1357,12 +1357,10 @@ String expected =
 "    String long_name \"Formation TD\";\n" +
 "  }\n" +
 "  BitDiameterTD {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Bit Diameter TD\";\n" +
 "  }\n" +
 "  MaximumRecordedTemperature {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Maximum Recorded Temperature\";\n" +
 "  }\n" +
@@ -1372,7 +1370,6 @@ String expected =
 "    String long_name \"Measured Temperature\";\n" +
 "  }\n" +
 "  CorrectedTemperature {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Corrected Temperature\";\n" +
 "  }\n" +
@@ -1381,7 +1378,6 @@ String expected =
 "    String long_name \"Temperature Units\";\n" +
 "  }\n" +
 "  CirculationDuration {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Circulation Duration\";\n" +
 "  }\n" +
@@ -1390,6 +1386,7 @@ String expected =
 "    String long_name \"Measurement Procedure\";\n" +
 "  }\n" +
 "  DepthOfMeasurement {\n" +
+"    Int32 _FillValue 2147483647;\n" +
 "    Int32 actual_range 23, 36885;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Depth Of Measurement\";\n" +
@@ -1416,32 +1413,26 @@ String expected =
 "    String long_name \"Related Resource\";\n" +
 "  }\n" +
 "  CasingBottomDepthDriller {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Casing Bottom Depth Driller\";\n" +
 "  }\n" +
 "  CasingTopDepth {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Casing Top Depth\";\n" +
 "  }\n" +
 "  CasingPipeDiameter {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Casing Pipe Diameter\";\n" +
 "  }\n" +
 "  CasingWeight {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Casing Weight\";\n" +
 "  }\n" +
 "  CasingThickness {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Casing Thickness\";\n" +
 "  }\n" +
 "  pH {\n" +
-"    Float32 actual_range 0.0, 0.0;\n" +
 "    String ioos_category \"Salinity\";\n" +
 "    String long_name \"pH\";\n" +
 "  }\n" +
@@ -1480,6 +1471,7 @@ String expected =
 "    String long_name \"Lease No\";\n" +
 "  }\n" +
 "  TimeSinceCirculation {\n" +
+"    Int16 _FillValue 32767;\n" +
 "    Int16 actual_range 2, 2301;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Time Since Circulation\";\n" +
@@ -1514,13 +1506,13 @@ String expected =
 "    String Conventions \"COARDS, CF-1.6, ACDD-1.3\";\n" +
 "    String creator_name \"Kentucky Geological Survey\";\n" +
 "    String creator_url \"https://www.uky.edu/KGS/\";\n" +
-"    Float64 Easternmost_Easting -78.803193;\n" +
+"    Float64 Easternmost_Easting -78.80319299999996;\n" +
 "    String featureType \"Point\";\n" +
-"    Float64 geospatial_lat_max 39.982674999;\n" +
-"    Float64 geospatial_lat_min 37.246728999;\n" +
+"    Float64 geospatial_lat_max 39.98267499900004;\n" +
+"    Float64 geospatial_lat_min 37.24672899900003;\n" +
 "    String geospatial_lat_units \"degrees_north\";\n" +
-"    Float64 geospatial_lon_max -78.803193;\n" +
-"    Float64 geospatial_lon_min -82.549986;\n" +
+"    Float64 geospatial_lon_max -78.80319299999996;\n" +
+"    Float64 geospatial_lon_min -82.54998599999999;\n" +
 "    String geospatial_lon_units \"degrees_east\";\n" +
 "    String history \"" + today;
         tResults = results.substring(0, Math.min(results.length(), expected.length()));
@@ -1537,17 +1529,17 @@ expected =
 "implied, including warranties of merchantability and fitness for a\n" +
 "particular purpose, or assumes any legal liability for the accuracy,\n" +
 "completeness, or usefulness, of this information.\";\n" +
-"    Float64 Northernmost_Northing 39.982674999;\n" +
+"    Float64 Northernmost_Northing 39.98267499900004;\n" +
 "    String rowElementXPath \"/wfs:FeatureCollection/wfs:member\";\n" +
 "    String sourceUrl \"https://kgs.uky.edu/usgin/services/aasggeothermal/WVBoreholeTemperatures/MapServer/WFSServer?request=GetFeature&service=WFS&typename=aasg:BoreholeTemperature&format=\\\"text/xml;%20subType=gml/3.1.1/profiles/gmlsf/1.0.0/0\\\"\";\n" +
-"    Float64 Southernmost_Northing 37.246728999;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    Float64 Southernmost_Northing 37.24672899900003;\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"State, UTM_E, UTM_N, SRS, LocationUncertaintyRadius, LengthUnits, ElevationKB, ElevationDF, BitDiameterTD, MaximumRecordedTemperature, CorrectedTemperature, TemperatureUnits, CirculationDuration, MeasurementSource, CasingBottomDepthDriller, CasingTopDepth, CasingPipeDiameter, CasingWeight, CasingThickness, pH\";\n" +
 "    String summary \"The summary. Kentucky Geological Survey data from a local source.\";\n" +
 "    String time_coverage_end \"2012-08-05T00:00:00Z\";\n" +
 "    String time_coverage_start \"1899-01-31T00:00:00Z\";\n" +
 "    String title \"The Title\";\n" +
-"    Float64 Westernmost_Easting -82.549986;\n" +
+"    Float64 Westernmost_Easting -82.54998599999999;\n" +
 "  }\n" +
 "}\n";
         int tPo = results.indexOf(expected.substring(0, 17));
@@ -1639,30 +1631,55 @@ expected =
         expected = 
 "ObservationURI,WellName,APINo,HeaderURI,OtherName,Label,Operator,time,EndedDrillingDate,WellType,StatusDate,ReleaseDate,Field,County,State,UTM_E,UTM_N,latitude,longitude,SRS,LocationUncertaintyStatement,LocationUncertaintyRadius,DrillerTotalDepth,DepthReferencePoint,LengthUnits,WellBoreShape,TrueVerticalDepth,ElevationKB,ElevationDF,ElevationGL,FormationTD,BitDiameterTD,MaximumRecordedTemperature,MeasuredTemperature,CorrectedTemperature,TemperatureUnits,CirculationDuration,MeasurementProcedure,DepthOfMeasurement,MeasurementDateTime,MeasurementFormation,MeasurementSource,RelatedResource,CasingBottomDepthDriller,CasingTopDepth,CasingPipeDiameter,CasingWeight,CasingThickness,pH,InformationSource,Shape_gml_Point_latitude,Shape_gml_Point_longitude,LeaseName,LeaseOwner,LeaseNo,TimeSinceCirculation,Status,CommodityOfInterest,Function,Production,ProducingInterval,Notes\n" +
 ",,,,,,,UTC,UTC,,UTC,UTC,,,,,,degrees_north,degrees_east,,,,,,,,,,,,,,,,,,,,,UTC,,,,,,,,,,,degrees_north,degrees_east,,,,,,,,,,\n" +
-"http://resources.usgin.org/uri-gin/wvges/bhtemp/4700102422_105/,\"Fuel Resources, Inc.  Zona Bernard 2\",4700102422,http://resources.usgin.org/uri-gin/wvges/well/api:4700102422/,Fuel Resources Inc,4700102422,\"Fuel Resources, Inc.\",1989-03-15T00:00:00Z,1989-03-21T00:00:00Z,Gas,,,Belington,Barbour,West Virginia,0.0,0.0,38.989951999,-79.964635,EPSG:4326,Location recorded as received from official permit application converted to NAD83 if required,0.0,5479.0,G.L.,ft,vertical,5479.0,0.0,0.0,2028,Fox,0.0,0.0,105.0,0.0,F,0.0,Temperature log evaluated by WVGES staff for deepest stable log segment to extract data otherwise used given bottom hole temperature on log header if available,4650,,Elk,Well Temperature Log,TL | GR | DEN | IL | CAL,0.0,0.0,0.0,0.0,0.0,0.0,,38.98995199900008,-79.96463499999993,,,,5,Missing,Missing,Missing,Missing,Missing,\n";
+"http://resources.usgin.org/uri-gin/wvges/bhtemp/4700102422_105/,\"Fuel Resources, Inc.  Zona Bernard 2\",4700102422,http://resources.usgin.org/uri-gin/wvges/well/api:4700102422/,Fuel Resources Inc,4700102422,\"Fuel Resources, Inc.\",1989-03-15T00:00:00Z,1989-03-21T00:00:00Z,Gas,,,Belington,Barbour,West Virginia,NaN,NaN,38.98995199900003,-79.96463499999999,EPSG:4326,Location recorded as received from official permit application converted to NAD83 if required,NaN,5479.0,G.L.,ft,vertical,5479.0,NaN,NaN,2028,Fox,NaN,NaN,105.0,NaN,F,NaN,Temperature log evaluated by WVGES staff for deepest stable log segment to extract data otherwise used given bottom hole temperature on log header if available,4650,,Elk,Well Temperature Log,TL | GR | DEN | IL | CAL,NaN,NaN,NaN,NaN,NaN,NaN,,38.98995199900008,-79.96463499999993,,,,5,Missing,Missing,Missing,Missing,Missing,\n";
 
         Test.ensureEqual(results.substring(0, expected.length()), expected, 
             "\nresults=\n" + results);
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "Unexpected error"); 
-        }
 
     }
 
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromWFSFiles.test()");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 1;
+        String msg = "\n^^^ EDDTableFromWFSFiles.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml(true);  //developmentMode (read from local file)
-        testBasic();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml(true);  //developmentMode (read from local file)
+                    if (test ==  1) testBasic();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 }
 

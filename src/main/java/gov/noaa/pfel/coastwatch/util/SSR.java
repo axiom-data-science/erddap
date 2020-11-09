@@ -15,6 +15,7 @@ import com.cohort.util.String2;
 import com.cohort.util.String2Log;
 import com.cohort.util.String2LogFactory;
 import com.cohort.util.Test;
+import com.cohort.util.XML;
 
 import java.awt.Toolkit;
 import java.io.ByteArrayOutputStream;
@@ -51,6 +52,7 @@ import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
@@ -131,7 +133,6 @@ public class SSR {
     public static String windows7Zip = "c:\\progra~1\\7-Zip\\7z"; //on Bob's computer
     public static String erddapVersion = "2"; //vague. will be updated by EDStatic
 
-    private static String contextDirectory; //lazy creation by getContextDirectory
     private static String tempDirectory; //lazy creation by getTempDirectory
 
     static {
@@ -1232,19 +1233,23 @@ public class SSR {
         //    "  userName=" + userName + " password=" + (password.length() > 0? "[present]" : "[absent]") + "\n" + 
         //    "  toAddress=" + toAddress);
 
+        String notSendingMsg = String2.ERROR + " in SSR.sendEmail: not sending email because ";
         if (toAddresses == null || toAddresses.length() == 0 || toAddresses.equals("null")) {
-            String2.log("SSR.sendEmail: no toAddresses");
+            String2.log(notSendingMsg + "no toAddresses.");
             return;
         }
+        if (!String2.isSomething(smtpHost)) 
+            throw new Exception(notSendingMsg + "smtpHost wasn't specified.");
         if (smtpPort < 0 || smtpPort == Integer.MAX_VALUE) 
-            throw new Exception(String2.ERROR + " in sendEmail: smtpPort=" + smtpPort +
-                " is invalid.");
+            throw new Exception(notSendingMsg + "smtpPort=" + smtpPort + " is invalid.");
+        if (!String2.isSomething(fromAddress)) 
+            throw new Exception(notSendingMsg + "fromAddress wasn't specified.");
         //I'm not sure if System.getProperties returns a new Properties 
         //  or a reference to the same system properties object
         //  so use new Properties to make System properties just the defaults
         //  so this is thread safe.
         //The Oracle example uses System.getProperties, but I think it is
-        //  unneccessary and exposes information needlessly.
+        //  unnecessary and exposes information needlessly.
         //Properties props = new Properties(System.getProperties()); 
         Properties props = new Properties(); 
         if (properties != null && properties.trim().length() > 0) {
@@ -1372,7 +1377,7 @@ public class SSR {
     /** 
      * This is used by Erddap.sendRedirect to try to fix urls that are supposedly
      * already percentEncoded, but have characters that are now (with stricter
-     * Tomcat) not allowed, notably |,&gt;,&lt;
+     * Tomcat) not allowed, notably [,],|,&gt;,&lt;
      *
      * @param url the whole URL (which you wouldn't do with minimalPercentEncode)
      * @return url with additional characters encoded
@@ -1447,8 +1452,6 @@ public class SSR {
             false, false);  //requestCompression, touchMode
         InputStream in = (InputStream)oar[1];
         //it doesn't seem necessary to read even 1 byte (if available)
-        //if (in.available() > 0)
-        //    in.read();
         in.close();
     }
                                             
@@ -1466,9 +1469,9 @@ public class SSR {
      * @return an InputStream from the url
      * @throws Exception if trouble
      */
-    public static InputStream getUncompressedUrlBufferedInputStream(String urlString) 
+    public static BufferedInputStream getUncompressedUrlBufferedInputStream(String urlString) 
             throws Exception {
-        return (InputStream)getUrlConnBufferedInputStream(urlString, 120000, false)[1]; //2 minute timeout
+        return (BufferedInputStream)getUrlConnBufferedInputStream(urlString, 120000, false)[1]; //2 minute timeout
     } 
 
 
@@ -1576,7 +1579,7 @@ public class SSR {
      *   <br>Note that reserved characters only need to be percent encoded in special circumstances (not always).
      * @param timeOutMillis the time out for opening a connection in milliseconds  
      *    (use -1 to get high default, currently 10 minutes)
-     * @return Object[3], [0]=UrlConnection, [1]=a (decompressed if necessary) InputStream,
+     * @return Object[3], [0]=UrlConnection, [1]=a (decompressed if necessary) BufferedInputStream,
      *   [2]=charset (will be valid)
      * @throws Exception if trouble
      */
@@ -1656,7 +1659,7 @@ public class SSR {
             }            
         }        
 
-        InputStream is = getBufferedInputStream(urlString, conn);
+        BufferedInputStream is = getBufferedInputStream(urlString, conn);
         String charset = getCharset(urlString, conn); 
 
         //String2.log(">>charset=" + charset);
@@ -1665,18 +1668,17 @@ public class SSR {
 
 
     /**
-     * This returns the inputStream from the connection, with a content decoder
+     * This returns the BufferedInputStream from the connection, with a content decoder
      * if needed.
      *
      * @param urlString for diagnostics only
      * @param con 
-     * @return the inputStream from the connection, with a content decoder
-     * if needed.
+     * @return the BufferedInputStream from the connection, with a content decoder if needed.
      */
-    public static InputStream getBufferedInputStream(String urlString, URLConnection con) throws Exception {
+    public static BufferedInputStream getBufferedInputStream(String urlString, URLConnection con) throws Exception {
         String encoding = con.getContentEncoding();
         try {
-            InputStream is = new BufferedInputStream(con.getInputStream());
+            BufferedInputStream is = new BufferedInputStream(con.getInputStream());
             //String2.log("url = " + urlString + "\n" +  //diagnostic
             //  "  headerFields=" + String2.toString(conn.getHeaderFields()));
             //    "encoding=" + encoding + "\n" +
@@ -1687,9 +1689,9 @@ public class SSR {
                 //    is = new ZipInputStream(is);
                 //else 
                 if (encoding.indexOf("gzip") >= 0)
-                    is = new GZIPInputStream(is);
+                    is = new BufferedInputStream(new GZIPInputStream(is));
                 else if (encoding.indexOf("deflate") >= 0)
-                    is = new InflaterInputStream(is);
+                    is = new BufferedInputStream(new InflaterInputStream(is));
             }
 
             return is;
@@ -1704,11 +1706,23 @@ public class SSR {
                         //try to read the errorStream
                         InputStream es = httpUrlCon.getErrorStream(); //will fail if no error content
                         if (es != null) {
+                            if (encoding != null) {
+                                encoding = encoding.toLowerCase();
+                                //if (encoding.indexOf("compress") >= 0) //hard to work with later
+                                //    is = new ZipInputStream(is);
+                                //else 
+                                if (encoding.indexOf("gzip") >= 0)
+                                    es = new GZIPInputStream(es);
+                                else if (encoding.indexOf("deflate") >= 0)
+                                    es = new InflaterInputStream(es);
+                            }
                             String charset = getCharset(urlString, httpUrlCon);
                             msg = readerToString(urlString, //may throw exception
                                 new BufferedReader(new InputStreamReader(es, charset)), 1000); //maxCharacters
                         }
                     } catch (Throwable t) {
+                        String2.log("Caught error while trying to read errorStream (encoding=" + encoding + "):\n" +
+                            MustBe.throwableToString(t));
                     }
                     String eString = e.toString();
                     if (!String2.isSomething(eString))
@@ -1771,8 +1785,8 @@ public class SSR {
      *   <br>See https://en.wikipedia.org/wiki/Percent-encoding .
      *   <br>Note that reserved characters only need to be percent encoded in special circumstances (not always).
      */
-    public static InputStream getUrlBufferedInputStream(String urlString) throws Exception {
-        return (InputStream)(getUrlConnBufferedInputStream(urlString, 120000)[1]); 
+    public static BufferedInputStream getUrlBufferedInputStream(String urlString) throws Exception {
+        return (BufferedInputStream)(getUrlConnBufferedInputStream(urlString, 120000)[1]); 
     }
 
     /** If you need a reader, this is better than starting with getUrlInputStream
@@ -1807,6 +1821,7 @@ public class SSR {
             if (!String2.isUrl(urlString))
                 return String2.readLinesFromFile(urlString, String2.ISO_8859_1, 1);
 
+            long time = System.currentTimeMillis();
             BufferedReader in = getBufferedUrlReader(urlString);
             try {
                 ArrayList<String> sa = new ArrayList();
@@ -1814,6 +1829,8 @@ public class SSR {
                 while ((s = in.readLine()) != null) {
                     sa.add(s);
                 }
+                if (reallyVerbose) String2.log("  SSR.getUrlResponseArrayList " + urlString + 
+                    " finished. TIME=" + (System.currentTimeMillis() - time) + "ms");
                 return sa;
             } finally {
                 in.close();
@@ -1856,6 +1873,7 @@ public class SSR {
     public static String getUrlResponseStringNewline(String urlString) throws Exception {
         if (String2.isUrl(urlString)) {
             try {
+                long time = System.currentTimeMillis();
                 StringBuilder sb = new StringBuilder(4096); 
                 BufferedReader in = getBufferedUrlReader(urlString);
                 try {
@@ -1867,6 +1885,9 @@ public class SSR {
                 } finally {
                     in.close();
                 }
+                if (reallyVerbose) String2.log("  SSR.getUrlResponseStringNewline " + 
+                    urlString + " finished. TIME=" + 
+                    (System.currentTimeMillis() - time) + "ms");
                 return sb.toString();
             } catch (Exception e) {
                 String msg = e.toString();
@@ -1917,6 +1938,7 @@ public class SSR {
      */
     public static String readerToString(String urlString, Reader in, int maxChars) throws Exception {
         try {
+            long time = System.currentTimeMillis();
             char buffer[] = new char[8192];
             StringBuilder sb = new StringBuilder(8192); 
             try {
@@ -1932,6 +1954,8 @@ public class SSR {
             } finally {
                 in.close();
             }
+            if (reallyVerbose) String2.log("  SSR.readerToString " + urlString + 
+                " finished. TIME=" + (System.currentTimeMillis() - time) + "ms");
             return sb.toString();
         } catch (Exception e) {
             String msg = e.toString();
@@ -1953,17 +1977,19 @@ public class SSR {
      */
     public static byte[] getUrlResponseBytes(String urlString) throws Exception {
         try {
-            byte buffer[] = new byte[1024];
-            InputStream is = getUrlBufferedInputStream(urlString); 
+            //String2.log(">> SSR.getUrlResponseBytes(" + urlString + ")");
+            long time = System.currentTimeMillis();
+            byte buffer[] = new byte[8096];
+            BufferedInputStream is = getUrlBufferedInputStream(urlString); 
             try {
                 ByteArray ba = new ByteArray();
-                int available = is.available();
-                while (available >= 0) { //0 is ok
-                    int getN = is.read(buffer, 0, Math.min(1024, Math.max(1, available))); //1.. avail .. 1024
-                    if (getN == -1) //eof
-                        break;
-                    ba.add(buffer, 0, getN);
+                int gotN;
+                while ((gotN = is.read(buffer)) > 0) { //-1 = end of stream, but should block so gotN > 0
+                    //String2.log(">> gotN=" + gotN);
+                    ba.add(buffer, 0, gotN);
                 }
+                if (reallyVerbose) String2.log("  SSR.getUrlResponseBytes " + urlString + 
+                    " finished. nBytes=" + ba.size() + " TIME=" + (System.currentTimeMillis() - time) + "ms");
                 return ba.toArray();
             } finally {
                 is.close();
@@ -1998,11 +2024,14 @@ public class SSR {
     public static byte[] getFileBytes(String fileName) throws Exception {
         InputStream is = null; 
         try {
+            long time = System.currentTimeMillis();
             byte buffer[] = new byte[1024];
             is = File2.getDecompressedBufferedInputStream(fileName); 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             for(int s; (s=is.read(buffer)) != -1; ) 
                 baos.write(buffer, 0, s);
+            if (reallyVerbose) String2.log("  SSR.getFileBytes " + fileName + 
+                " finished. TIME=" + (System.currentTimeMillis() - time) + "ms");
             return baos.toByteArray();
         } catch (Exception e) {
             //String2.log(e.toString());
@@ -2045,28 +2074,6 @@ public class SSR {
     }
 
     /**
-     * This returns the directory that is the application's root
-     * (with forward slashes and a trailing slash, 
-     * e.g., c:/programs/_tomcat/webapps/cwexperimental/).
-     * Tomcat calls this the ContextDirectory.
-     * This only works if these classes are installed
-     * underneath Tomcat (with "WEB-INF/" 
-     * the start of things to be removed from classPath).
-     *
-     * @return the contextDirectory (with / separator and / at the end)
-     * @throws Exception if trouble
-     */
-    public static String getContextDirectory() {
-        if (contextDirectory == null) {
-            String classPath = String2.getClassPath(); //with / separator and / at the end
-            int po = classPath.indexOf("/WEB-INF/");
-            contextDirectory = classPath.substring(0, po + 1);
-        }
-
-        return contextDirectory;
-    }
-
-    /**
      * This returns a directory for temporary files
      * (with forward slashes and a trailing slash, 
      * currently: <contextDirectory>WEB-INF/temp/).
@@ -2079,8 +2086,7 @@ public class SSR {
      */
     public static String getTempDirectory() {
         if (tempDirectory == null) {
-            getContextDirectory(); 
-            String tdir = contextDirectory + "WEB-INF/temp/";
+            String tdir = String2.webInfParentDirectory() + "WEB-INF/temp/";
             //make it, because Git doesn't track empty dirs
             File2.makeDirectory(tdir);            
             //then set it if successful
@@ -2398,8 +2404,8 @@ public class SSR {
         con.setDoInput(true);
 
         //send the content
-        Writer writer = new BufferedWriter(new OutputStreamWriter(
-            new BufferedOutputStream(con.getOutputStream()), String2.UTF_8));
+        Writer writer = String2.getBufferedOutputStreamWriterUtf8(
+            new BufferedOutputStream(con.getOutputStream()));
         try {
             writer.write(content);  
             writer.flush();
@@ -2407,7 +2413,7 @@ public class SSR {
             writer.close();
         }
 
-        InputStream is = getBufferedInputStream(urlString, con);
+        BufferedInputStream is = getBufferedInputStream(urlString, con);
         String charset = getCharset(urlString, con);
         return new Object[]{con, is, charset};
     } 
@@ -2447,9 +2453,9 @@ public class SSR {
             source.startsWith("https://") ||  //untested.
             source.startsWith("ftp://")) {    //untested. presumably anonymous
             //URL
-            InputStream in = null;
+            BufferedInputStream in = null;
             try {
-                in = (InputStream)(getUrlConnBufferedInputStream(source, 
+                in = (BufferedInputStream)(getUrlConnBufferedInputStream(source, 
                     120000)[1]); //timeOutMillis. throws Exception
                 if (first > 0) {
                     File2.skipFully(in, first);
@@ -2471,29 +2477,60 @@ public class SSR {
         }
     }
 
-
-    /** 
-     * A method to copy the info from an inputStream to an outputStream.
-     * Based on E.R. Harold's book "Java I/O".
+    /**
+     * This checks that the links on the specified web page return error 200.
      *
-     * @param in Best if buffered. At the end, in ISN'T closed.
-     * @param out Best if Buffered. At the end, out is flushed, but not closed
-     * @throws IOException if trouble
+     * @param tUrl the web page to be checked
+     * @throws RuntimeException for 
      */
-    public static void copy(InputStream in, OutputStream out) throws IOException {
+    public static void testForBrokenLinks(String tUrl) throws Exception{
 
-        // do not allow other threads to read from the
-        // input or write to the output while copying is taking place
-        synchronized (in) {
-            synchronized (out) {
-                byte[] buffer = new byte[8192]; //best if smaller than java buffered...stream sizes
-                int nRead;
-                while ((nRead = in.read(buffer)) >= 0) //0 shouldn't happen. -1=end of file
-                    out.write(buffer, 0, nRead);
-                out.flush();
+        String2.log("\nSSR.testForBrokenLinks(" + tUrl + ")");
+        String regex = "\"(https?://.+?)\"";
+        Pattern pattern = Pattern.compile(regex);
+        String lines[] = getUrlResponseLines(tUrl);
+        StringBuilder log = new StringBuilder();
+        int errorCount = 0;
+        HashSet<String> tried = new HashSet();
+        String skip[] = new String[]{
+            "https://192.168.31.18/",
+            "https://localhost:8443/cwexperimental/login.html"};  //the links to log in (upper right of most web pages) will fail on my test computer
+            //https://unitsofmeasure.org/ucum.html fails in tests because of certificate, but succeeds in my browser. Others are like this, too.
+        for (int linei = 0; linei < lines.length; linei++) {
+            String urls[] = String2.extractAllCaptureGroupsAsHashSet(lines[linei], pattern, 1).toArray(new String[0]);
+            for (int urli = 0; urli < urls.length; urli++) {
+                //just try a given url once
+                if (tried.contains(urls[urli]))
+                    continue;
+                tried.add(urls[urli]);
+
+                String ttUrl = XML.decodeEntities(urls[urli]);
+                if (String2.indexOf(skip, ttUrl) >= 0)
+                    continue;
+                String msg = null;
+                try {
+                    Object[] o3 = getUrlConnBufferedInputStream(ttUrl, 
+                        20000, false, true); //timeOutMillis, requestCompression, touchMode
+                    HttpURLConnection conn = (HttpURLConnection)(o3[0]);
+                    int code = conn.getResponseCode();
+                    if (code != 200) 
+                        msg = " code=" + code + " " + ttUrl;
+                } catch (Exception e) {
+                    msg = " code=ERR " + ttUrl + " error=\n" +
+                        e.toString() + "\n";
+                }
+                if (msg != null) {
+                    String fullMsg = "#" + ++errorCount + " line=" + String2.left("" + (linei + 1), 4) + msg;
+                    String2.log(fullMsg);
+                    log.append(fullMsg + "\n");                            
+                }
             }
         }
-    } 
+        if (log.length() > 0) 
+            throw new RuntimeException(
+                "\nSSR.testForBrokenLinks(" + tUrl + ") found:\n" +
+                log.toString());
+    }
 
     //public static void main(String args[]) {
         //usage 

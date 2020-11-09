@@ -5,7 +5,7 @@
 
 	<groupId>axiomalaska</groupId>
 	<artifactId>erddap</artifactId>
-	<version>2.02_axiom-r1</version>
+	<version>2.10_axiom-r1</version>
 	<packaging>war</packaging>
 
 	<name>erddap</name>
@@ -20,18 +20,6 @@
 			<id>unidata-releases</id>
 			<name>UNIDATA Releases</name>
 			<url>https://artifacts.unidata.ucar.edu/content/repositories/unidata-releases/</url>
-		</repository>
-		<repository>
-			<!-- For atg.taglib.json.json-taglib -->
-			<id>nexeo</id>
-			<name>Nexeo Public</name>
-			<url>http://maven.nuxeo.org/nexus/content/repositories/public/</url>
-		</repository>
-		<repository>
-			<!-- For org.verisign.joid -->
-			<id>wendt</id>
-			<name>Wendt Public</name>
-			<url>http://wendt.se/maven</url>
 		</repository>
 	</repositories>
 
@@ -136,13 +124,12 @@
 		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
-			<version>4.12</version>
-			<scope>test</scope>
+			<version>4.13.1</version>
 		</dependency>
 		<dependency>
 			<groupId>org.apache.ant</groupId>
 			<artifactId>ant</artifactId>
-			<version>1.9.4</version>
+			<version>1.9.15</version>
 		</dependency>
 		<dependency>
 			<groupId>gnu-regexp</groupId>
@@ -180,11 +167,6 @@
 			<version>1.4</version>
 		</dependency>
 		<dependency>
-			<groupId>atg.taglib.json</groupId>
-			<artifactId>json-taglib</artifactId>
-			<version>0.4.1</version>
-		</dependency>
-		<dependency>
 			<groupId>com.sun.mail</groupId>
 			<artifactId>javax.mail</artifactId>
 			<version>1.6.2</version>
@@ -192,7 +174,7 @@
 		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-compress</artifactId>
-			<version>1.18</version>
+			<version>1.20</version>
 		</dependency>
 		<dependency>
 			<groupId>commons-discovery</groupId>
@@ -232,22 +214,22 @@
 		<dependency>
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
-			<version>28.0-jre</version>
+			<version>29.0-jre</version>
 		</dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-core</artifactId>
-			<version>2.7.2</version>
+			<version>2.11.2</version>
 		</dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-annotations</artifactId>
-			<version>2.7.2</version>
+			<version>2.11.2</version>
 		</dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
-			<version>2.7.2</version>
+			<version>2.11.2</version>
 		</dependency>
 		<dependency>
 			<groupId>net.jpountz.lz4</groupId>
@@ -262,23 +244,23 @@
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-simple</artifactId>
-			<version>1.7.28</version>
+			<version>1.7.30</version>
 			<scope>runtime</scope>
 		</dependency>
 		<dependency>
 			<groupId>io.netty</groupId>
 			<artifactId>netty-all</artifactId>
-			<version>4.1.38.Final</version>
+			<version>4.1.52.Final</version>
 		</dependency>
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<version>42.2.6</version>
+			<version>42.2.16</version>
 		</dependency>
 		<dependency>
 			<groupId>org.xerial.snappy</groupId>
 			<artifactId>snappy-java</artifactId>
-			<version>1.1.7.3</version>
+			<version>1.1.7.7</version>
 		</dependency>
         <dependency>
 			<groupId>org.json</groupId>
@@ -298,7 +280,7 @@
 		<dependency>
 			<groupId>edu.ucar</groupId>
 			<artifactId>netcdfAll</artifactId>
-			<version>4.6.14</version>
+			<version>5.3.3</version>
 		</dependency>
 		<dependency>
 			<groupId>javax.servlet</groupId>
@@ -309,12 +291,17 @@
 		<dependency>
 			<groupId>com.datastax.cassandra</groupId>
 			<artifactId>cassandra-driver-core</artifactId>
-			<version>3.7.2</version>
+			<version>3.10.2</version>
 		</dependency>
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk</artifactId>
-            <version>1.10.58</version>
+            <version>1.11.89</version>
         </dependency>
+        <dependency>
+		    <groupId>org.apache.commons</groupId>
+		    <artifactId>commons-jexl3</artifactId>
+		    <version>3.1</version>
+		</dependency>
     </dependencies>
 </project>

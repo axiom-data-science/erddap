@@ -6,6 +6,8 @@ package gov.noaa.pfel.erddap.variable;
 
 import com.cohort.array.Attributes;
 import com.cohort.array.DoubleArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -160,23 +162,12 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
                 dateTimeFormatter = ISODateTimeFormat.dateTime().withZone(ZoneId.of(timeZoneString));
                 parseISOWithCalendar2 = true;                
             } else {
-                //future: support time zones  
+                //FUTURE: support time zones  
                 dateTimeFormatter = DateTimeFormatter.ofPattern(dateTimeFormat, timeZoneString);
                 parseISOWithCalendar2 = false;
             }
             */
         }
-
-        //adjust destinationMin/Max
-        /* 2015-05-05 I think this is duplicate of EDV, hence wrong because already scaled/offset.
-           and for string source times, scale_factor and add_offset musn't be used
-        if (scaleAddOffset) {
-            setDestinationMinMax(
-                destinationMin * scaleFactor + addOffset,
-                destinationMax * scaleFactor + addOffset);
-        } else if (destinationMin > destinationMax) { //in Java, only true if neither is NaN      
-            double d = destinationMin; destinationMin = destinationMax; destinationMax = d;
-        }*/
 
         units = TIME_UNITS;
         if (destinationName.equals(EDV.TIME_NAME)) {
@@ -202,23 +193,24 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
         //(they will be destination values in epochSeconds)
         //(simpler than EDVTimeStamp because always numeric and range known from axis values)
         destinationDataType = "double";
-        destinationDataTypeClass = double.class;
+        destinationDataPAType = PAType.DOUBLE;
         int n = tSourceValues.size();
         setDestinationMinMaxFromSource(
             tSourceValues.getNiceDouble(0), 
             tSourceValues.getNiceDouble(n - 1));
-        if (Double.isNaN(destinationMin))
+        if (destinationMin.isMissingValue())
             throw new RuntimeException("ERROR related to time values and/or time source units: " +
                 "[0]=" + tSourceValues.getString(0) + " => NaN epochSeconds.");
-        if (Double.isNaN(destinationMax))
+        if (destinationMax.isMissingValue())
             throw new RuntimeException("ERROR related to time values and/or time source units: " +
                 "[n-1]=" + tSourceValues.getString(n-1) + " => NaN epochSeconds.");
 
         setActualRangeFromDestinationMinMax();    
         initializeAverageSpacingAndCoarseMinMax();
         if (reallyVerbose) String2.log("\nEDVTimeStampGridAxis created, " + 
-            "sourceTimeFormat=" + sourceTimeFormat +
-            " destMin=" + destinationMin + " destMax=" + destinationMax + "\n"); 
+            "sourceTimeFormat=" + sourceTimeFormat + "\n " +
+            " destMin=" + destinationMin + "=" + Calendar2.safeEpochSecondsToIsoStringTZ(destinationMin.getDouble(), "") + 
+            " destMax=" + destinationMax + "=" + Calendar2.safeEpochSecondsToIsoStringTZ(destinationMax.getDouble(), "") + "\n"); 
     }
 
     /** 
@@ -229,8 +221,8 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
         //scaleAddOffset is allowed!! and applied by superclass' setDestinationMinMax!
         //   ??? I that correct order???
         setDestinationMinMax(
-            sourceTimeToEpochSeconds(sourceMin),
-            sourceTimeToEpochSeconds(sourceMax));
+            PAOne.fromDouble(sourceTimeToEpochSeconds(sourceMin)),
+            PAOne.fromDouble(sourceTimeToEpochSeconds(sourceMax)));
     }
 
     /**
@@ -333,7 +325,7 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
      * @return the destinationMin time
      */
     public String destinationMinString() {
-        return destinationToString(destinationMin); 
+        return destinationToString(destinationMin.getDouble());  //time always full precision, not "niceDouble", but it is already a double
     }
 
     /** 
@@ -343,7 +335,7 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
      * @return the destinationMax time
      */
     public String destinationMaxString() {
-        return destinationToString(destinationMax); 
+        return destinationToString(destinationMax.getDouble());  //time always full precision, not "niceDouble", but it is already a double
     }
 
 
@@ -430,6 +422,8 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
             (DoubleArray)source :
             new DoubleArray(size, true);
         if (sourceTimeIsNumeric) {
+            if (setSourceMaxIsMV)
+                source.setMaxIsMV(true);
             for (int i = 0; i < size; i++)
                 destPa.set(i, sourceTimeToEpochSeconds(source.getNiceDouble(i)));
         } else {
@@ -479,9 +473,9 @@ public class EDVTimeStampGridAxis extends EDVGridAxis {
     public PrimitiveArray toSource(PrimitiveArray destination) {
         //this doesn't support scaleAddOffset
         int size = destination.size();
-        PrimitiveArray source = sourceDataTypeClass == destination.elementClass()?
+        PrimitiveArray source = sourceDataPAType == destination.elementType()?
             destination :
-            PrimitiveArray.factory(sourceDataTypeClass, size, true);
+            PrimitiveArray.factory(sourceDataPAType, size, true);
         if (source instanceof StringArray) {
             for (int i = 0; i < size; i++)
                 source.setString(i, epochSecondsToSourceTimeString(destination.getDouble(i)));

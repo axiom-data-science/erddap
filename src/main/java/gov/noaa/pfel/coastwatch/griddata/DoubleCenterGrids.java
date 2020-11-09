@@ -230,19 +230,19 @@ public class DoubleCenterGrids {
      *
      * @throws Exception
      */
-    public static void test() throws Exception {
+    public static void basicTest() throws Exception {
 
 
         //delete old files
         String newDir = "c:/u00/centeredSatellite/AG";
         RegexFilenameFilter.recursiveDelete(newDir);
+        String fullName = "c:/u00/centeredSatellite/AG/ssta/1day/AG2005040_2005040_ssta.nc";
 
         //copy a dir and subdirs and files
-        main(new String[]{"c:/u00/satellite/AG", newDir});
+        main(new String[]{"c:/u00/centeredSatellite/AGsource", newDir});
 
         //do tests
-        String ncdump = NcHelper.ncdump(
-            "c:/u00/centeredSatellite/AG/ssta/1day/AG2005040_2005040_ssta.nc", "-h");
+        String ncdump = NcHelper.ncdump(fullName, "-h");
         //ensure time is centered correctly
         Test.ensureEqual(Calendar2.epochSecondsToIsoStringTZ(1.1079504E9), //# from time actual_range
             "2005-02-09T12:00:00Z", "");
@@ -368,7 +368,7 @@ String reference3=
 "  :sensor = \"AVHRR GAC\";\n" +
 "  :source = \"satellite observation: POES, AVHRR GAC\";\n" +
 "  :Southernmost_Northing = 33.5; // double\n" +
-"  :standard_name_vocabulary = \"CF Standard Name Table v55\";\n" +
+"  :standard_name_vocabulary = \"CF Standard Name Table v70\";\n" +
 "  :start_time = 0.0; // double\n" +
 "  :summary = \"NOAA CoastWatch provides sea surface temperature (SST) products derived from NOAA's Polar Operational Environmental Satellites (POES).  This data provides global area coverage at 0.1 degrees resolution.  Measurements are gathered by the Advanced Very High Resolution Radiometer (AVHRR) instrument, a multiband radiance sensor carried aboard the NOAA POES satellites.\";\n" +
 "  :time_coverage_end = \"2005-02-10T00:00:00Z\";\n" +
@@ -391,6 +391,47 @@ String reference3=
         //delete the log file
 
         File2.delete("c:/programs/_tomcat/webapps/cwexperimental/WEB-INF/DoubleCenterGrids.log");
-
     }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ DoubleCenterGrids.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
 }

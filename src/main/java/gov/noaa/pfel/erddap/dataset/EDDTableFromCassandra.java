@@ -17,23 +17,23 @@ INSTALL CASSANDRA on Lenovo in 2018:
   2018: downloaded apache-cassandra-3.11.3-bin.tar.gz
     decompressed into \programs\apache-cassandra-3.11.3
 * Make a snapshot of Dell M4700 data: 
-  cd c:\Program Files\DataStax-DDC\apache-cassandra\bin\
+  cd c:\Program Files\DataStax-DDC\apache-cassandra...\bin\
   run: cqlsh.bat
     DESCRIBE KEYSPACE bobKeyspace          //copy and paste that into text document
     COPY bobkeyspace.statictest TO 'c:\backup\cassandra_statictest.txt';
     COPY bobkeyspace.bobtable TO 'c:\backup\cassandra_bobtable.txt';
 * Recreate the keyspace and data
-  cd C:\programs\apache-cassandra-3.11.4\bin
+  cd C:\programs\apache-cassandra-3.11.8\bin
     was cd c:\Program Files\DataStax-DDC\apache-cassandra\bin\
   run: cqlsh.bat
     1) copy and paste c:\backup\cassandra_bobKeyspace.txt into shell
     2) COPY bobkeyspace.statictest FROM 'c:\backup\cassandra_statictest.txt';
     3) COPY bobkeyspace.bobtable FROM 'c:\backup\cassandra_bobtable.txt';
 
-RUN CASSANDRA on Lenovo in 2018:
-* Start it up: cd \programs\apache-cassandra-3.11.3\bin
+RUN CASSANDRA on Lenovo in 2020:
+* Start it up: cd \programs\apache-cassandra-3.11.4\bin
   For Java version changes: change JAVA_HOME in cassandra.bat, e.g., 
-    set "JAVA_HOME=C:\Program Files\Java\jre1.8.0_211"
+    set "JAVA_HOME=C:\programs\jdk8u242-b08_KeepForCassandra\"
   type: cassandra.bat -f
 * Shut it down: ^C
   There is still something running in the background. Restart computer?
@@ -223,6 +223,8 @@ import com.cohort.array.DoubleArray;
 import com.cohort.array.FloatArray;
 import com.cohort.array.IntArray;
 import com.cohort.array.LongArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -357,6 +359,7 @@ public class EDDTableFromCassandra extends EDDTable{
         boolean tSourceNeedsExpandedFP_EQ = true;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
         String tPartitionKeyCSV = null;
 
         //process the tags
@@ -417,6 +420,8 @@ public class EDDTableFromCassandra extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -428,7 +433,7 @@ public class EDDTableFromCassandra extends EDDTable{
         return new EDDTableFromCassandra(tDatasetID, 
                 tAccessibleTo, tGraphsAccessibleTo, 
                 tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-                tDefaultDataQuery, tDefaultGraphQuery, 
+                tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere, 
                 tGlobalAttributes,
                 ttDataVariables,
                 tReloadEveryNMinutes, 
@@ -454,7 +459,7 @@ public class EDDTableFromCassandra extends EDDTable{
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
@@ -604,36 +609,36 @@ public class EDDTableFromCassandra extends EDDTable{
             //if (reallyVerbose) String2.log("  dv=" + dv + " sourceName=" + tSourceName + " sourceType=" + tSourceType);
 
             if (EDV.LON_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVLon(tSourceName,
+                dataVariables[dv] = new EDVLon(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
                 lonIndex = dv;
             } else if (EDV.LAT_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVLat(tSourceName,
+                dataVariables[dv] = new EDVLat(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN); 
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN)); 
                 latIndex = dv;
             } else if (EDV.ALT_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVAlt(tSourceName,
+                dataVariables[dv] = new EDVAlt(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN);
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));
                 altIndex = dv;
             } else if (EDV.DEPTH_NAME.equals(tDestName)) {
-                dataVariables[dv] = new EDVDepth(tSourceName,
+                dataVariables[dv] = new EDVDepth(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
-                    tSourceType, Double.NaN, Double.NaN);
+                    tSourceType, PAOne.fromDouble(Double.NaN), PAOne.fromDouble(Double.NaN));
                 depthIndex = dv;
             } else if (EDV.TIME_NAME.equals(tDestName)) {  //look for TIME_NAME before check hasTimeUnits (next)
-                dataVariables[dv] = new EDVTime(tSourceName,
+                dataVariables[dv] = new EDVTime(datasetID, tSourceName,
                     tSourceAtt, tAddAtt, 
                     tSourceType); //this constructor gets source / sets destination actual_range
                 timeIndex = dv;
             } else if (EDVTimeStamp.hasTimeUnits(tSourceAtt, tAddAtt)) {
-                dataVariables[dv] = new EDVTimeStamp(tSourceName, tDestName, 
+                dataVariables[dv] = new EDVTimeStamp(datasetID, tSourceName, tDestName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); //this constructor gets source / sets destination actual_range
             } else {
-                dataVariables[dv] = new EDV(tSourceName, tDestName, 
+                dataVariables[dv] = new EDV(datasetID, tSourceName, tDestName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); 
                 dataVariables[dv].setActualRangeFromDestinationMinMax();
@@ -727,17 +732,21 @@ public class EDDTableFromCassandra extends EDDTable{
         //gather ERDDAP sos information?
         //assume time column is indexed? so C* can return min/max efficiently
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid
         ensureValid();
 
         //set after subsetVariablesTable has been made 
         maxRequestFraction = tMaxRequestFraction;
 
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) 
             String2.log(
                 (debugMode? "\n" + toString() : "") +
                 "\n*** EDDTableFromCassandra " + datasetID + " constructor finished. TIME=" + 
-                (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+                cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
     }
 
 
@@ -760,7 +769,7 @@ public class EDDTableFromCassandra extends EDDTable{
         Table table = new Table();
         table.readASCII("<partitionKeyCSV>", 
             new BufferedReader(new StringReader(partitionKeyCSV)),
-            0, 1, ",", null, null, null, null, false); //simplify
+            "", "", 0, 1, ",", null, null, null, null, false); //simplify
         if (debugMode) { String2.log(">> <partitionKeyCSV> as initially parsed:");
             String2.log(table.dataToString());
         }
@@ -1098,7 +1107,7 @@ public class EDDTableFromCassandra extends EDDTable{
             String cVal = constraintValues.get(cv);
             double cValD = String2.parseDouble(cVal);
             int dv = String2.indexOf(dataVariableSourceNames, cVar);
-            boolean isNumericEDV = dataVariables[dv].sourceDataTypeClass() != String.class;             
+            boolean isNumericEDV = dataVariables[dv].sourceDataPAType() != PAType.STRING;             
 
             //for WHERE below, just keep constraints applicable to:
             //  clusterColumnSourceNames (ops: = > >= < <= ) or
@@ -1320,7 +1329,7 @@ public class EDDTableFromCassandra extends EDDTable{
 
                 EDV edv = usePK? partitionKeyEDV[i] : conEDV[coni];
                 PrimitiveArray pa = usePK? pkdPA[i] : null;
-                Class tClass = edv.sourceDataTypeClass();
+                PAType tPAType = edv.sourceDataPAType();
                 String conVal = usePK? null : constraintValues.get(coni);
                 if (requestSB != null)
                     requestSB.append(edv.sourceName() + " is " + 
@@ -1336,24 +1345,29 @@ public class EDDTableFromCassandra extends EDDTable{
                 } else if (edv.isBoolean()) {
                     boundStatement.setBool(i, 
                         (usePK? pa.getInt(pkdRow) == 1 : String2.parseBoolean(conVal)));
-                } else if (tClass == double.class) {
+                } else if (tPAType == PAType.DOUBLE ||
+                           tPAType == PAType.ULONG) {  //trouble: loss of precision
                     boundStatement.setDouble(i, 
                         (usePK? pa.getDouble(pkdRow) : String2.parseDouble(conVal)));
-                } else if (tClass == float.class) {
+                } else if (tPAType == PAType.FLOAT) {
                     boundStatement.setFloat(i, 
                         (usePK? pa.getFloat(pkdRow) : String2.parseFloat(conVal)));
-                } else if (tClass == int.class ||    
-                         tClass == short.class || 
-                         tClass == byte.class) {
+                } else if (tPAType == PAType.LONG ||
+                           tPAType == PAType.UINT) {  //???
+                    boundStatement.setLong(i, 
+                        (usePK? pa.getLong(pkdRow) : String2.parseLong(conVal)));
+                } else if (tPAType == PAType.INT  ||    
+                           tPAType == PAType.SHORT  || 
+                           tPAType == PAType.USHORT ||  //???
+                           tPAType == PAType.BYTE   ||
+                           tPAType == PAType.UBYTE) {   //???
                     boundStatement.setInt(i, 
                         (usePK? pa.getInt(pkdRow) : String2.parseInt(conVal))); 
                 } else {
                     String val = usePK? pa.getString(pkdRow) : conVal;
-                    if (tClass == String.class)   
+                    if (tPAType == PAType.STRING)   
                         boundStatement.setString(i, val);
-                    else if (tClass == long.class)
-                        boundStatement.setLong(  i, String2.parseLong(val));
-                    else if (tClass == char.class)
+                    else if (tPAType == PAType.CHAR)
                         boundStatement.setString(i, 
                             val.length() == 0? "\u0000" : val.substring(0, 1)); //FFFF??? 
                     else throw new RuntimeException(
@@ -1440,7 +1454,7 @@ public class EDDTableFromCassandra extends EDDTable{
             }
             rvToCassDataType[rv] = columnDef.getType(rvToRsCol[rv]);
 
-            if (rvToResultsEDV[rv].sourceDataTypeClass() == String.class)
+            if (rvToResultsEDV[rv].sourceDataPAType() == PAType.STRING)
                 rvToTypeCodec[rv] = CodecRegistry.DEFAULT_INSTANCE.codecFor(rvToCassDataType[rv]);
         }
         int triggerNRows = EDStatic.partialRequestMaxCells / nRv;
@@ -1473,7 +1487,7 @@ public class EDDTableFromCassandra extends EDDTable{
                     maxNRows = Math.max(maxNRows, pa.size());
                     continue;
                 }
-                Class tClass = edv.sourceDataTypeClass();
+                PAType tPAType = edv.sourceDataPAType();
                 if (isListDV[resultsDVI[rv]]) {            
                     int tListSize = -1;
                     if (edv.isBoolean()) { //special case
@@ -1486,33 +1500,40 @@ public class EDDTableFromCassandra extends EDDTable{
                         tListSize = list.size();
                         for (int i = 0; i < tListSize; i++)
                             pa.addDouble(list.get(i).getTime() / 1000.0); 
-                    } else if (tClass == String.class) {
+                    } else if (tPAType == PAType.STRING) {
                         //This doesn't support lists of maps/sets/lists. 
                         List<String> list = row.getList(rsCol, String.class);
                         tListSize = list.size();
                         for (int i = 0; i < tListSize; i++)
                             pa.addString(list.get(i)); 
-                    } else if (tClass == double.class) {
+                    } else if (tPAType == PAType.DOUBLE) {
                         List<Double> list = row.getList(rsCol, Double.class);
                         tListSize = list.size();
                         for (int i = 0; i < tListSize; i++)
                             pa.addDouble(list.get(i)); 
-                    } else if (tClass == float.class) {
+                    } else if (tPAType == PAType.FLOAT) {
                         List<Float> list = row.getList(rsCol, Float.class);
                         tListSize = list.size();
                         for (int i = 0; i < tListSize; i++)
                             pa.addFloat(list.get(i)); 
-                    } else if (tClass == long.class) {
+                    } else if (tPAType == PAType.LONG) {
                         List<Long> list = row.getList(rsCol, Long.class);
                         tListSize = list.size();
                         for (int i = 0; i < tListSize; i++)
                             pa.addLong(list.get(i)); 
-                    } else { //erddap byte, short, int
+                    } else if (tPAType == PAType.INT ||
+                               tPAType == PAType.SHORT ||
+                               tPAType == PAType.BYTE) {   
                         List<Integer> list = row.getList(rsCol, Integer.class);
                         tListSize = list.size();
                         for (int i = 0; i < tListSize; i++)
                             pa.addInt(list.get(i)); 
+                    } else {  //PAType.UINT, PAType.USHORT, PAType.UBYTE 
+                        //I think C* doesn't support unsigned data types,
+                        //so no variable in ERDDAP should be an unsigned type
+                        throw new RuntimeException("Unexpected PAType=" + tPAType);
                     }
+
 
                     //ensure valid
                     if (listSize == -1) {
@@ -1531,7 +1552,7 @@ public class EDDTableFromCassandra extends EDDTable{
                         pa.addInt(row.getBool(rsCol)? 1 : 0);
                     } else if (edv instanceof EDVTimeStamp) { //zulu millis -> epoch seconds
                         pa.addDouble(row.getTimestamp(rsCol).getTime() / 1000.0); 
-                    } else if (tClass == String.class) {
+                    } else if (tPAType == PAType.STRING) {
                         //v2: getString doesn't return the String form of any type
                         //https://datastax-oss.atlassian.net/browse/JAVA-135
                         //Object value = rvToCassDataType[rv].
@@ -1556,14 +1577,20 @@ public class EDDTableFromCassandra extends EDDTable{
                             }
                         }
                         pa.addString(s); 
-                    } else if (tClass == double.class) {
+                    } else if (tPAType == PAType.DOUBLE) {
                         pa.addDouble(row.getDouble(rsCol)); 
-                    } else if (tClass == float.class) {
+                    } else if (tPAType == PAType.FLOAT) {
                         pa.addFloat(row.getFloat(rsCol)); 
-                    } else if (tClass == long.class) {
+                    } else if (tPAType == PAType.LONG) {
                         pa.addLong(row.getLong(rsCol)); 
-                    } else { //erddap byte, short, int
+                    } else if (tPAType == PAType.INT ||
+                               tPAType == PAType.SHORT ||
+                               tPAType == PAType.BYTE) {   
                         pa.addInt(row.getInt(rsCol)); 
+                    } else { //PAType.UINT, PAType.USHORT, PAType.UBYTE
+                        //I think C* doesn't support unsigned data types,
+                        //so no variable in ERDDAP should be an unsigned type
+                        throw new RuntimeException("Unexpected PAType=" + tPAType);
                     }
                 }
                 maxNRows = Math.max(maxNRows, pa.size());
@@ -1575,12 +1602,12 @@ public class EDDTableFromCassandra extends EDDTable{
                 PrimitiveArray pa = paArray[rv];
                 int n = maxNRows - pa.size();
                 if (n > 0) {
-                    Class tClass = pa.elementClass();
-                    if (tClass == String.class ||
-                        tClass == long.class) {
+                    PAType tPAType = pa.elementType();
+                    if (tPAType == PAType.STRING ||
+                        tPAType == PAType.LONG) {
                         pa.addNStrings(n, pa.getString(pa.size() - 1)); 
-                    } else if (tClass == double.class || 
-                               tClass == float.class) {
+                    } else if (tPAType == PAType.DOUBLE || 
+                               tPAType == PAType.FLOAT) {
                         pa.addNDoubles(n, pa.getDouble(pa.size() - 1)); 
                     } else {
                         pa.addNInts(n, pa.getInt(pa.size() - 1)); 
@@ -1791,8 +1818,8 @@ public class EDDTableFromCassandra extends EDDTable{
             addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
                 null, //no source global attributes
                 sourceAtts, addAtts, sourceName,
-                destPA.elementClass() != String.class, //tryToAddStandardName
-                destPA.elementClass() != String.class, //addColorBarMinMax
+                destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                destPA.elementType() != PAType.STRING, //addColorBarMinMax
                 true); //tryToFindLLAT
 
             //but make it real here, and undo the lie
@@ -2461,10 +2488,9 @@ expected =
             //String2.log(results);
             Test.ensureEqual(results, expected, "results=\n" + results);
 
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                    "\nThis test requires Cassandra running on Bob's laptop."); 
-            }
+        } catch (Throwable t) {
+            throw new RuntimeException("This test requires Cassandra running on Bob's laptop.", t); 
+        }
 
     }
 
@@ -2955,7 +2981,7 @@ expected =
                 String msg = MustBe.throwableToString(t); 
                 String2.log(msg);
                 if (msg.indexOf("Your query produced no matching results.") < 0)
-                    String2.pressEnterToContinue("Unexpected error."); 
+                    throw new RuntimeException("Unexpected error.", t); 
             }
             if (pauseBetweenTests)
                 String2.pressEnterToContinue(
@@ -3002,7 +3028,7 @@ expected =
                 String msg = MustBe.throwableToString(t); 
                 String2.log(msg);
                 if (msg.indexOf("Your query produced no matching results.") < 0)
-                    String2.pressEnterToContinue("Unexpected error."); 
+                    throw new RuntimeException("Unexpected error.", t); 
             }
             if (pauseBetweenTests)
                 String2.pressEnterToContinue(
@@ -3018,8 +3044,7 @@ expected =
 
             /* */
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected EDDTableFromCassandra.testBasic error:"); 
+            throw new RuntimeException("This test requires Cassandra running on Bob's laptop.", t); 
         }
     }
 
@@ -3060,7 +3085,7 @@ expected =
                 if (msg.indexOf("You are requesting too much data. " +
                     "Please further constrain one or more of these variables: " +
                     "deviceid, date, sampletime. (5/5=1.0 > 0.55)") < 0)
-                    String2.pressEnterToContinue("Unexpected error."); 
+                    throw new RuntimeException("Unexpected error.", t); 
             }
             if (pauseBetweenTests)
                 String2.pressEnterToContinue(
@@ -3082,7 +3107,7 @@ expected =
                 if (msg.indexOf("You are requesting too much data. " +
                     "Please further constrain one or more of these variables: " +
                     "deviceid, date, sampletime. (3/5=0.6 > 0.55)") < 0)
-                    String2.pressEnterToContinue("Unexpected error."); 
+                    throw new RuntimeException("Unexpected error.", t); 
             }
             if (pauseBetweenTests)
                 String2.pressEnterToContinue(
@@ -3115,8 +3140,7 @@ expected =
 
             /* */
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected EDDTableFromCassandra.testMaxRequestFraction error."); 
+            throw new RuntimeException("This test requires Cassandra running on Bob's laptop.", t); 
         }
     }
 
@@ -3473,7 +3497,7 @@ expected =
                 String msg = MustBe.throwableToString(t); 
                 String2.log(msg);
                 if (msg.indexOf("Your query produced no matching results.") < 0)
-                    String2.pressEnterToContinue("Unexpected error."); 
+                    throw new RuntimeException("Unexpected error.", t); 
             }
             if (pauseBetweenTests)
                 String2.pressEnterToContinue(
@@ -3493,7 +3517,7 @@ expected =
                 String msg = MustBe.throwableToString(t); 
                 String2.log(msg);
                 if (msg.indexOf("Your query produced no matching results.") < 0)
-                    String2.pressEnterToContinue("Unexpected error."); 
+                    throw new RuntimeException("Unexpected error.", t); 
             }
             if (pauseBetweenTests)
                 String2.pressEnterToContinue(
@@ -3509,8 +3533,7 @@ expected =
 
             /* */
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected EDDTableFromCassandra.testCass1Device error."); 
+            throw new RuntimeException("This test requires Cassandra running on Bob's laptop.", t); 
         }
     }
 
@@ -3771,33 +3794,55 @@ expected =
 
             /* */
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected EDDTableFromCassandra.testStatic error."); 
+            throw new RuntimeException("This test requires Cassandra running on Bob's laptop.", t); 
         }
         debugMode = oDebugMode;
     }
 
-    /**
-     * This tests the methods in this class.
-     *
-     * @throws Throwable if trouble
-     */
-    public static void test() throws Throwable {
-        String2.log("\n****************** EDDTableFromCassandra.test() *****************\n");
 
-        //tests usually run       
-/* for releases, this line should have open/close comment */
-        String s = String2.getStringFromSystemIn(
-            "\nThe tests of Cassandra require that Cassandra be running.\n" +
-            "Continue (y or Enter) or skip (s)? ");
-        if (s.startsWith("s"))
-            return;
-        testGenerateDatasetsXml();
-        testBasic(false); //pauseBetweenTests
-        testMaxRequestFraction(false);  //pauseBetweenTests
-        testCass1Device(false); //pauseBetweenTests
-        testStatic(false); //pauseBetweenTests
-        /* */
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 4;
+        String msg = "\n^^^ EDDTableFromCassandra.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testBasic(false); //pauseBetweenTests
+                    if (test ==  2) testMaxRequestFraction(false);  //pauseBetweenTests
+                    if (test ==  3) testCass1Device(false); //pauseBetweenTests
+                    if (test ==  4) testStatic(false); //pauseBetweenTests
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

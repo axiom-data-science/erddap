@@ -765,6 +765,9 @@ class EDDTableFromAxiomStationV2Utils {
         stationatts.set("short_name", station.urn);
         stationatts.set("type", station.platformType);
         tDataVariables.add(new Object[]{"station", "station", stationatts, "String"});
+        // From ERDDAP: For cdm_data_type=TimeSeries, the variable with cf_role=timeseries_id
+        // must be in the cdm_timeseries_variables list.
+        cdm_timeseries_variables.add("station");
 
         String infoUrl = "https://sensors.ioos.us/?sensor_version=v2#metadata/" + station.id + "/station";
         tGlobalAttributes.set("infoUrl", infoUrl);
@@ -879,6 +882,9 @@ class EDDTableFromAxiomStationV2Shim {
     public int tColumnNamesRow = 0;
     public int tFirstDataRow = 1;
     public OikosStation station;
+    public String tSkipHeaderToRegex = "";
+    public String tSkipLinesRegex = "";
+    public String tAddVariablesWhere = null;
 
     public EDDTableFromAxiomStationV2Shim(SimpleXMLReader xmlReader) {
         this.xmlReader = xmlReader;
@@ -1020,6 +1026,8 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             d.tPathRegex,           // String tPathRegex
             d.tMetadataFrom,        // String tMetadataFrom
             null,                   // String tCharset
+            d.tSkipHeaderToRegex,   // String tSkipHeaderToRegex
+            d.tSkipLinesRegex,      // String tSkipLinesRegex
             d.tColumnNamesRow,      // int tColumnNamesRow
             d.tFirstDataRow,        // int tFirstDataRow
             null,                   // String tColumnSeparator
@@ -1037,7 +1045,8 @@ public class EDDTableFromAxiomStationV2 extends EDDTableFromNcFiles {
             EDStatic.nTableThreads, // int tNThreads
             null,                   // String tCacheFromUrl
             -1,                     // int tCacheSizeGB
-            null                    // String tCachePartialPathRegex
+            null,                   // String tCachePartialPathRegex
+            d.tAddVariablesWhere    // String tAddVariablesWhere
         );
     }
 
