@@ -12,8 +12,10 @@ import dods.dap.*;
 
 import gov.noaa.pfel.coastwatch.griddata.*;
 import gov.noaa.pfel.coastwatch.hdf.*;
+import gov.noaa.pfel.coastwatch.pointdata.ScriptRow;
 import gov.noaa.pfel.coastwatch.pointdata.Table;
 import gov.noaa.pfel.coastwatch.util.*;
+import gov.noaa.pfel.erddap.dataset.EDD;
 
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
@@ -39,6 +41,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.*;
 import java.util.TimeZone;
+
+import org.apache.commons.jexl3.introspection.JexlSandbox;
+import org.apache.commons.jexl3.*;
 
 import org.apache.commons.codec.digest.DigestUtils;  //in netcdf-all.jar
 //import org.codehaus.janino.ExpressionEvaluator;
@@ -668,7 +673,7 @@ the early years I was even testing them periodically in an ice bath.
                 if (nStationsCreated == 1) {
                     Table tTable = new Table();
                     tTable.read4DNc("c:/programs/kfm200801/KFMTemperature/" + tempID + ".nc",
-                        null, 0, stationColumnName, 4); //standardizeWhat=0
+                        null, -1, stationColumnName, 4); //standardizeWhat=0
                     String2.log("\nstation0=\n" + tTable.toString(3));
                     //from site ascii file
                     //Anacapa	Admiral's Reef	34	00	200	N	119	25	520	W	16
@@ -924,7 +929,7 @@ Should the license/disclaimer still be:
             data.removeColumn(5);
 
             //add metadata for data columns
-            //standardNames from http://cfconventions.org/standard-names.html
+            //standardNames from https://cfconventions.org/standard-names.html
             //none seem relevant here
             for (int col = 5; col < data.nColumns(); col++) {
                 String pm2 = " per square meter";  //must be all lowercase
@@ -1025,7 +1030,7 @@ String2.log("uniqueYear = " + uniqueYear);
                     data.globalAttributes().copyTo(stationTable.globalAttributes());
                     for (int col = 0; col < 5; col++) {
                         stationTable.addColumn(col, data.getColumnName(col), 
-                            PrimitiveArray.factory(data.getColumn(col).elementClass(), dataCol, false), 
+                            PrimitiveArray.factory(data.getColumn(col).elementType(), dataCol, false), 
                             (Attributes)data.columnAttributes(col).clone());
                     }
                     for (int col = 0; col < nUniqueSpp; col++) {
@@ -1268,7 +1273,7 @@ String2.log("uniqueYear = " + uniqueYear);
             String2.log("newDataName=" + newDataName + " newDataUnits=" + newDataUnits);
 
             //add metadata for data columns
-            //standardNames from http://cfconventions.org/standard-names.html
+            //standardNames from https://cfconventions.org/standard-names.html
             //none seem relevant here
             for (int col = 5; col < data.nColumns(); col++) {
                 String pm2 = " per square meter";  //must be all lowercase
@@ -1367,7 +1372,7 @@ String2.log("uniqueYear = " + uniqueYear);
                     data.globalAttributes().copyTo(stationTable.globalAttributes());
                     for (int col = 0; col < 5; col++) {
                         stationTable.addColumn(col, data.getColumnName(col), 
-                            PrimitiveArray.factory(data.getColumn(col).elementClass(), dataCol, false), 
+                            PrimitiveArray.factory(data.getColumn(col).elementType(), dataCol, false), 
                             (Attributes)data.columnAttributes(col).clone());
                     }
                     //add data columns
@@ -1641,7 +1646,7 @@ String2.log("uniqueYear = " + uniqueYear);
             //    CommonName, Number fish per 100mX2mX30m transect",  //6,7
 
             //add metadata for data columns
-            //standardNames from http://cfconventions.org/standard-names.html
+            //standardNames from https://cfconventions.org/standard-names.html
             //none seem relevant here
 //Year	IslandName	SiteName	Date	Species	Species Name	Adult/Juvenile/sex	CommonName	Transect	Number fish per 100mX2mX30m transect
 //1985	Anacapa	Admiral's Reef	8/30/1985 0:00:00	14001.00	Chromis punctipinnis	 Adult	Blacksmith Adult	1	224
@@ -1700,7 +1705,7 @@ String2.log("uniqueSpp = " + uniqueSpp);
                     data.globalAttributes().copyTo(stationTable.globalAttributes());
                     for (int col = 0; col < 5; col++) {
                         stationTable.addColumn(col, data.getColumnName(col), 
-                            PrimitiveArray.factory(data.getColumn(col).elementClass(), dataCol, false), 
+                            PrimitiveArray.factory(data.getColumn(col).elementType(), dataCol, false), 
                             (Attributes)data.columnAttributes(col).clone());
                     }
                     for (int col = 0; col < nUniqueSpp; col++) {
@@ -1967,7 +1972,7 @@ String2.log("uniqueSpp = " + uniqueSpp);
             data.removeColumn(5);
 
             //add metadata for data columns
-            //standardNames from http://cfconventions.org/standard-names.html
+            //standardNames from https://cfconventions.org/standard-names.html
             //none seem relevant here
             for (int col = 5; col < data.nColumns(); col++) {
                 String colName = data.getColumnName(col);
@@ -2048,15 +2053,15 @@ String2.log("sppCol name = " + data.getColumnName(sppCol));
                     data.globalAttributes().copyTo(stationTable.globalAttributes());
                     for (int col = 0; col < data.nColumns(); col++) {
                         PrimitiveArray oldColumn = data.getColumn(col);
-                        Class elementClass = oldColumn.elementClass();
+                        PAType elementPAType = oldColumn.elementType();
                         PrimitiveArray newColumn = 
-                            PrimitiveArray.factory(elementClass, tnRows, false);
+                            PrimitiveArray.factory(elementPAType, tnRows, false);
                         stationTable.addColumn(col, data.getColumnName(col), 
                             newColumn, 
                             (Attributes)data.columnAttributes(col).clone());
 
                         //fill the stationTable with data
-                        boolean isString = elementClass == String.class;
+                        boolean isString = elementPAType == PAType.STRING;
                         for (int tRow = startRow; tRow < row; tRow++) {
                             if (isString)
                                 newColumn.addString(oldColumn.getString(tRow));
@@ -2270,7 +2275,7 @@ String2.log("sppCol name = " + data.getColumnName(sppCol));
             //data.columnAttributes(4).set("units", DataHelper.UNITLESS);
 
             //add metadata for data columns
-            //standardNames from http://cfconventions.org/standard-names.html
+            //standardNames from https://cfconventions.org/standard-names.html
             //none seem relevant here
             for (int col = 5; col < data.nColumns(); col++) {
                 String colName = data.getColumnName(col);
@@ -2352,15 +2357,15 @@ String2.log("sppCol name = " + data.getColumnName(sppCol));
                     data.globalAttributes().copyTo(stationTable.globalAttributes());
                     for (int col = 0; col < data.nColumns(); col++) {
                         PrimitiveArray oldColumn = data.getColumn(col);
-                        Class elementClass = oldColumn.elementClass();
+                        PAType elementPAType = oldColumn.elementType();
                         PrimitiveArray newColumn = 
-                            PrimitiveArray.factory(elementClass, tnRows, false);
+                            PrimitiveArray.factory(elementPAType, tnRows, false);
                         stationTable.addColumn(col, data.getColumnName(col), 
                             newColumn, 
                             (Attributes)data.columnAttributes(col).clone());
 
                         //fill the stationTable with data
-                        boolean isString = elementClass == String.class;
+                        boolean isString = elementPAType == PAType.STRING;
                         for (int tRow = startRow; tRow < row; tRow++) {
                             if (isString)
                                 newColumn.addString(oldColumn.getString(tRow));
@@ -3082,7 +3087,7 @@ variables:
 
                             //define newVar in new file
                             newVars[v] = newFile.addVariable(rootGroup, varName, dataType, dimensions); 
-                            NcHelper.setAttributes(nc3Mode, newVars[v], atts);
+                            NcHelper.setAttributes(nc3Mode, newVars[v], atts, NcHelper.isUnsigned(dataType));
                         }
 
                         //define GLOBAL metadata 
@@ -3184,7 +3189,7 @@ variables:
                             //if time
                             } else if (name.equals("time")) {
                                 //just read it and write it unchanged
-                                newFile.write(newVars[v], NcHelper.get1DArray(new int[]{months}));
+                                newFile.write(newVars[v], NcHelper.get1DArray(new int[]{months}, false)); 
 
                             //if other variables
                             } else {
@@ -3200,12 +3205,15 @@ variables:
                                 newFile.write(newVars[v], array);
                             }
                         }
+                        newFile.close();
+                        newFile = null;
+
                     } finally {
                         try {oldFile.close(); } catch (Exception e) {}
                         oldFile = null;
                     }
                 } finally {
-                    try {newFile.close(); } catch (Exception e) {}
+                    try { if (newFile != null) newFile.abort(); } catch (Exception e) {}
                     newFile = null;
                 }
 
@@ -3257,7 +3265,7 @@ java.lang.IllegalArgumentException: illegal dataType: long not supported in netc
             atts.set("units", "count");
 
             Variable var = newFile.addVariable(rootGroup, "longs", dataType, dims); 
-            NcHelper.setAttributes(nc3Mode, var, atts);
+            NcHelper.setAttributes(nc3Mode, var, atts, NcHelper.isUnsigned(dataType));
 
             //define GLOBAL metadata 
             Attributes gatts = new Attributes();
@@ -3267,7 +3275,7 @@ java.lang.IllegalArgumentException: illegal dataType: long not supported in netc
             //leave define mode
             newFile.create();
 
-            ArrayLong.D1 array = new ArrayLong.D1(5);
+            ArrayLong.D1 array = new ArrayLong.D1(5, false); //isUnsigned
             array.set(0, Long.MIN_VALUE);
             array.set(0, -999);
             array.set(0, 0);
@@ -3283,7 +3291,7 @@ java.lang.IllegalArgumentException: illegal dataType: long not supported in netc
             String2.log("\n*** Projects.testLongInNc3 finished successfully.");
 
         } catch (Exception e) {
-            try {if (newFile != null) newFile.close();} catch (Exception e2) {}
+            try {if (newFile != null) newFile.abort();} catch (Exception e2) {}
             String2.log(MustBe.throwableToString(e));
         }
     }
@@ -3369,9 +3377,9 @@ public static void testJanino() throws Exception {
             //Janino
             ExpressionEvaluator ee = new ExpressionEvaluator(
                 "c > d ? c : d",                     // expression
-                int.class,                           // expressionType
+                PAType.INT,                           // expressionType
                 new String[] { "c", "d" },           // parameterNames
-                new Class[] { int.class, int.class } // parameterTypes
+                new PAType[] { PAType.INT, PAType.INT } // parameterTypes
             );
             Integer res = (Integer) ee.evaluate(
                 new Object[] {          // parameterValues
@@ -3384,9 +3392,9 @@ public static void testJanino() throws Exception {
         if (true) {
             ExpressionEvaluator ee = new ExpressionEvaluator(
                 "import com.cohort.util.Calendar2; Calendar2.isoStringToEpochSeconds(a[0] + \"T\" + a[1])",    // expression
-                double.class,                 // expressionType
+                PAType.DOUBLE,                 // expressionType
                 new String[] {"a" },          // array of parameterNames
-                new Class[] {String[].class } // array of parameterTypes, e.g., int.class, or String[].class
+                new PAType[] {String[].class } // array of parameterTypes, e.g., PAType.INT, or String[].class
             );
 
             // Evaluate it with varying parameter values; very fast.
@@ -3604,10 +3612,10 @@ public static void testJanino() throws Exception {
             "station_code, date,         station,      local_time,   depth_or_pressure, " + 
             "temperature,  salinity,     density,      fluorescence, project, " +
             "transect", ',');
-        Class dataColTypes[] = {
-            String.class,  String.class, String.class, String.class, float.class,
-            float.class,   float.class,  float.class,  float.class,  String.class,
-            String.class};
+        PAType dataColTypes[] = {
+            PAType.STRING,  PAType.STRING, PAType.STRING, PAType.STRING, PAType.FLOAT,
+            PAType.FLOAT,   PAType.FLOAT,  PAType.FLOAT,  PAType.FLOAT,  PAType.STRING,
+            PAType.STRING};
         String dataUnits[] = { //date will be ...
             null,          "seconds since 1970-01-01T00:00:00Z", null, null, "meters",
             "degree_C",    "1e-3",       "sigma",      "volts",      null, //1e-3 replaces PSU in CF std names 25
@@ -3617,9 +3625,9 @@ public static void testJanino() throws Exception {
 
         String latLonColNames[] = String2.split(
             "line,        station,      latitude,    longitude,   transect", ',');
-        //schema has double.class for lat, lon, but I think not necessary
-        Class latLonColTypes[] = {
-            String.class, String.class, float.class, float.class, String.class};
+        //schema has PAType.DOUBLE for lat, lon, but I think not necessary
+        PAType latLonColTypes[] = {
+            PAType.STRING, PAType.STRING, PAType.FLOAT, PAType.FLOAT, PAType.STRING};
 
         //find timezone   America/Los_Angeles
         //String2.log(String2.toCSSVString(ZoneId.getAvailableZoneIDs().toArray()));
@@ -3631,7 +3639,9 @@ public static void testJanino() throws Exception {
         //read the data source file
         String2.log("\nreading the data source file");
         Table dataTable = new Table();
-        dataTable.readASCII(sourceDir + sourceCsv, String2.ISO_8859_1, -1, 0, "", 
+        dataTable.readASCII(sourceDir + sourceCsv, String2.ISO_8859_1, 
+            "", "", //skipHeaderToRegex, skipLinesRegex,
+            -1, 0, "", 
             null, null, null, null, false); //don't simplify
         Test.ensureEqual(dataTable.nColumns(), dataColNames.length, "dataTable.nColumns() != dataColNames.length");
         String2.log("");
@@ -3655,7 +3665,7 @@ public static void testJanino() throws Exception {
                 dataTable.columnAttributes(col).set("units", dataUnits[col]);
 
             //change the columnType
-            if (dataColTypes[col] != String.class) {
+            if (dataColTypes[col] != PAType.STRING) {
                 PrimitiveArray pa = PrimitiveArray.factory(dataColTypes[col], 1, false);
                 pa.append(dataTable.getColumn(col));
                 dataTable.setColumn(col, pa);
@@ -3741,14 +3751,15 @@ public static void testJanino() throws Exception {
         //read the latLon file
         String2.log("\nreading the latLon source file");
         Table latLonTable = new Table();
-        latLonTable.readASCII(sourceDir + sourceLatLon, -1, 0, "", null, null, null, null);
+        latLonTable.readASCII(sourceDir + sourceLatLon, String2.ISO_8859_1,
+            "", "", -1, 0, "", null, null, null, null, true);
         Test.ensureEqual(latLonTable.nColumns(), latLonColNames.length, "latLonTable.nColumns() != latLonColNames.length");
         for (int col = 0; col < latLonColNames.length; col++) {
             //set the column name
             latLonTable.setColumnName(col, latLonColNames[col]);
 
             //change the columnType
-            if (latLonColTypes[col] != String.class) {
+            if (latLonColTypes[col] != PAType.STRING) {
                 PrimitiveArray pa = PrimitiveArray.factory(latLonColTypes[col], 1, false);
                 pa.append(latLonTable.getColumn(col));
                 latLonTable.setColumn(col, pa);
@@ -3826,7 +3837,7 @@ public static void testJanino() throws Exception {
                 Table table = new Table();
                 for (int col = 0; col < dataTable.nColumns(); col++) {
                     PrimitiveArray oldPa = dataTable.getColumn(col);
-                    PrimitiveArray newPa = PrimitiveArray.factory(oldPa.elementClass(), 
+                    PrimitiveArray newPa = PrimitiveArray.factory(oldPa.elementType(), 
                         lastRow - startRow + 1, false);
                     for (int tRow = startRow; tRow <= lastRow; tRow++) 
                         newPa.addString(oldPa.getString(tRow));
@@ -3875,9 +3886,9 @@ public static void testJanino() throws Exception {
 	region_caught	Int8 (4) */
             "region,       year,         market_category, month,          block, " + 
             "pounds,       area,         imported,        region_caught", ',');
-        Class dataColTypes[] = { //month and region_caught could be byte, but mv=-9999 wouldn't fit
-            short.class,   short.class,  short.class,     short.class,     short.class,
-            int.class,     String.class, String.class,    short.class};
+        PAType dataColTypes[] = { //month and region_caught could be byte, but mv=-9999 wouldn't fit
+            PAType.SHORT,   PAType.SHORT,  PAType.SHORT,     PAType.SHORT,     PAType.SHORT,
+            PAType.INT,     PAType.STRING, PAType.STRING,    PAType.SHORT};
         String dataUnits[] = { //date will be ...
             null,          null,         null,            null,           null,
             "pounds",      null,         null,            null};
@@ -3891,6 +3902,7 @@ public static void testJanino() throws Exception {
         String2.log("\nreading the data source file");
         Table dataTable = new Table();
         dataTable.readASCII(sourceDir + sourceCsv, String2.ISO_8859_1,  
+            "", "", //skipHeaderToRegex, skipLinesRegex,
             -1, 0, "", null, null, null, null, false);  //don't simplify
         Test.ensureEqual(dataTable.nColumns(), dataColNames.length, "dataTable.nColumns() != dataColNames.length");
         String2.log("");
@@ -3914,13 +3926,13 @@ public static void testJanino() throws Exception {
                 dataTable.columnAttributes(col).set("units", dataUnits[col]);
 
             //change the columnType
-            if (dataColTypes[col] != String.class) {
+            if (dataColTypes[col] != PAType.STRING) {
                 PrimitiveArray pa = PrimitiveArray.factory(dataColTypes[col], 1, false);
                 PrimitiveArray opa = dataTable.getColumn(col);
                 //ensure dataColType is appropriate
                 int n = opa.size();
-                int max = dataColTypes[col] == short.class? Short.MAX_VALUE :
-                          dataColTypes[col] == int.class? Integer.MAX_VALUE :
+                int max = dataColTypes[col] == PAType.SHORT? Short.MAX_VALUE :
+                          dataColTypes[col] == PAType.INT? Integer.MAX_VALUE :
                           -1;
                 Test.ensureTrue(max != -1, "Unrecognized dataColType for col=" + col);
                 for (int row = 0; row < n; row++) {
@@ -3985,21 +3997,22 @@ public static void testJanino() throws Exception {
 	species_group		Char (20), 
 	comments			Char (240) */
             "market_category, description, nominal_species, species_group, comments", ',');
-        //schema has double.class for lat, lon, but I think not necessary
-        Class marCatColTypes[] = {
-            short.class, String.class, String.class, String.class, String.class};
+        //schema has PAType.DOUBLE for lat, lon, but I think not necessary
+        PAType marCatColTypes[] = {
+            PAType.SHORT, PAType.STRING, PAType.STRING, PAType.STRING, PAType.STRING};
 
         String2.log("\nreading the marCat source file");
         Table marCatTable = new Table();
 
-        marCatTable.readASCII(sourceDir + sourceMarCat, -1, 0, "", null, null, null, null);
+        marCatTable.readASCII(sourceDir + sourceMarCat, String2.ISO_8859_1,
+            "", "", -1, 0, "", null, null, null, null, true);
         Test.ensureEqual(marCatTable.nColumns(), marCatColNames.length, "marCatTable.nColumns() != marCatColNames.length");
         for (int col = 0; col < marCatColNames.length; col++) {
             //set the column name
             marCatTable.setColumnName(col, marCatColNames[col]);
 
             //change the columnType
-            if (marCatColTypes[col] != String.class) {
+            if (marCatColTypes[col] != PAType.STRING) {
                 PrimitiveArray pa = PrimitiveArray.factory(marCatColTypes[col], 1, false);
                 pa.append(marCatTable.getColumn(col));
                 marCatTable.setColumn(col, pa);
@@ -4026,7 +4039,7 @@ String2.log(marCatTable.toString());
         int nRows = dataMarCatPa.size();
         for (int row = 0; row < nRows; row++) {
             int dataMarCat = dataMarCatPa.getInt(row);
-            int po = marCatPa.binarySearch(0, marCatPaSize - 1, dataMarCat);
+            int po = marCatPa.binarySearch(0, marCatPaSize - 1, PAOne.fromInt(dataMarCat));
             if (po < 0) {
 //marCat=7 isn't defined
                 String2.log("dataMarCat=" + dataMarCat + " not in marCatPa");
@@ -4056,7 +4069,7 @@ String2.log(marCatTable.toString());
                 Table table = new Table();
                 for (int col = 0; col < dataTable.nColumns(); col++) {
                     PrimitiveArray oldPa = dataTable.getColumn(col);
-                    PrimitiveArray newPa = PrimitiveArray.factory(oldPa.elementClass(), 
+                    PrimitiveArray newPa = PrimitiveArray.factory(oldPa.elementType(), 
                         lastRow - startRow + 1, false);
                     for (int tRow = startRow; tRow <= lastRow; tRow++) 
                         newPa.addString(oldPa.getString(tRow));
@@ -4546,7 +4559,7 @@ String2.log("Projects.touchUrls is finished.");
             .add("description", descriptions.toString());
 
         //"San Diego    Los Angeles  Santa BarbaraMonterey     San FranciscoEureka       "
-        StringArray stationnames = (StringArray)PrimitiveArray.csvFactory(String.class,
+        StringArray stationnames = (StringArray)PrimitiveArray.csvFactory(PAType.STRING,
             "San Diego, Los Angeles, Santa Barbara, Monterey, San Francisco, Eureka");
         Test.ensureEqual(nStations, stationnames.size(), "nStations != nStationnames");
 
@@ -4821,7 +4834,7 @@ String2.log("Projects.touchUrls is finished.");
             .add("long_name", "Fish Name")
             .add("description", descriptions.toString());
 
-        StringArray stationnames = (StringArray)PrimitiveArray.csvFactory(String.class,
+        StringArray stationnames = (StringArray)PrimitiveArray.csvFactory(PAType.STRING,
             "San Diego, Los Angeles, Santa Barbara, Monterey, San Francisco, Eureka");
         Test.ensureEqual(nStations, stationnames.size(), "nStations != nStationnames");
 
@@ -5733,7 +5746,7 @@ project)
             Table table = new Table();
             table.readNDNc(oldDir + "calcofiBio_19840211_66.7_65_NH16.nc",
                 null, 0,  //standardizeWhat=0
-                null, Double.NaN, Double.NaN, true);
+                null, Double.NaN, Double.NaN);
             String2.log(table.toString());
             System.exit(0);
         }
@@ -5795,7 +5808,7 @@ project)
             Table inTable = new Table();
             inTable.readNDNc(oldDir + fileName[filei],
                 null, 0,  //standardizeWhat=0
-                null, Double.NaN, Double.NaN, true);
+                null, Double.NaN, Double.NaN);
             if (inTable.nRows() != 1)
                 throw new RuntimeException(fileName[filei] + " has nRows=" + inTable.nRows());
             double time = -999f;
@@ -5836,7 +5849,7 @@ project)
                     //a data var
                     String long_name = inTable.columnAttributes(col).getString("long_name");
                     String units     = inTable.columnAttributes(col).getString("units");
-                    String type      = inTable.getColumn(col).elementClassString();
+                    String type      = inTable.getColumn(col).elementTypeString();
                     if (!type.equals("int"))
                         throw new RuntimeException(fileName[filei] + " long_name=" + long_name +
                             " has type=" + type);
@@ -5963,7 +5976,7 @@ project)
             Table table = new Table();
             table.readNDNc(oldDir + "subsurface_19490228_92_39.nc",
                 null, 0,  //standardizeWhat=0
-                null, Double.NaN, Double.NaN, true);
+                null, Double.NaN, Double.NaN);
             String2.log(table.toString());
             System.exit(0);
         }
@@ -5981,7 +5994,7 @@ project)
         Table outTable = new Table();
         outTable.readNDNc(oldDir + fileName[0],
             null, 0,  //standardizeWhat=0
-            null, Double.NaN, Double.NaN, true);
+            null, Double.NaN, Double.NaN);
             String2.log(outTable.toString());
         String outColNames[] = outTable.getColumnNames();
         String today = Calendar2.getCurrentISODateStringLocal();
@@ -5997,7 +6010,7 @@ project)
             Table inTable = new Table();
             inTable.readNDNc(oldDir + fileName[filei],
                 null, 0,  //standardizeWhat=0
-                null, Double.NaN, Double.NaN, true);
+                null, Double.NaN, Double.NaN);
             String inColNames[] = inTable.getColumnNames();
             Test.ensureEqual(outColNames, inColNames, "outColNames doesn't equal inColNames");            
            
@@ -6078,7 +6091,7 @@ project)
             Table table = new Table();
             table.readNDNc(oldDir + "surface_19490228_92_39.nc",
                 null, 0,  //standardizeWhat=0
-                null, Double.NaN, Double.NaN, true);
+                null, Double.NaN, Double.NaN);
             String2.log(table.toString());
             //System.exit(0);
         }
@@ -6096,7 +6109,7 @@ project)
         Table outTable = new Table();
         outTable.readNDNc(oldDir + fileName[0],
             null, 0,  //standardizeWhat=0
-            null, Double.NaN, Double.NaN, true);
+            null, Double.NaN, Double.NaN);
             String2.log(outTable.toString());
         String outColNames[] = outTable.getColumnNames();
         String today = Calendar2.getCurrentISODateStringLocal();
@@ -6112,7 +6125,7 @@ project)
             Table inTable = new Table();
             inTable.readNDNc(oldDir + fileName[filei],
                 null, 0,  //standardizeWhat=0
-                null, Double.NaN, Double.NaN, true);
+                null, Double.NaN, Double.NaN);
             String inColNames[] = inTable.getColumnNames();
             Test.ensureEqual(outColNames, inColNames, "outColNames doesn't equal inColNames");            
            
@@ -6193,7 +6206,7 @@ project)
             Table table = new Table();
             //1=unpack -- solves problem:
             // intp  first 4 files have add_offset NaN.  remainder have 273.15
-            table.readFlatNc(inDir + fileName, null, 1); //standardizeWhat=1 
+            table.readFlatNc(inDir + fileName, null, 1); //standardizeWhat=1
             int nRows = table.nRows();
 
             //*** ext: some degree_Celsius, some Kelvin (convert to degree_C)
@@ -6686,14 +6699,14 @@ project)
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to pmol/kg and set all to -999");
                         tUnits = "pmol/kg";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("e8/l")) && 
                                (colName.equals("bact"))) {
                         //convert bact in wrong units to NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to cells/ml and set all to -999");
                         tUnits = "cells/ml";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("pmol/l") ||
                                 tUnits.equals("umol/l") ||
                                 tUnits.equals("ml/l")) && 
@@ -6708,14 +6721,14 @@ project)
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to umol/kg and set all to -999");
                         tUnits = "umol/kg";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("umol/kg")) && 
                                colName.equals("tritum")) {
                         //convert tritum in umol/kg to NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to TU and set all to -999");
                         tUnits = "tu";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("ppm") || 
                                 tUnits.equals("ppm@eq")) && 
                                colName.equals("pco2")) {
@@ -6723,7 +6736,7 @@ project)
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to uatm and set all to -999");
                         tUnits = "uatm";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("ug/l") ||
                                 tUnits.equals("mg/m3") ||
                                 tUnits.equals("mg/m**3")) && 
@@ -6733,42 +6746,42 @@ project)
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to ug/kg and set all to -999");
                         tUnits = "ug/kg";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("")) && 
                                colName.equals("c13err")) {
                         //convert c13err to g/kg and NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to o/oo (g/kg?) and set all to -999");
                         tUnits = "g/kg";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("")) && 
                                colName.equals("phaeo")) {
                         //convert phaeo to ug/l and NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to ug/l and set all to -999");
                         tUnits = "ug/l";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("")) && 
                                colName.equals("revprs")) {
                         //convert revprs to dbar and NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to dbar and set all to -999");
                         tUnits = "dbar";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("pctmod")) && 
                                colName.equals("delhe3")) {
                         //convert delhe3 to g/100g and NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to % (g/100g?) and set all to -999");
                         tUnits = "g/100g";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("degree_C")) && 
                         colName.equals("ctdprs")) {
                         //convert ctdpers to dbar and NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to dbar and set all to -999");
                         tUnits = "dbar";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if ((tUnits.equals("degree_C") ||
                          tUnits.equals("umol/kg")) && 
                         (colName.equals("ctdsal") ||
@@ -6777,14 +6790,14 @@ project)
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to 1e-3 and set all to -999");
                         tUnits = "1e-3"; //PSU changed to 1e-3 in CF std names 25
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } else if (tUnits.equals("1e-3") &&  //?  was PSU
                         colName.equals("ctdtmp")) {
                         //convert ctdtmp to degree_C and NaNs
                         String2.log("change colName=" + colName + " units=" + tUnits + 
                             " to degree_C and set all to -999");
                         tUnits = "degree_C";
-                        table.setColumn(col, PrimitiveArray.factory(float.class, nRows, "-999"));
+                        table.setColumn(col, PrimitiveArray.factory(PAType.FLOAT, nRows, "-999"));
                     } 
 
 
@@ -6834,7 +6847,7 @@ project)
                     PrimitiveArray pa = table.getColumn(col);
                     if (!(pa instanceof StringArray))
                         table.columnAttributes(col).add("missing_value", 
-                            PrimitiveArray.factory(pa.elementClass(), 1, "-999"));
+                            PrimitiveArray.factory(pa.elementType(), 1, "-999"));
 
                 }
 
@@ -6868,7 +6881,7 @@ project)
                     String colName = table.getColumnName(col);
                     String newInfo = (tUnits == null? "" : tUnits) + 
                         "|" +
-                        table.getColumn(col).elementClassString();
+                        table.getColumn(col).elementTypeString();
                     //if (colName.equals("ph_sws_flag_w") && 
                     //    fileNames[f].equals("06AQ19960712_hy1.csv")) {
                     //    throw new Exception("  col=" + colName + " newInfo=" + newInfo + "\n" +
@@ -7131,16 +7144,16 @@ project)
                             //String2.log("    dim#" + d + "=" + tName + " size=" + tSize);
                             dims[d] = ncOut.addDimension(rootGroup, tName, tSize, true, false, false);
                             newDimVars[d] = ncOut.addVariable(rootGroup, tName, 
-                                NcHelper.getNc3DataType(pas[d + 1].elementClass()), 
+                                NcHelper.getNc3DataType(pas[d + 1].elementType()), 
                                 Arrays.asList(dims[d])); 
                         }
                     }
 
                     PrimitiveVector pv = ((DArray)dGrid.getVar(0)).getPrimitiveVector(); 
-                    Class tClass = OpendapHelper.getElementClass(pv);
-                    //String2.log("pv=" + pv.toString() + " tClass=" + tClass);
+                    PAType tType = OpendapHelper.getElementPAType(pv);
+                    //String2.log("pv=" + pv.toString() + " tType=" + tType);
                     newVars[v] = ncOut.addVariable(rootGroup, vars[v], 
-                        NcHelper.getNc3DataType(tClass), dims);
+                        NcHelper.getNc3DataType(tType), dims);
 
                 } else {
                    throw new RuntimeException(beginError + 
@@ -7192,7 +7205,8 @@ project)
                     int origin[] = {0, 0, 0};
                     pas[0].trimToSize(); //so underlying array is exact size
                     ncOut.write(newVars[v], origin,
-                        Array.factory(pas[0].elementClass(), jplChunkShape, pas[0].toObjectArray()));
+                        Array.factory(NcHelper.getNc3DataType(pas[0].elementType()),
+                            jplChunkShape, pas[0].toObjectArray()));
 
                     //read other chunks
                     for (int chunk = 1; chunk < jplNChunks; chunk++) {
@@ -7205,7 +7219,8 @@ project)
                         pas[0].trimToSize(); //so underlying array is exact size
                         //String2.log("pas[0]=" + pas[0].toString());
                         ncOut.write(newVars[v], origin,
-                            Array.factory(pas[0].elementClass(), jplChunkShape, pas[0].toObjectArray()));
+                            Array.factory(NcHelper.getNc3DataType(pas[0].elementType()), 
+                                jplChunkShape, pas[0].toObjectArray()));
                     }
                 } else {
                     if (v > 0)  //read it
@@ -7213,7 +7228,8 @@ project)
                     pas[0].trimToSize(); //so underlying array is exact size
                     //String2.log("pas[0]=" + pas[0].toString());
                     ncOut.write(newVars[v], 
-                        Array.factory(pas[0].elementClass(), shape, pas[0].toObjectArray()));
+                        Array.factory(NcHelper.getNc3DataType(pas[0].elementType()), 
+                            shape, pas[0].toObjectArray()));
                 }
 
                 if (verbose) String2.log("  v#" + v + "=" + vars[v] + " finished. time=" + 
@@ -7222,6 +7238,7 @@ project)
 
             //if close throws Throwable, it is trouble
             ncOut.close(); //it calls flush() and doesn't like flush called separately
+            ncOut = null;
 
             //rename the file to the specified name
             File2.rename(fullFileName + randomInt, fullFileName);
@@ -7233,8 +7250,7 @@ project)
 
         } catch (Throwable t) {
             //try to close the file
-            try {
-                ncOut.close(); //it calls flush() and doesn't like flush called separately
+            try {  if (ncOut != null) ncOut.abort(); 
             } catch (Throwable t2) {
                 //don't care
             }
@@ -7656,8 +7672,8 @@ dir, tableName = "CC_MOCNESSES", new String[]{
 "oxygenMean",         "double", "?",         "Oxygen Mean",
 "temperatureMean",    "double", "degree_C",  "Temperature Mean",
 "salinityMean",       "double", "?",         "Salinity Mean",
-"temperatureMin",     "double", "degree_C",  "Temperature Miniumum",
-"temperatureMax",     "double", "degree_C",  "Temperature Maxiumum",
+"temperatureMin",     "double", "degree_C",  "Temperature Minimum",
+"temperatureMax",     "double", "degree_C",  "Temperature Maximum",
 "salinityMin",        "double", "?",         "Salinity Minimum",
 "salinityMax",        "double", "?",         "Salinity Maximum",
 "oxygenMin",          "double", "?",         "Oxygen Minimum",
@@ -8143,15 +8159,15 @@ towTypesDescription);
                 atts.add("units", "degrees_north");
                 Dimension latDim = nc.addDimension(rootGroup, latName, nLat);
                 Variable latVar = nc.addVariable(rootGroup, latName, 
-                    NcHelper.getNc3DataType(double.class), Arrays.asList(latDim)); 
-                NcHelper.setAttributes(nc3Mode, latVar, atts);
+                    NcHelper.getNc3DataType(PAType.DOUBLE), Arrays.asList(latDim)); 
+                NcHelper.setAttributes(nc3Mode, latVar, atts, false);  //isUnsigned
 
                 //lon
                 atts.add("units", "degrees_east");
                 Dimension lonDim = nc.addDimension(rootGroup, lonName, nLon);
                 Variable lonVar = nc.addVariable(rootGroup, lonName, 
-                    NcHelper.getNc3DataType(double.class), Arrays.asList(lonDim)); 
-                NcHelper.setAttributes(nc3Mode, lonVar, atts);
+                    NcHelper.getNc3DataType(PAType.DOUBLE), Arrays.asList(lonDim)); 
+                NcHelper.setAttributes(nc3Mode, lonVar, atts, false); //isUnsigned
 
                 //write global attributes
                 //NcHelper.setAttributes(nc3Mode, nc, "NC_GLOBAL", ada.globalAttributes());
@@ -8163,16 +8179,17 @@ towTypesDescription);
                 DoubleArray da = new DoubleArray();
                 for (int i = 0; i < nLat; i++)
                     da.add(lat0 - i * inc);
-                nc.write(latVar, NcHelper.get1DArray(da.toArray()));
+                nc.write(latVar, NcHelper.get1DArray(da));
 
                 //write the lon values
                 da = new DoubleArray();
                 for (int i = 0; i < nLon; i++)
                     da.add(lon0 + i * inc);
-                nc.write(lonVar, NcHelper.get1DArray(da.toArray()));
+                nc.write(lonVar, NcHelper.get1DArray(da));
 
                 //if close throws Throwable, it is trouble
                 nc.close(); //it calls flush() and doesn't like flush called separately
+                nc = null;
 
                 //diagnostic
                 String2.log("  createViirsLatLon finished successfully\n");
@@ -8180,7 +8197,7 @@ towTypesDescription);
             } catch (Throwable t) {
                 String2.log(MustBe.throwableToString(t));
             } finally {
-                nc.close();
+                if (nc != null) nc.abort();
             }
         }
 
@@ -8200,6 +8217,7 @@ towTypesDescription);
                 " [0]=" + pa.getString(0) +
                 " [1]=" + pa.getString(1) +
                 " [" + (pa.size()-1) + "]=" + pa.getString(pa.size()-1));
+
 
         } catch (Throwable t) {
             String2.log(MustBe.throwableToString(t));
@@ -8316,7 +8334,8 @@ towTypesDescription);
 
         //read the outer files
         Table outer = new Table();
-        outer.readASCII(dir + outerName + fileExtension, 0, 1, "\t", 
+        outer.readASCII(dir + outerName + fileExtension, String2.ISO_8859_1,
+            "", "", 0, 1, "\t", 
             null, null, null, null, false); //simplify
         Test.ensureEqual(outer.getColumnNamesCSVString(),
             "CRUISE,CTD_INDEX,CTD_NO,STATION,CTD_DATE,CTD_LAT,CTD_LONG,CTD_BOTTOM_DEPTH,BUCKET_TEMP,BUCKET_SAL,TS_TEMP,TS_SAL",
@@ -8394,7 +8413,8 @@ towTypesDescription);
 
         //read inner table
         Table inner = new Table();
-        inner.readASCII(dir + innerName + fileExtension, 0, 1, "\t", 
+        inner.readASCII(dir + innerName + fileExtension, String2.ISO_8859_1,
+            "", "", 0, 1, "\t", 
             null, null, null, null, false); //simplify
         for (int coli = 0; coli < inner.nColumns(); coli++) 
             inner.setColumnName(coli, inner.getColumnName(coli).toLowerCase());
@@ -8443,7 +8463,8 @@ towTypesDescription);
         for (int f = 0; f < tFileNames.length; f++) {
 
             Table table = new Table();
-            table.readASCII(tFileNames[f], 0, 2, "", null, null, null, null, false); //simplify
+            table.readASCII(tFileNames[f], String2.ISO_8859_1,
+                "", "", 0, 2, "", null, null, null, null, false); //simplify
             Test.ensureEqual(table.getColumnNamesCSVString(),
                 headerMode?
                     "cruise,ctd_index,ctd_no,station,time,longitude,latitude,bottom_depth," +
@@ -8798,15 +8819,15 @@ towTypesDescription);
             if (fileName != null && fileName.matches(nameRegex)) {
                 table.clear();
                 table.readNDNc(dir + fileName, null, 0,  //standardizeWhat=0
-                    null, 0, 0, true);
+                    null, 0, 0);
                 int nCols = table.nColumns();
                 PrimitiveArray pa = table.globalAttributes().get("wmo_platform_code");
                 tally.add("wmo_platform_code",
-                    pa == null? "null" : pa.elementClassString());
+                    pa == null? "null" : pa.elementTypeString());
 
                 for (int c = 0; c < nCols; c++)
                     tally.add(table.getColumnName(c), 
-                        table.getColumn(c).elementClassString());
+                        table.getColumn(c).elementTypeString());
             }
         }
         String2.log("\n*** Projects.lookAtFiles finished successfully. nMatchingFiles=" + nMatching + "\n" +
@@ -9537,7 +9558,7 @@ towTypesDescription);
 
                     //extract date yyyyddd
                     String tName = File2.getNameAndExtension(names.get(i));
-                    String date = String2.extractCaptureGroup(tName, ".*_(\\d{7})_.*", 1);
+                    String date = String2.extractCaptureGroup(tName, "_(\\d{7})_", 1);
                     if (date == null)
                         continue;
         //19810825023019-NCEI-L3C_GHRSST-SSTskin-AVHRR_Pathfinder-PFV5.3_NOAA07_G_1981237_night-v02.0-fv01.0.nc
@@ -9637,6 +9658,76 @@ towTypesDescription);
         String2.log("\n*** Projects.unGz finished. nTry=" + fileNames.length + " nFail=" + nFail);
     }
 
+    /** This is a 2020-04-10 test that NetcdfFileWriter.abort() succeeds and closes the file. */
+    public static void testNcAbort() throws Exception {
+
+        String fullName = "/downloads/testNcAbort.nc";
+
+        //delete file if it already exists
+        File file = new File(fullName);
+        if (file.exists()) {
+            System.out.println("result of initial file.delete()=" + file.delete());  
+            System.out.println("file.exists=" + file.exists());  
+        }
+        file = null; //so this isn't excuse for file not being deleted later
+
+        //open the file (before 'try'); if it fails, no temp file to delete
+        System.out.println("createNew file=" + fullName);  
+        NetcdfFileWriter nc = NetcdfFileWriter.createNew(
+            NetcdfFileWriter.Version.netcdf3, fullName);
+        
+        try {
+            Group rootGroup = nc.addGroup(null, "");
+            nc.setFill(false);
+
+            //define the dimensions
+            int nX = 3;
+            Dimension aDimension  = nc.addDimension(rootGroup, "x", nX);
+
+            //add the variables
+            Variable var = nc.addVariable(rootGroup, "var0", DataType.BYTE, Arrays.asList(aDimension)); 
+
+            rootGroup.addAttribute(new ucar.nc2.Attribute("testAttribute", 
+                Array.factory(DataType.UBYTE, new int[]{4}, new byte[]{2,4,6,8})));
+
+            nc.create();
+
+            Array ar = Array.factory(DataType.UBYTE, new int[]{nX}, new byte[]{1,2,3});
+            nc.write(var, ar);
+
+            //if close throws exception, it is trouble
+            nc.close(); //it calls flush() and doesn't like flush called separately
+            nc = null;
+
+            System.out.println("shouldn't get here");
+
+        } catch (Exception e) {
+            System.out.println("caught Exception e (before abort):");
+            e.printStackTrace();
+            try {
+                if (nc != null) { 
+                    nc.abort(); 
+                    nc = null; //so this isn't excuse for file not being deleted later
+                }
+            } catch (Exception e2) {
+                System.out.println("caught Exception e2 (caused by abort):");
+                e2.printStackTrace();
+            }
+
+            //delete the partial file
+            file = new File(fullName);
+            if (file.exists())
+                System.out.println("result of file.delete()=" + file.delete());  
+
+            System.out.println("file still exists=" + file.exists());  
+
+            throw e;
+
+        }
+    }
+
+
+
     /**
      * This converts a NOAA Passive Acoustic Spectrum csv file into a .nc file.
      */
@@ -9644,7 +9735,8 @@ towTypesDescription);
 
         //read the csv
         Table table = new Table();
-        table.readASCII(sourceFullName, 0, 1, ",",
+        table.readASCII(sourceFullName, String2.ISO_8859_1,
+            "", "", 0, 1, ",",
             null, null, null, null, true);  //simplify
         String2.log("acousticCsvToNc " + sourceFullName + "\n" +
             table.toString(3));
@@ -9682,7 +9774,7 @@ towTypesDescription);
             dimensions.clear();
             dimensions.add(timeDimension);
             PrimitiveArray pa = table.getColumn(0);
-            array[0] = NcHelper.get1DArray(pa.toObjectArray());
+            array[0] = NcHelper.get1DArray(pa);
             atts = new Attributes(); 
             //atts.add("_CoordinateAxisType", "Lon");
             atts.add("actual_range", new DoubleArray(new double[]{pa.getDouble(0), pa.getDouble(nRows-1)}));
@@ -9691,7 +9783,7 @@ towTypesDescription);
             atts.add("standard_name", "time");
             atts.add("units", "seconds");
             newVars[0] = newFile.addVariable(rootGroup, "timeStamp", dataType, dimensions); 
-            NcHelper.setAttributes(nc3Mode, newVars[0], atts);
+            NcHelper.setAttributes(nc3Mode, newVars[0], atts, NcHelper.isUnsigned(dataType));
 
             //create the freq dimension
             Dimension freqDimension = newFile.addDimension(rootGroup, "frequency", nCols1);
@@ -9700,7 +9792,7 @@ towTypesDescription);
             DoubleArray da = new DoubleArray();
             for (int col = 1; col < nCols; col++)
                 da.addDouble(String2.parseDouble(table.getColumnName(col)));           
-            array[1] = NcHelper.get1DArray(da.toObjectArray());
+            array[1] = NcHelper.get1DArray(da);
             atts = new Attributes(); 
             //atts.add("_CoordinateAxisType", "Lon");
             atts.add("actual_range", new DoubleArray(new double[]{da.get(0), da.get(da.size() - 1)}));
@@ -9709,7 +9801,7 @@ towTypesDescription);
             atts.add("standard_name", "sound_frequency");
             atts.add("units", "s-1");
             newVars[1] = newFile.addVariable(rootGroup, "frequency", dataType, dimensions); 
-            NcHelper.setAttributes(nc3Mode, newVars[1], atts);
+            NcHelper.setAttributes(nc3Mode, newVars[1], atts, NcHelper.isUnsigned(dataType));
 
             //create the acoustic variable
             dimensions.clear();
@@ -9719,7 +9811,7 @@ towTypesDescription);
             for (int col = 1; col < nCols; col++)
                 for (int row = 0; row < nRows; row++)
                     da.add(table.getDoubleData(col, row));
-            array[2] = NcHelper.get1DArray(da.toObjectArray());
+            array[2] = NcHelper.get1DArray(da);
             array[2] = array[2].reshape(new int[]{nRows, nCols1});
             da = null;
             atts = new Attributes(); 
@@ -9728,7 +9820,7 @@ towTypesDescription);
             atts.add("standard_name", "sound_intensity_level_in_water");
             atts.add("units", "dB");
             newVars[2] = newFile.addVariable(rootGroup, "acoustic", dataType, dimensions); 
-            NcHelper.setAttributes(nc3Mode, newVars[2], atts);
+            NcHelper.setAttributes(nc3Mode, newVars[2], atts, NcHelper.isUnsigned(dataType));
 
             //define newVar in new file
 
@@ -9791,12 +9883,336 @@ towTypesDescription);
                 Variable var = newVars[v];
                 newFile.write(newVars[v], array[v]);
             }
-        } finally {
-            try {newFile.close(); } catch (Exception e) {}
+            newFile.close();
             newFile = null;
+
+        } finally {
+            try {if (newFile != null) newFile.abort(); } catch (Exception e) {}
         }
     }
 
+
+    /** 
+     * If the String is surrounded by ', this removes them,
+     *  else if the String is surrounded by ", this returns fromJson(s), else it returns s.
+     */
+    public static String unquoteYaml(String s) {
+        if (s == null || s.length() < 2) 
+            return s;
+        if (s.charAt(0) == '\"' && s.charAt(s.length() - 1) == '\"')
+            return String2.fromJson(s);
+        if (s.charAt(0) == '\'' && s.charAt(s.length() - 1) == '\'')
+            return s.substring(1, s.length() - 1);
+        return s;
+    } 
+
+    /** This generates ERDDAP datasets from all the dataset descriptions in 
+     * /c/git/open-data-registry/datasets/ .
+     * Cloned from https://github.com/awslabs/open-data-registry/
+     * Last cloned on 2019-08-27
+     *
+     * @throws Exception if trouble
+     */
+    public static String makeAwsS3FilesDatasets(String fileNameRegex) throws Exception {
+
+        String today = Calendar2.getCurrentISODateTimeStringLocalTZ().substring(0, 10);
+
+        Table table = FileVisitorDNLS.oneStep("/git/open-data-registry/datasets/", 
+            ".*.yaml", false, ".*", false); //fileNameRegex, tRecursive, pathRegex, dirToo
+        StringArray dirs  = (StringArray)table.getColumn(0);
+        StringArray names = (StringArray)table.getColumn(1);
+        StringBuilder sb     = new StringBuilder();
+        StringBuilder errors = new StringBuilder();
+        HashSet ignoredTags = new HashSet();
+        int nFiles = dirs.size();
+        HashSet bucketsAlreadyDone = new HashSet();
+        String skipBuckets[] = new String[]{
+            //skip because too many files in initial directory
+            "aws-earth-mo-atmospheric-ukv-prd",
+            "aws-earth-mo-atmospheric-global-prd", 
+            "aws-earth-mo-atmospheric-mogreps-uk-prd",
+            "goesingest",
+            "irs-form-990", 
+            "mogreps-g", 
+            "mogreps-uk", 
+            "ngi-igenomes",
+            "nrel-pds-hsds", 
+            //not reported: I'm not sure where to report  (owner?)
+            "data.geo.admin.ch",   //2019-08-28  access denied  403
+            "gcgrid",              //2019-08-28  access denied  403
+            "hcp-openaccess",      //2019-08-28  access denied  403
+            "icgc",                //2019-08-28  access denied  403
+            "mimic-iii-physionet", //2019-08-28  access denied  403
+            "tcga",                //2019-08-28  access denied  403
+            "physionet-pds",       //2019-08-28  no content
+
+            "zinc3d"};             //RequesterPays (not noted in names)
+        for (int f = 0; f < nFiles; f++) {
+            if (!names.get(f).matches(fileNameRegex))
+                continue;
+            String2.log(dirs.get(f) + "   " + names.get(f));
+            ArrayList<String> lines = String2.readLinesFromFile(dirs.get(f) + names.get(f), String2.UTF_8, 1);
+            int nLines = lines.size();
+            String name = null, deprecated = null, description = null, documentation = null, contact = null,
+                managedBy = null, updateFrequency = null, license = null,
+                name2 = null, bucket = null, region = null;
+            HashSet keywords = new HashSet();
+            EDD.chopUpCsvAndAdd("AWS, bucket, data, file, lastModified, names, S3", 
+                keywords);
+            int line = 0; //next line to be read
+            while (line < nLines) {
+                String tl = lines.get(line++);
+                //get rid of bom marker #65279 in some utf files.
+                if (line == 1 && tl.length() > 0 && tl.charAt(0) == '\uFEFF')
+                    tl = tl.substring(1);
+                //String2.log(">> tl =" + String2.annotatedString(tl));
+                if      (tl.startsWith("#"))
+                    continue;
+                else if (tl.startsWith("Name: ")) {          name            = unquoteYaml(tl.substring( 6).trim());
+                    EDD.chopUpAndAdd(name, keywords);
+                }
+                else if (tl.startsWith("Description: ")) {   description     = tl.substring(13).trim();
+                    if (description.length() == 1 && (description.equals("|") || description.equals(">"))) {
+                        String spacer = " "; 
+                        description = "";
+                        tl = line >= nLines? "" : lines.get(line++);
+                        while (tl.startsWith("  ")) {
+                            description += (description.length() == 0? "" : spacer) + tl.trim();
+                            tl = line >= nLines? "" : lines.get(line++);
+                        }
+                        if (line < nLines) line--; //back up a line
+                    }
+                    description = unquoteYaml(description);
+                }
+                else if (tl.startsWith("Deprecated: "))      deprecated      = tl.substring(12).trim();
+                else if (tl.startsWith("Documentation: "))   documentation   = unquoteYaml(tl.substring(15).trim());
+                else if (tl.startsWith("Contact: "))         contact         = unquoteYaml(tl.substring( 9).trim());
+                else if (tl.startsWith("ManagedBy: "))       managedBy       = unquoteYaml(tl.substring(11).trim());
+                else if (tl.startsWith("UpdateFrequency: ")) updateFrequency = unquoteYaml(tl.substring(17).trim());
+                else if (tl.startsWith("Tags:")) {
+                    tl = line >= nLines? "" : lines.get(line++);
+                    while (tl.startsWith("  - ")) {
+                        EDD.addAllAndParts(tl.substring(4), keywords);
+                        tl = line >= nLines? "" : lines.get(line++);
+                    }
+                    if (line < nLines) line--; //back up a line
+                }
+                else if (tl.startsWith("License: ")) {       license         = tl.substring( 9).trim();
+                    if (license.length() == 1 && (license.equals("|") || license.equals(">"))) {
+                        String spacer = " "; 
+                        license = "";
+                        tl = line >= nLines? "" : lines.get(line++);
+                        while (tl.startsWith("  ")) {
+                            license += (license.length() == 0? "" : spacer) + tl.trim();
+                            tl = line >= nLines? "" : lines.get(line++);
+                        }
+                        if (line < nLines) line--; //back up a line
+                    }
+                    license = unquoteYaml(license);
+                }
+                else if (tl.startsWith("DataAtWork:")) { //skip all content
+                    tl = line >= nLines? "" : lines.get(line++);
+                    while (tl.startsWith("  ")) {
+                        tl = line >= nLines? "" : lines.get(line++);
+                    }
+                    if (line < nLines) line--; //back up a line
+                }
+                else if (tl.startsWith("Resources:")) {
+                    EDD.cleanSuggestedKeywords(keywords);
+                    tl = line >= nLines? "" : lines.get(line++);
+                    while (tl.startsWith("  ")) {
+                        //String2.log(">> tl2=" + tl);
+                        if      (tl.startsWith("  - Description: ")) {name2  = tl.substring(17).trim();
+                            if (name2.length() == 1 && (name2.equals("|") || name2.equals(">"))) {
+                                String spacer = " "; 
+                                name2 = "";
+                                tl = line >= nLines? "" : lines.get(line++);
+                                while (tl.startsWith("  ")) {
+                                    name2 += (name2.length() == 0? "" : spacer) + tl.trim();
+                                    tl = line >= nLines? "" : lines.get(line++);
+                                }
+                                if (line < nLines) line--; //back up a line
+                            }
+                            name2 = unquoteYaml(name2);
+                        }
+                        else if (tl.startsWith("    ARN: "))          bucket = tl.substring( 9).trim();
+                        else if (tl.startsWith("    Region: "))       region = tl.substring(12).trim();
+                        else if (tl.startsWith("    RequesterPays: ")) {} //occurs after Type line. [Requester Pays] is caught via name2 below.
+                        else if (tl.startsWith("    Type: S3 Bucket")) {
+try {
+                            int po = bucket.lastIndexOf(':');
+                            if (po > 0)
+                                bucket = bucket.substring(po + 1);
+
+                            //skipBucket?             (bucket+prefix)
+                            if (String2.indexOf(skipBuckets, bucket) >= 0) {
+                                sb.append("<!-- skipping bucket+prefix because on skip list: " + bucket + " -->\n\n"); 
+                                tl = line >= nLines? "" : lines.get(line++);
+                                continue;
+                            }
+
+                            //bucketsAlreadyDone        (bucket+prefix)
+                            if (!bucketsAlreadyDone.add(bucket)) {
+                                sb.append("<!-- skipping bucket+prefix because already done: " + bucket + " -->\n\n"); 
+                                tl = line >= nLines? "" : lines.get(line++);
+                                continue;
+                            }
+
+                            //prefix?
+                            String prefix = "";
+                            po = bucket.indexOf('/');
+                            if (po > 0) {
+                                prefix = File2.addSlash(bucket).substring(po + 1); //ensure it ends in /
+                                bucket = bucket.substring(0, po);
+                            }
+
+                            //I asked owner to fix error in yaml, which has us-east-1
+                            if (bucket.equals("giab") ||
+                                bucket.equals("human-pangenomics"))
+                                region = "us-west-2";
+
+String2.log(">> name=" + name + " name2=" + name2);
+if ( name.indexOf("Requester Pays") >= 0 ||
+    name2.indexOf("Requester Pays") >= 0)
+    sb.append("<!-- " + XML.encodeAsXML("No dataset for " + names.get(f) + 
+        " bucket=" + bucket + " prefix=" + prefix + 
+        "\nname2=" + String2.toJson(name2) + " because [Requester Pays].") + " -->\n\n");
+
+else sb.append(
+"<dataset type=\"EDDTableFromFileNames\" datasetID=\"" + 
+    String2.modifyToBeVariableNameSafe("awsS3Files_" + bucket + (prefix.length() == 0? "" : "_" + prefix)) + 
+    "\" active=\"true\">\n" +
+"    <fileDir>***fromOnTheFly, https://" + bucket + ".s3." + region + ".amazonaws.com/" + prefix + "</fileDir>\n" +
+"    <fileNameRegex>.*</fileNameRegex>\n" +
+"    <recursive>true</recursive>\n" +
+"    <pathRegex>.*</pathRegex>\n" +
+"    <reloadEveryNMinutes>" + (10080 + Math2.random(1000)) + "</reloadEveryNMinutes>\n" +
+"    <!-- sourceAttributes>\n" +
+"    </sourceAttributes -->\n" +
+"    <addAttributes>\n" +
+"        <att name=\"cdm_data_type\">Other</att>\n" +
+(contact == null? "" : 
+"        <att name=\"contact\">" + XML.encodeAsXML(contact) + "</att>\n") +
+"        <att name=\"creator_email\">" +
+    (String2.isEmailAddress(contact)? XML.encodeAsXML(contact) : "null") +
+    "</att>\n" +
+"        <att name=\"creator_name\">null</att>\n" +
+"        <att name=\"creator_url\">null</att>\n" +
+"        <att name=\"history\">" + today + " erd.data@noaa.gov created ERDDAP metadata from " + names.get(f) + "</att>\n" +
+"        <att name=\"infoUrl\">https://registry.opendata.aws/" + File2.getNameNoExtension(names.get(f)) + "/</att>\n" +
+"        <att name=\"institution\">Amazon Web Services</att>\n" +
+"        <att name=\"keywords\">" + XML.encodeAsXML(String2.toCSSVString(keywords)) + "</att>\n" +
+"        <att name=\"license\">" +
+    (license == null? "[standard]" : XML.encodeAsXML(license)) +
+    "</att>\n" +
+"        <att name=\"sourceUrl\">https://" + bucket + ".s3." + region + ".amazonaws.com/</att>\n" + //no prefix
+"        <att name=\"summary\">This dataset has file information from the AWS S3 " + 
+XML.encodeAsXML(
+bucket + " bucket at https://" + bucket + ".s3." + region + ".amazonaws.com/" + 
+(prefix.length() > 0? " with prefix=" + prefix : "") + 
+" . " +
+"Use ERDDAP's \"files\" system for this dataset to browse and download the files. " +
+"The \"files\" information for this dataset is always perfectly up-to-date because ERDDAP gets it on-the-fly. " +
+"AWS S3 doesn't offer a simple way to browse the files in their public, Open Data buckets. This dataset is a solution to that problem for this bucket.\n" +
+"\n" +
+(name            == null? "" : "Name: "            + name            + "\n") +
+(name2           == null? "" : "Name2: "           + name2           + "\n") + 
+(deprecated      == null? "" : "Deprecated: "      + deprecated      + "\n") + 
+(description     == null? "" : "Description: "     + description     + "\n\n") +
+(documentation   == null? "" : "Documentation: "   + documentation   + "\n") +
+(contact         == null? "" : "Contact: "         + contact         + "\n") +
+(managedBy       == null? "" : "ManagedBy: "       + managedBy       + "\n") +
+(updateFrequency == null? "" : "UpdateFrequency: " + updateFrequency + "\n")) + // ) is end of XML.encodeAsXML(
+"</att>\n" +
+"        <att name=\"title\">File Names from the AWS S3 " + bucket + " Bucket" +
+XML.encodeAsXML(
+    (prefix.length() > 0? " with prefix=" + prefix : "") +
+    (name  == null? "" : ": " + name) +
+    (name2 == null || String2.isRemote(name2)? "" : ": " + name2)) +
+    "</att>\n" +
+"    </addAttributes>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>url</sourceName>\n" +
+"        <destinationName>url</destinationName>\n" +
+"        <dataType>String</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"ioos_category\">Identifier</att>\n" +
+"            <att name=\"long_name\">URL</att>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>name</sourceName>\n" +
+"        <destinationName>name</destinationName>\n" +
+"        <dataType>String</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"ioos_category\">Identifier</att>\n" +
+"            <att name=\"long_name\">File Name</att>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>lastModified</sourceName>\n" +
+"        <destinationName>lastModified</destinationName>\n" +
+"        <dataType>double</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"ioos_category\">Time</att>\n" +
+"            <att name=\"long_name\">Last Modified</att>\n" +
+"            <att name=\"units\">seconds since 1970-01-01T00:00:00Z</att>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>size</sourceName>\n" +
+"        <destinationName>size</destinationName>\n" +
+"        <dataType>double</dataType>\n" +
+"        <!-- sourceAttributes>\n" +
+"            <att name=\"ioos_category\">Other</att>\n" +
+"            <att name=\"long_name\">Size</att>\n" +
+"            <att name=\"units\">bytes</att>\n" +
+"        </sourceAttributes -->\n" +
+"        <addAttributes>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"    <dataVariable>\n" +
+"        <sourceName>fileType</sourceName>\n" +
+"        <destinationName>fileType</destinationName>\n" +
+"        <dataType>String</dataType>\n" +
+"        <addAttributes>\n" +
+"            <att name=\"extractRegex\">.*(\\..+?)</att>\n" +
+"            <att name=\"extractGroup\" type=\"int\">1</att>\n" +
+"            <att name=\"ioos_category\">Identifier</att>\n" +
+"            <att name=\"long_name\">File Type</att>\n" +
+"        </addAttributes>\n" +
+"    </dataVariable>\n" +
+"</dataset>\n" +
+"\n");
+} catch (Exception e) {
+    errors.append("ERROR for " + names.get(f) + ":\n" + MustBe.throwableToString(e) + "\n");
+}
+                        } //end of S3 bucket chunk
+                        tl = line >= nLines? "" : lines.get(line++);
+                        } //end of "  " lines loop
+                    if (line < nLines) line--; //back up a line
+                    }  //end of resource lines loop
+                else { 
+                  int po = tl.indexOf(':');
+                  if (po > 0 && tl.charAt(0) != ' ')
+                      ignoredTags.add(tl.substring(0, po+1));
+                  }
+                } //end of for line loop
+            } //end of for file loop
+            String2.log(sb.toString());
+            String2.log("\nmakeAwsS3FilesDatasets finished nFiles=" + nFiles + ".\n" +
+                "ERRORS: " + errors.toString() + "\n" +
+                "IgnoredTags: " + String2.toCSSVString(ignoredTags) + "\n");
+
+            return sb.toString();
+
+        }
 
 
 }

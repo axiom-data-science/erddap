@@ -1,15 +1,11 @@
-FROM axiom/docker-erddap:2.02
+FROM axiom/docker-erddap:2.10
 MAINTAINER Kyle Wilcox <kyle@axiomdatascience.com>
 
 ENV MAVEN_VERSION 3.3.9
-ENV JDK_HOME /usr/lib/jvm/java-8-openjdk-amd64
+ENV JDK_HOME /usr/local/openjdk-8
 
 # Install JDK and Maven
 RUN \
-  apt-get update && \
-  apt-get install -y openjdk-8-jdk && \
-  apt-get clean && \
-  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
   curl -fSL http://apache.mirrors.pair.com/maven/maven-3/$MAVEN_VERSION/binaries/apache-maven-$MAVEN_VERSION-bin.zip -o mvn.zip && \
   unzip mvn.zip -d /mvn && \
   rm mvn.zip
@@ -20,7 +16,7 @@ RUN cd / && \
     JAVA_HOME=${JDK_HOME} /mvn/apache-maven-$MAVEN_VERSION/bin/mvn package dependency:go-offline --fail-never --also-make
 
 # Install ERDDAP WAR
-ENV AXIOM_ERDDAP_VERSION 2.02_axiom-r1
+ENV AXIOM_ERDDAP_VERSION 2.10_axiom-r1
 COPY . /app
 RUN cd /app && \
     JAVA_HOME=${JDK_HOME} /mvn/apache-maven-$MAVEN_VERSION/bin/mvn clean compile war:war && \

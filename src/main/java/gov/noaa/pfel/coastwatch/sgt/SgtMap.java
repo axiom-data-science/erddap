@@ -43,6 +43,9 @@ import java.io.File;
 import java.io.*;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 
 import javax.imageio.ImageIO;
 import javax.swing.JFrame;
@@ -89,6 +92,7 @@ public class SgtMap  {
     public final static int NO_LAKES_AND_RIVERS = 0;       //used for drawLakesAndRivers
     public final static int STROKE_LAKES_AND_RIVERS = 1;   //strokes lakes and rivers
     public final static int FILL_LAKES_AND_RIVERS = 2;     //fills+strokes lakes, strokes rivers
+    public final static String[] drawLandMask_OPTIONS = {"", "under", "over", "outline", "off"};
 
     public final static double PDF_FONTSCALE = 1.5;
     public final static int FULL_RESOLUTION = 0;     
@@ -120,7 +124,7 @@ public class SgtMap  {
      *    landMaskDir should have slash at end.
      */
     public static String fullRefDirectory = 
-        SSR.getContextDirectory() + //with / separator and / at the end
+        String2.webInfParentDirectory() + //with / separator and / at the end
         "WEB-INF/ref/";
 
     //some of this information is in DataSet.properties too, see BAthymFGDC
@@ -284,7 +288,7 @@ public class SgtMap  {
         int legendPosition, String legendTitle1, String legendTitle2,
         String imageDir, String logoImageFile,
         double minX, double maxX, double minY, double maxY, 
-        boolean drawLandAsMask,
+        String drawLandMask,
         boolean plotGridData,
         Grid gridGrid, 
         double gridScaleFactor,
@@ -308,7 +312,7 @@ public class SgtMap  {
             legendPosition, legendTitle1, legendTitle2,
             imageDir, logoImageFile,
             minX, maxX, minY, maxY, 
-            drawLandAsMask,
+            drawLandMask,
 
             plotGridData, gridGrid, gridScaleFactor,
             gridAltScaleFactor, gridAltOffset,
@@ -412,7 +416,7 @@ public class SgtMap  {
         int legendPosition, String legendTitle1, String legendTitle2,
         String imageDir, String logoImageFile,
         double minX, double maxX, double minY, double maxY, 
-        boolean drawLandAsMask,
+        String drawLandMask,
         boolean plotGridData,
         Grid gridGrid, 
         double gridScaleFactor,
@@ -790,7 +794,7 @@ public class SgtMap  {
             boolean noData = true;
             try {
 
-                if (!drawLandAsMask && !transparent) {
+                if ("under".equals(drawLandMask) && !transparent) {
                     //*** draw land as base
                     {
                         CartesianGraph graph = new CartesianGraph("", xt, yt);
@@ -1036,11 +1040,12 @@ public class SgtMap  {
                             1, //just get land info
                             minX, maxX, minY, maxY, true),
                         1e-6, 
-                        drawLandAsMask? landColor : null,   //fillColor
-                        drawLandAsMask?  //strokeColor 
-                            (gridBoldTitle != null && gridBoldTitle.indexOf(BATHYMETRY_BOLD_TITLE) >= 0?
-                                landMaskStrokeColor : landColor) :
-                            landMaskStrokeColor)); 
+                        "over".equals(drawLandMask)? landColor : null,   //fillColor
+                        "off".equals(drawLandMask)? null :
+                            "over".equals(drawLandMask)?  //strokeColor 
+                                (gridBoldTitle != null && gridBoldTitle.indexOf(BATHYMETRY_BOLD_TITLE) >= 0?
+                                    landMaskStrokeColor : landColor) :
+                                landMaskStrokeColor)); //under or outline
                 }
 
                 //draw lakes  
@@ -1083,7 +1088,8 @@ public class SgtMap  {
                 }
 
                 //*** draw the StateBOUNDARY
-                if (drawPoliticalBoundaries && boundaryResolution < cRes && !transparent) {
+                if (drawPoliticalBoundaries && boundaryResolution < cRes && 
+                    !"off".equals(drawLandMask) && !transparent) {
                     CartesianGraph graph = new CartesianGraph("", xt, yt);
                     Layer layer = new Layer("stateBoundary", layerDimension2D);
                     layerNames.add(layer.getId());
@@ -1101,7 +1107,7 @@ public class SgtMap  {
                 }
 
                 //*** draw the NationalBOUNDARY 
-                if (drawPoliticalBoundaries && !transparent) {
+                if (drawPoliticalBoundaries && !"off".equals(drawLandMask) && !transparent) {
                     CartesianGraph graph = new CartesianGraph("", xt, yt);
                     Layer layer = new Layer("nationalBoundary", layerDimension2D);
                     layerNames.add(layer.getId());
@@ -1967,7 +1973,10 @@ public class SgtMap  {
         String fullTopoFileName = fullPrivateDirectory + topoFileName + ".grd";
 
         //synchronize on canonical topoFileName, so >1 simultaneous request won't be duplicated
-        synchronized(topoFileName) {
+        ReentrantLock lock = String2.canonicalLock(topoFileName);
+        if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+            throw new TimeoutException("Timeout waiting for lock on topoFileName in SgtMap.");
+        try {
 
             //these get reused a lot, so cache them
             //does the file already exist?
@@ -2024,6 +2033,8 @@ public class SgtMap  {
                 " nFromCache=" + topoFromCache + " nNotFromCache=" + topoNotFromCache + "*");
 
             return grid;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -2576,7 +2587,7 @@ String2.log("err: " + errCatcher.getString());
             SgtMap.makeMap(false, 
                 SgtUtil.LEGEND_BELOW, null, null, null, null,
                 cx[i]-inc[i], cx[i]+inc[i], cy[i]-inc[i], cy[i]+inc[i], 
-                true, //drawLandAsMask,
+                "over", //drawLandMask,
                 true, //plotGridData (bathymetry)
                 bath, 1, 1, 0, //double gridScaleFactor, gridAltScaleFactor, gridAltOffset,
                 SgtMap.bathymetryCptFullName,
@@ -2603,6 +2614,7 @@ String2.log("err: " + errCatcher.getString());
      * For test purposes, this draws a map on the specified g2 object. 
      *
      * @param g2
+     * @param drawLandMask One of the non-"" SgtMap.drawLandMask_OPTIONS: "under", "over", "outline", or "off"
      * @param baseULXPixel
      * @param baseULYPixel
      * @param imageWidth
@@ -2612,7 +2624,7 @@ String2.log("err: " + errCatcher.getString());
      * @param fontScale
      * @throws Exception if trouble
      */
-    public static void testMakeMap(Graphics2D g2, boolean drawLandAsMask,
+    public static void testMakeMap(Graphics2D g2, String drawLandMask,
             int baseULXPixel, int baseULYPixel, int imageWidth, int imageHeight, 
             int region,
             int boundaryResAdjust, double fontScale) throws Exception {
@@ -2623,17 +2635,17 @@ String2.log("err: " + errCatcher.getString());
             "gov/noaa/pfel/coastwatch/griddata/";
         /*String fullResultCpt = griddataDir + "TestMakeMap.cpt";
         File2.delete(fullResultCpt);
-        CompoundColorMap.makeCPT(SSR.getContextDirectory() + //with / separator and / at the end
+        CompoundColorMap.makeCPT(String2.webInfParentDirectory() + //with / separator and / at the end
             "WEB-INF/cptfiles/Rainbow.cpt", 
             "Linear", 0, 10, true, fullResultCpt); */
         String vectorCpt = CompoundColorMap.makeCPT(
-            SSR.getContextDirectory() + //with / separator and / at the end
+            String2.webInfParentDirectory() + //with / separator and / at the end
                 "WEB-INF/cptfiles/", 
             "Rainbow", 
             "Linear", 0, 10, 5, false, griddataDir);
 
         String gridCpt = CompoundColorMap.makeCPT(
-            SSR.getContextDirectory() + //with / separator and / at the end
+            String2.webInfParentDirectory() + //with / separator and / at the end
                 "WEB-INF/cptfiles/", 
             "BlueWhiteRed", //"LightBlueWhite"
             "Linear", -10, 10, 8, true, griddataDir);
@@ -2669,11 +2681,11 @@ String2.log("err: " + errCatcher.getString());
             minX, maxX, minY, maxY, imageWidth, imageHeight);
         makeMap(false, 
             SgtUtil.LEGEND_BELOW, "NOAA", "CoastWatch",
-            SSR.getContextDirectory() + //with / separator and / at the end
+            String2.webInfParentDirectory() + //with / separator and / at the end
                 "images/", //imageDir
             "noaa20.gif", //logoImageFile
             minX, maxX, minY, maxY,
-            drawLandAsMask, 
+            drawLandMask, 
 
             true, //plotGridData,
             gridGrid,  
@@ -2744,11 +2756,11 @@ String2.log("err: " + errCatcher.getString());
             minX[region], maxX[region], minY[region], maxY[region]);
         makeMap(false, 
             SgtUtil.LEGEND_BELOW, "NOAA", "CoastWatch",
-            SSR.getContextDirectory() + //with / separator and / at the end
+            String2.webInfParentDirectory() + //with / separator and / at the end
                 "images/", //imageDir
             "noaa20.gif", //logoImageFile
             minX[region], maxX[region], minY[region], maxY[region],
-            bathCpt? true: false,
+            bathCpt? "over": "under",
 
             true, //plotGridData,
             createTopographyGrid(fullPrivateDirectory,
@@ -2828,7 +2840,7 @@ String2.log("err: " + errCatcher.getString());
 
 
     /** This tests SgtMap. */ 
-    public static void test(boolean allSizes, boolean showInBrowser) throws Exception {
+    public static void basicTest(boolean allSizes, boolean showInBrowser) throws Exception {
         verbose = true;
         reallyVerbose = true;
         String2.log("*** test SgtMap");
@@ -2865,7 +2877,7 @@ String2.log("err: " + errCatcher.getString());
             String2.log("\n*** Test SgtUtil.saveAsGif");
             File2.delete(SSR.getTempDirectory() + "temp" + testImageExtension); //old version? delete it
             bufferedImage = SgtUtil.getBufferedImage(imageWidths[1], imageHeights[1]);
-            testMakeMap((Graphics2D)bufferedImage.getGraphics(), true,
+            testMakeMap((Graphics2D)bufferedImage.getGraphics(), "over",
                 0, 0, imageWidths[1], imageHeights[1], 
                 2, 0, 1);  //region=2
             SgtUtil.saveImage(bufferedImage, SSR.getTempDirectory() + "temp" + testImageExtension);
@@ -2885,7 +2897,7 @@ String2.log("err: " + errCatcher.getString());
                             regionNames[region] + size + testImageExtension;
                         File2.delete(tName); //old version? delete it
                         bufferedImage = SgtUtil.getBufferedImage(imageWidths[size], imageHeights[size]);
-                        testMakeMap((Graphics2D)bufferedImage.getGraphics(), true,
+                        testMakeMap((Graphics2D)bufferedImage.getGraphics(), "over",
                             0, 0, imageWidths[size], imageHeights[size], 
                             region, 0, 1); 
                         SgtUtil.saveImage(bufferedImage, tName);
@@ -2905,7 +2917,7 @@ String2.log("err: " + errCatcher.getString());
                         File2.delete(tName); //old version? delete it
                         Object oar[] = SgtUtil.createPdf(SgtUtil.PDF_PORTRAIT, 
                             pdfWidths[size], pdfHeights[size], tName);
-                        testMakeMap((Graphics2D)oar[0], true, 0, 0, pdfWidths[size], pdfHeights[size], 
+                        testMakeMap((Graphics2D)oar[0], "over", 0, 0, pdfWidths[size], pdfHeights[size], 
                             region, 0, PDF_FONTSCALE); //0=boundaryResAdjust, 
                         SgtUtil.closePdf(oar);
 
@@ -2936,7 +2948,7 @@ String2.log("err: " + errCatcher.getString());
 
         //make a transparent version
         bufferedImage = SgtUtil.getBufferedImage(600, 600);
-        testMakeMap((Graphics2D)bufferedImage.getGraphics(), true,
+        testMakeMap((Graphics2D)bufferedImage.getGraphics(), "over",
             0, 0, 600, 600, 2, 0, 1); 
         String tranName = SSR.getTempDirectory() + "tempTransparent";
         File2.delete(tranName + ".png");
@@ -3258,7 +3270,7 @@ String2.log("err: " + errCatcher.getString());
             BufferedImage image = SgtUtil.getBufferedImage(imageWidth, imageHeight);
 
             //make the cpt file
-            String contextDir = SSR.getContextDirectory(); //with / separator and / at the end
+            String contextDir = String2.webInfParentDirectory(); //with / separator and / at the end
             DoubleArray dataDA = new DoubleArray(grid.data);
             double stats[] = dataDA.calculateStats();
             double minData = stats[PrimitiveArray.STATS_MIN];
@@ -3283,7 +3295,7 @@ String2.log("err: " + errCatcher.getString());
                 contextDir + "images/", //imageDir
                 "noaa_simple.gif", //logoImageFile
                 minX, maxX, minY, maxY, 
-                true,
+                "over",
 
                 true, //plotGridData,
                 grid, 
@@ -3358,7 +3370,8 @@ String2.log("err: " + errCatcher.getString());
     }
 
     public static void makeAdvSearchMapBig() throws Exception {
-        makeAdvSearchMap(303, 285);
+        //2019-10-17 was makeAdvSearchMap(303, 285);
+        makeAdvSearchMap(572, 350);
     }
 
 
@@ -3375,8 +3388,10 @@ String2.log("err: " + errCatcher.getString());
     public static void makeAdvSearchMap(int w, int h) throws Exception {
         double fontScale = 1;  //was 0.9
 
+landMaskStrokeColor = new Color(0, 0, 0, 0);
+
         String cptName = CompoundColorMap.makeCPT(
-            SSR.getContextDirectory() + //with / separator and / at the end
+            String2.webInfParentDirectory() + //with / separator and / at the end
                 "WEB-INF/cptfiles/", 
             "Topography", "Linear", -8000, 8000, -1, true, //continuous, 
             SSR.getTempDirectory());
@@ -3387,10 +3402,11 @@ String2.log("err: " + errCatcher.getString());
         makeMap(SgtUtil.LEGEND_BELOW, "", "",
             "", "",
             -180, 180, -90, 90, 
-            false,
+            "under",
             true, grid, 1, 1, 0, cptName, "", "", "", "",
-            NO_LAKES_AND_RIVERS, (Graphics2D)(image.getGraphics()), 0, 0, w, h, 0, fontScale);
-        String fileName = "C:/content/TestJS/drawOnImage/tWorldPm180.png";
+            NO_LAKES_AND_RIVERS, 
+            (Graphics2D)(image.getGraphics()), 0, 0, w, h, 0, fontScale);
+        String fileName = "C:/data/AdvancedSearch/tWorldPm180.png";
         SgtUtil.saveImage(image, fileName);
         SSR.displayInBrowser("file://" + fileName);
 
@@ -3400,10 +3416,11 @@ String2.log("err: " + errCatcher.getString());
         makeMap(SgtUtil.LEGEND_BELOW, "", "",
             "", "",
             0, 360, -90, 90, 
-            false,
+            "under",
             true, grid, 1, 1, 0, cptName, "", "", "", "",
-            NO_LAKES_AND_RIVERS, (Graphics2D)(image.getGraphics()), 0, 0, w, h, 0, fontScale);
-        fileName = "C:/content/TestJS/drawOnImage/tWorld0360.png";
+            NO_LAKES_AND_RIVERS, 
+            (Graphics2D)(image.getGraphics()), 0, 0, w, h, 0, fontScale);
+        fileName = "C:/data/AdvancedSearch/tWorld0360.png";
         SgtUtil.saveImage(image, fileName);
         SSR.displayInBrowser("file://" + fileName);
 }
@@ -3427,5 +3444,54 @@ String2.log("err: " + errCatcher.getString());
                 colorMap.getRange().end + " delta=" + colorMap.getRange().delta);
             layer.addChild(colorKey);
             */
+
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 6 : -1;
+        String msg = "\n^^^ SgtMap.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0)  testCreateTopographyGrid();
+                    if (test ==  1)  testBathymetry(0, 12);   //0, 12   9 is imperfect but unreasonable request
+                    if (test ==  2)  testTopography(0, 12);   //0, 12   9 is imperfect but unreasonable request
+                    if (test ==  3)  testRegionsMap(-180, 180, -90, 90);
+                    if (test ==  4)  testRegionsMap(0, 360, -90, 90);
+                    if (test ==  5)  basicTest(true, true); 
+                    if (test ==  6)  testMakeCleanMap(0, 5); //5=all
+
+                } else {
+                    //if (test ==  0) ...;
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
 
 }

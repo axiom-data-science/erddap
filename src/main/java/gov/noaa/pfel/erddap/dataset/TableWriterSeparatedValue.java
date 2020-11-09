@@ -5,8 +5,10 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.Calendar2;
+import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
@@ -124,15 +126,15 @@ public class TableWriterSeparatedValue extends TableWriter {
             }
 
             //write the header
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.ISO_8859_1), String2.ISO_8859_1));
+            writer = String2.getBufferedOutputStreamWriter88591(
+                outputStreamSource.outputStream(String2.ISO_8859_1));
 
             //write the column names   
             isStringOrChar = new boolean[nColumns];
             for (int col = 0; col < nColumns; col++) {
                 isStringOrChar[col] = 
-                    pas[col].elementClass() == String.class ||
-                    pas[col].elementClass() == char.class;
+                    pas[col].elementType() == PAType.STRING ||
+                    pas[col].elementType() == PAType.CHAR;
                 
                 if (writeColumnNames) {
                     String units = "";
@@ -176,8 +178,9 @@ public class TableWriterSeparatedValue extends TableWriter {
 
         //avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
         int nRows = table.nRows();
+        boolean flushAfterward = totalNRows == 0; //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
-        EDStatic.ensureArraySizeOkay(totalNRows, "Separated Value");
+        Math2.ensureArraySizeOkay(totalNRows, "Separated Value");
 
         //write the data
         for (int row = 0; row < nRows; row++) {
@@ -196,10 +199,8 @@ public class TableWriterSeparatedValue extends TableWriter {
             }
         }       
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward) 
             writer.flush(); 
-
     }
 
     

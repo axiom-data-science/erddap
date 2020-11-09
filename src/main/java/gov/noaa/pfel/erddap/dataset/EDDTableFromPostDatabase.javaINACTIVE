@@ -71,7 +71,7 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
@@ -87,7 +87,7 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
         super(tDatasetID, tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, 
             tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
             tAddGlobalAttributes,
             tDataVariables, tReloadEveryNMinutes,
             tDataSourceName,
@@ -103,9 +103,10 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
             localSourceUrl, driverName, connectionProperties,
             tCatalogName, tSchemaName);
 
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             "\n*** EDDTableFromPostDatabase " + datasetID + " constructor finished. TIME=" + 
-                (System.currentTimeMillis() - constructionStartMillis) + "ms\n");
+                cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n");
     }
 
     /**
@@ -150,10 +151,14 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
             Table table = new Table();
             String query = "SELECT * FROM " + catSchemaName + EDStatic.PostUserTableName;
             PreparedStatement statement = connection.prepareStatement(query);
-            if (reallyVerbose) String2.log(statement.toString());
-            ResultSet rs = statement.executeQuery();
-            table.readSqlResultSet(rs);
-            statement.close();
+            try {
+                if (reallyVerbose) String2.log(statement.toString());
+                ResultSet rs = statement.executeQuery();
+                table.readSqlResultSet(rs);
+            } finally {
+                statement.close();
+                statement = null;
+            }
             //String2.log(table.saveAsCsvASCIIString());
             int nameColumn     = table.findColumnNumber(EDStatic.PostNameColumnName);
             int passwordColumn = table.findColumnNumber(EDStatic.PostPasswordColumnName);
@@ -216,9 +221,12 @@ public class EDDTableFromPostDatabase extends EDDTableFromDatabase {
             } else {
                 query = "SELECT * FROM " + catSchemaName + EDStatic.PostRoleTableName;
                 statement = connection.prepareStatement(query);
-                rs = statement.executeQuery();
-                table.readSqlResultSet(rs);
-                statement.close();
+                try {
+                    rs = statement.executeQuery();
+                    table.readSqlResultSet(rs);
+                } finally {
+                    statement.close();
+                }
             }
             //String2.log(table.saveAsCsvASCIIString());
             nameColumn = table.findColumnNumber(EDStatic.PostNameColumnName);
@@ -484,7 +492,7 @@ boolean addTestPostUser = false;
                 keep = roleHashSet.contains(rolePa.get(row));
             }
             //if (reallyVerbose) String2.log("  keep=" + keep + 
-            //    " " + Calendar2.epochSecondsToIsoStringT(datePublic) +
+            //    " " + Calendar2.epochSecondsToIsoStringTZ(datePublic) +
             //    (datePublic < nowSeconds? "<" : ">") + 
             //    "now  role=" + (rolePa == null? "" : rolePa.get(row))); 
             if (keep) keepBitSet.set(row);
@@ -830,7 +838,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postSurg3.das\";\n" +
 "\n" +
 "In this dataset, for rows of data where the date_public is in the past, the data is publicly available and may be used freely; although for scientific papers, you must reference the source of the data.\";\n" +
 "    String sourceUrl \"(source database)\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v29\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
 "    String summary \"This dataset has animal tagging surgery records from the Pacific Ocean \n" +
 "Shelf Tracking project (POST).  POST is a research tool for \n" +
 "tracking the movement and estimated survival of marine animals along \n" +
@@ -1192,7 +1200,7 @@ today + " http://localhost:8080/cwexperimental/tabledap/postDet3.das\";\n" +
 "\n" +
 "In this dataset, for rows of data where the date_public is in the past, the data is publicly available and may be used freely; although for scientific papers, you must reference the source of the data.\";\n" +
 "    String sourceUrl \"(source database)\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v29\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
 "    String summary \"This dataset has tag detection records from the Pacific Ocean \n" +
 "Shelf Tracking project (POST).  POST is a research tool for \n" +
 "tracking the movement and estimated survival of marine animals along \n" +
@@ -1410,7 +1418,7 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
             tName = tedd.makeNewFileForDapQuery(null, null, "&PI=\"DAVID WELCH\"", 
                 dir, tedd.className() + "_ps3_Data", ".nc"); 
             table = new Table();
-            table.readFlatNc(dir + tName, null, 1);
+            table.readFlatNc(dir + tName, null, 1); //standardizeWhat=1
             table.removeRows(5, Math.max(5, table.nRows()));
             results = table.dataToString();
             expected = 
@@ -1431,7 +1439,7 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
                     "&unique_tag_id=\"" + tags[tag] + "\"", 
                     dir, tedd.className() + "_ps3_tag" + tag, ".nc"); 
                 Table table2 = new Table();
-                table2.readFlatNc(dir + tName, null, 1);
+                table2.readFlatNc(dir + tName, null, 1); //standardizeWhat=1
                 results = table.dataToString();
 
                 Table table1 = (Table)table.clone();
@@ -1449,19 +1457,48 @@ String2.log("\n" + results.substring(0, 4000) + "\n");
         }
     }
 
+
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromPostDatabase.test()\n");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ EDDTableFromPostDatabase.test(" + interactive + ") test=";
 
-        //tests usually run
-        testPostSurg3Direct();
-        testPostSurg3();
-        testPostDet3();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
+                } else {
+                    if (test ==  0) testPostSurg3Direct();
+                    if (test ==  1) testPostSurg3();
+                    if (test ==  2) testPostDet3();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

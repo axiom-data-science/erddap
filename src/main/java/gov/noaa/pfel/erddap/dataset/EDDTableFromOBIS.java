@@ -7,6 +7,8 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
+import com.cohort.array.PAOne;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -232,6 +234,7 @@ public class EDDTableFromOBIS extends EDDTable{
         boolean tSourceNeedsExpandedFP_EQ = true;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -289,6 +292,8 @@ public class EDDTableFromOBIS extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -296,7 +301,8 @@ public class EDDTableFromOBIS extends EDDTable{
         return new EDDTableFromOBIS(tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo,
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
+            tGlobalAttributes,
             tLocalSourceUrl, tSourceCode, tReloadEveryNMinutes, 
             tLongitudeSourceMinimum, tLongitudeSourceMaximum,
             tLatitudeSourceMinimum,  tLatitudeSourceMaximum,
@@ -371,7 +377,7 @@ public class EDDTableFromOBIS extends EDDTable{
         String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         String tLocalSourceUrl, String tSourceCode,
         int tReloadEveryNMinutes,
@@ -455,31 +461,31 @@ public class EDDTableFromOBIS extends EDDTable{
         nFixedVariables = 5;
         dataVariables = new EDV[tVarNames.length + nFixedVariables - 3];  //-3(Longitude, Latitude, MinimumDepth) 
         lonIndex = 0;
-        dataVariables[lonIndex] = new EDVLon("darwin:Longitude",
+        dataVariables[lonIndex] = new EDVLon(datasetID, "darwin:Longitude",
             null, null, "double", 
-            Double.isNaN(tLonMin)? -180 : tLonMin, 
-            Double.isNaN(tLonMax)?  180 : tLonMax);
+            PAOne.fromDouble(Double.isNaN(tLonMin)? -180 : tLonMin), 
+            PAOne.fromDouble(Double.isNaN(tLonMax)?  180 : tLonMax));
         latIndex = 1;
-        dataVariables[latIndex] = new EDVLat("darwin:Latitude",
+        dataVariables[latIndex] = new EDVLat(datasetID, "darwin:Latitude",
             null, null, "double",
-            Double.isNaN(tLatMin)? -90 : tLatMin, 
-            Double.isNaN(tLatMax)?  90 : tLatMax);
+            PAOne.fromDouble(Double.isNaN(tLatMin)? -90 : tLatMin), 
+            PAOne.fromDouble(Double.isNaN(tLatMax)?  90 : tLatMax));
         altIndex = 2;  depthIndex = -1;  //2012-12-20 consider using depth, not altitude!!!
         Attributes altAtts = new Attributes();
         altAtts.add("comment", "Created from the darwin:MinimumDepth variable.");
         altAtts.add("scale_factor", -1.0);
         altAtts.add("units", "m");
-        dataVariables[altIndex] = new EDVAlt("darwin:MinimumDepth", altAtts,
-            null, "double", -tAltMin, -tAltMax);
+        dataVariables[altIndex] = new EDVAlt(datasetID, "darwin:MinimumDepth", altAtts,
+            null, "double", PAOne.fromDouble(-tAltMin), PAOne.fromDouble(-tAltMax));
         timeIndex = 3;
-        dataVariables[timeIndex] = new EDVTime("TIME",
+        dataVariables[timeIndex] = new EDVTime(datasetID, "TIME",
             (new Attributes())
                 .add("actual_range", new StringArray(new String[]{tTimeMin, tTimeMax}))
                 .add("comment", "Created from the darwin:YearCollected-darwin:MonthCollected-darwin:DayCollected and darwin:TimeOfDay variables.")
                 .add("units", EDV.TIME_UNITS), 
                 //estimate actual_range?
             null, "double");  //this constructor gets source / sets destination actual_range
-        dataVariables[4] = new EDV("ID", null, 
+        dataVariables[4] = new EDV(datasetID, "ID", null, 
             (new Attributes())
                 .add("comment", "Created from the [darwin:InstitutionCode]:[darwin:CollectionCode]:[darwin:CatalogNumber] variables.") 
                 .add("ioos_category", "Identifier"), 
@@ -536,26 +542,30 @@ public class EDDTableFromOBIS extends EDDTable{
 
             //make the variable
             if (isTimeStamp) {
-                dataVariables[tv] = new EDVTimeStamp(prefix + tSourceName, tDestName, 
+                dataVariables[tv] = new EDVTimeStamp(datasetID, prefix + tSourceName, tDestName, 
                     tSourceAtt, tAddAtt,
                     tSourceType); //this constructor gets source / sets destination actual_range
                 tv++;
             } else {
-                dataVariables[tv] = new EDV(prefix + tSourceName, tDestName, 
+                dataVariables[tv] = new EDV(datasetID, prefix + tSourceName, tDestName, 
                     tSourceAtt, tAddAtt, tSourceType); //the constructor that reads source actual_range
                 dataVariables[tv].setActualRangeFromDestinationMinMax();
                 tv++;
             }
         }
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableFromOBIS " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -623,7 +633,7 @@ public class EDDTableFromOBIS extends EDDTable{
                 constraintOps.remove(c);
                 constraintValues.remove(c);
 
-            } else if (edv.sourceDataTypeClass() == String.class &&
+            } else if (edv.sourceDataPAType() == PAType.STRING &&
                 String2.indexOf(GTLT_OPERATORS, constraintOps.get(c)) >= 0) {
                 //remove >, >=, <, <= ops for String variables
                 constraintVariables.remove(c);
@@ -668,9 +678,10 @@ public class EDDTableFromOBIS extends EDDTable{
         } catch (Throwable t) {
             EDStatic.rethrowClientAbortException(t);  //first thing in catch{}
 
-            //if too much data, rethrow t
+            //if OutOfMemoryError or too much data, rethrow t
             String tToString = t.toString();
-            if (tToString.indexOf(Math2.memoryTooMuchData) >= 0)
+            if (t instanceof java.lang.OutOfMemoryError ||
+                tToString.indexOf(Math2.memoryTooMuchData) >= 0)
                 throw t;
 
             throw new Throwable(EDStatic.errorFromDataSource + tToString, t);
@@ -812,7 +823,7 @@ expected =
 "        <att name=\"institution\">DUKE</att>\n" +
 "        <att name=\"keywords\">area, assessment, biogeographic, data, digir.php, duke, information, marine, monitoring, obis, obis-seamap, ocean, program, rutgers, seamap, server, southeast, system</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"summary\">Ocean Biogeographic Information System (OBIS)-Southeast Area Monitoring &amp; Assessment Program (SEAMAP) Data from the OBIS Server at RUTGERS MARINE.\n" +
 "\n" +
 "[OBIS_SUMMARY]</att>\n" +
@@ -847,10 +858,8 @@ expected =
                 "TypeStatus, YearCollected, YearIdentified", 
 "");
 
-
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected EDDTableFromOBIS.testGenerateDatasetsXml error."); 
+            throw new RuntimeException("Unexpected EDDTableFromOBIS.testGenerateDatasetsXml error.", t); 
         }
 
     }
@@ -1235,9 +1244,10 @@ so standardize results table removes all but 1 record.
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t)); 
+            throw new RuntimeException("Unexpected error",
                 //2010-07-27 to 2011-01 failed with\n" +
-                //"  java.net.ConnectException: Connection refused: connect\n" +
+                //"  java.net.ConnectException: Connection refused: connect",
+                t);
         }
     }
 
@@ -1415,8 +1425,7 @@ Ursus (25), Xiphias (16), Zalophus (4668), Ziphius (455)
             Test.ensureEqual(results, expected, "\nresults=\n" + results);
 
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected dukeSeamap error."); 
+            throw new RuntimeException("Unexpected dukeSeamap error.", t); 
         }
 
     }
@@ -1446,25 +1455,52 @@ Ursus (25), Xiphias (16), Zalophus (4668), Ziphius (455)
     }
 
     /**
-     * This runs all the tests of this class.
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDTableFromOBIS.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        //usually done
-        testGenerateDatasetsXml();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        //not usually done
-        //testSeamap();  //doesn't work
-        //testArgos();   //doesn't work
-        //EDD.testDasDds("rutgersGhmp");
-        //EDD.testDasDds("rutgersSeamap");
-        //EDD.testDasDds("rutgersGombis");
-        //EDD.testDasDds("aadcArgos");
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
 
-        //testFishbase();  //failing since 2009-01
-        //testRutgers();   //failing since ~2011-01
+                    //not usually done
+                    // if (test == 1000) testSeamap();  //doesn't work
+                    // if (test == 1001) testArgos();   //doesn't work
+                    // if (test == 1002) testFishbase();  //failing since 2009-01
+                    // if (test == 1003) testRutgers();   //failing since ~2011-01
 
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 
 }

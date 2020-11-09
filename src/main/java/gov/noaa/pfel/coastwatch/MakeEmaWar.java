@@ -46,7 +46,7 @@ public class MakeEmaWar  {
         String coastWatchDir = baseDir + "WEB-INF/classes/gov/noaa/pfel/coastwatch/";
 
         //make the javadoc commands
-        String commandLine0 = "C:\\programs\\jdk8u222-b10\\bin\\javadoc" +
+        String commandLine0 = "C:\\programs\\jdk8u265-b01\\bin\\javadoc" +
             " -sourcepath " + classPath + //root directory of the classes
             " -d "; //directory to hold results
         String commandLine2 = " -subpackages com.cohort";   //the packages to be doc'd
@@ -97,7 +97,7 @@ public class MakeEmaWar  {
         //String2.log(String2.toNewlineString(dirNameArray));
 
         //make the zip file
-        String zipName = SSR.getContextDirectory() + //with / separator and / at the end
+        String zipName = String2.webInfParentDirectory() + //with / separator and / at the end
             "EMA.war";
         String2.log("MakeEmaWar is making " + zipName + ".");
         SSR.zip(zipName, dirNameArray, 60, baseDir);

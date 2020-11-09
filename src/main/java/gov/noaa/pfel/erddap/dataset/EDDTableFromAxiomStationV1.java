@@ -40,6 +40,7 @@ public class EDDTableFromAxiomStationV1 extends EDDTableFromAsciiService {
                 null, null, null,
                 d.tSosOfferingPrefix,
                 d.tDefaultDataQuery, d.tDefaultGraphQuery,
+                d.tAddVariablesWhere,
                 d.tGlobalAttributes,
                 d.ttDataVariables,
                 d.tReloadEveryNMinutes, d.tLocalSourceUrl,

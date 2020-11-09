@@ -29,6 +29,10 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 
+import ucar.ma2.Array;
+import ucar.ma2.ArrayObject;
+import ucar.ma2.ArrayString;
+import ucar.ma2.DataType;
 import ucar.nc2.Dimension;
 import ucar.nc2.Group;
 import ucar.nc2.NetcdfFileWriter;
@@ -175,9 +179,6 @@ public class OpendapHelper  {
     /** 
      * This sets attributes from the information in the attributeTable.
      *
-     * <p>Following the getValue return type, DUint16 is treated like short 
-     * and DUInt32 is treated like int.
-     * 
      * Currently this converts url, UNKNOWN, and unknown attributes to Strings.
      *
      * @param attributeTable It isn't an error if this is null; but nothing is done.
@@ -186,9 +187,8 @@ public class OpendapHelper  {
      */
     public static void getAttributes(AttributeTable attributeTable, Attributes attributes) {
 
-        if (attributeTable == null) {
+        if (attributeTable == null) 
             return;
-        }
 
         //get the attributes
         Enumeration names = attributeTable.getNames();
@@ -221,17 +221,15 @@ public class OpendapHelper  {
                 StringArray sa = new StringArray(sar);
 
                 //store values in the appropriate type of PrimitiveArray
-                //dilemma: store unsigned values as if signed, or in larger data type?
-                //   decision: for now, store uint16 and uint32 as int
                 PrimitiveArray pa = null;
                 int type = attribute.getType();
-                if       (type == Attribute.FLOAT32) pa = new FloatArray(); 
-                else if  (type == Attribute.FLOAT64) pa = new DoubleArray();
-                else if  (type == Attribute.INT32 ||
-                          type == Attribute.UINT32)  pa = new IntArray();
-                else if  (type == Attribute.INT16 ||
-                          type == Attribute.UINT16)  pa = new ShortArray();
-                else if  (type == Attribute.BYTE)    pa = new ByteArray();
+                if      (type == Attribute.FLOAT32) pa = new FloatArray(); 
+                else if (type == Attribute.FLOAT64) pa = new DoubleArray();
+                else if (type == Attribute.INT32)   pa = new IntArray();
+                else if (type == Attribute.UINT32)  pa = new UIntArray();
+                else if (type == Attribute.INT16)   pa = new ShortArray();
+                else if (type == Attribute.UINT16)  pa = new UShortArray();
+                else if (type == Attribute.BYTE)    pa = new ByteArray();
                 //ignore STRING, URL, UNKNOWN, etc. (keep as StringArray)
 
                 //move the sa data into pa
@@ -256,6 +254,16 @@ public class OpendapHelper  {
             }
         }
         attributes.fromNccsvStrings();
+
+        //String2.log("\n>> OpendapHelper.getAttributes pre\n" + attributes.toString());
+        //2020-09-01 in nc3 files, if variables has _Unsigned=true, convert some signed attributes to unsigned
+        //String2.log(">> getVariableAttributes var=" + variable.getFullName() + " _Unsigned=" + attributes.getString("_Unsigned"));
+        //leave attribute in so caller can tell if _Unsigned.
+        if ("true".equals(attributes.getString("_Unsigned"))) {
+            attributes.convertSomeSignedToUnsigned();
+            //String2.log("\n>> OpendapHelper.getAttributes post\n" + attributes.toString());
+        } 
+
     }
 
     /**
@@ -462,24 +470,24 @@ public class OpendapHelper  {
      */
     public static PrimitiveArray[] getPrimitiveArrays(DConnect dConnect, String query) 
             throws Exception {
-        long time = System.currentTimeMillis();
-        StringBuilder sb = new StringBuilder(query);
-        String2.replaceAll(sb, "[", "%5B"); 
-        String2.replaceAll(sb, "]", "%5D"); 
-        query = sb.toString();
-        if (verbose)
-            String2.log("    OpendapHelper.getPrimitiveArrays " + query
-            //+ "\n" + MustBe.stackTrace()
-            );
-        DataDDS dataDds = dConnect.getData(query, null);
-        if (verbose)
-            String2.log("    OpendapHelper.getPrimitiveArrays done. TIME=" + 
-                (System.currentTimeMillis() - time) + "ms");      
-        BaseType bt = (BaseType)dataDds.getVariables().nextElement(); //first element is always main array
         try {
+            long time = System.currentTimeMillis();
+            StringBuilder sb = new StringBuilder(query);
+            String2.replaceAll(sb, "[", "%5B"); 
+            String2.replaceAll(sb, "]", "%5D"); 
+            query = sb.toString();
+            if (verbose)
+                String2.log("    OpendapHelper.getPrimitiveArrays " + query
+                //+ "\n" + MustBe.stackTrace()
+                );
+            DataDDS dataDds = dConnect.getData(query, null);
+            if (verbose)
+                String2.log("    OpendapHelper.getPrimitiveArrays done. TIME=" + 
+                    (System.currentTimeMillis() - time) + "ms");      
+            BaseType bt = (BaseType)dataDds.getVariables().nextElement(); //first element is always main array
             return getPrimitiveArrays(bt);
         } catch (Exception e) {
-            throw new RuntimeException(String2.ERROR + " in getPrimitiveArrays query=" + query + "\n" +
+            throw new RuntimeException(String2.ERROR + " in getPrimitiveArrays for query=" + query + "\n" +
                 e.getMessage());
         }
 
@@ -514,9 +522,15 @@ public class OpendapHelper  {
         } else if (baseType instanceof DInt32)   {
             return new PrimitiveArray[]{
                 new IntArray(   new int[]   {((DInt32)  baseType).getValue()})}; 
+        } else if (baseType instanceof DUInt32)   {
+            return new PrimitiveArray[]{
+                new UIntArray(  new int[]   {((DUInt32) baseType).getValue()})}; 
         } else if (baseType instanceof DInt16)   {
             return new PrimitiveArray[]{
                 new ShortArray( new short[] {((DInt16)  baseType).getValue()})}; 
+        } else if (baseType instanceof DUInt16)   {
+            return new PrimitiveArray[]{
+                new UShortArray( new short[] {((DUInt16) baseType).getValue()})}; 
         } else if (baseType instanceof DByte)    {
             return new PrimitiveArray[]{
                 new ByteArray(  new byte[]  {((DByte)   baseType).getValue()})}; 
@@ -629,46 +643,6 @@ public class OpendapHelper  {
             pa.removeRange(pv.getLength(), pa.size());
         }
         return pa;
-        /*
-        int n = pv.getLength();
-        if (pv instanceof Float32PrimitiveVector) {
-            float a[] = new float[n];
-            Float32PrimitiveVector tpv = (Float32PrimitiveVector)pv;
-            for (int i = 0; i < n; i++)
-                a[i] = tpv.getValue(i);
-            return new FloatArray(a);
-        }
-        if (pv instanceof Float64PrimitiveVector) {
-            double a[] = new double[n];
-            Float64PrimitiveVector tpv = (Float64PrimitiveVector)pv;
-            for (int i = 0; i < n; i++)
-                a[i] = tpv.getValue(i);
-            return new DoubleArray(a);
-        } 
-        if (pv instanceof BytePrimitiveVector) {
-            byte a[] = new byte[n];
-            BytePrimitiveVector tpv = (BytePrimitiveVector)pv;
-            for (int i = 0; i < n; i++)
-                a[i] = tpv.getValue(i);
-            return new ByteArray(a);
-        } 
-        if (pv instanceof Int16PrimitiveVector) {
-            short a[] = new short[n];
-            Int16PrimitiveVector tpv = (Int16PrimitiveVector)pv;
-            for (int i = 0; i < n; i++)
-                a[i] = tpv.getValue(i);
-            return new ShortArray(a);
-        } 
-        if (pv instanceof Int32PrimitiveVector) {
-            int a[] = new int[n];
-            Int32PrimitiveVector tpv = (Int32PrimitiveVector)pv;
-            for (int i = 0; i < n; i++)
-                a[i] = tpv.getValue(i);
-            return new IntArray(a);
-        } 
-        throw new Exception(String2.ERROR + ": The PrimitiveVector is not numeric (" + pv + ").");
-        */
-
     }
 
     /**
@@ -682,16 +656,26 @@ public class OpendapHelper  {
     public static PrimitiveVector getPrimitiveVector(String name, PrimitiveArray pa) 
             throws Exception {
         PrimitiveVector pv;
-        if      (pa instanceof DoubleArray) pv = new Float64PrimitiveVector(new DFloat64(name));
+        if      (pa instanceof DoubleArray ||
+                 pa instanceof LongArray ||
+                 pa instanceof ULongArray)  pv = new Float64PrimitiveVector(new DFloat64(name));
         else if (pa instanceof FloatArray)  pv = new Float32PrimitiveVector(new DFloat32(name));
         else if (pa instanceof IntArray)    pv = new Int32PrimitiveVector(  new DInt32(name));
+        else if (pa instanceof UIntArray)   pv = new UInt32PrimitiveVector( new DUInt32(name));
         else if (pa instanceof ShortArray)  pv = new Int16PrimitiveVector(  new DInt16(name));
-        else if (pa instanceof ByteArray)   pv = new BytePrimitiveVector(   new DByte(name));
+        else if (pa instanceof UShortArray) pv = new UInt16PrimitiveVector( new DUInt16(name));
+        else if (pa instanceof ByteArray ||
+                 pa instanceof UByteArray)  pv = new BytePrimitiveVector(   new DByte(name));
         else throw new Exception(String2.ERROR + "in OpendapHelper.getPrimitiveVector: The PrimitiveArray type=" + 
-            pa.elementClassString() + " is not supported.");
+            pa.elementTypeString() + " is not supported.");
 
         pv.setInternalStorage(pa.toObjectArray());
         return pv;
+    }
+
+    /* This variant fo getAtomicType assumes strictDapMode=true. */
+    public static String getAtomicType(PAType paType) throws RuntimeException {
+        return getAtomicType(true, paType);
     }
 
     /**
@@ -701,26 +685,35 @@ public class OpendapHelper  {
      * <p>Some Java types don't have exact matches. The closest match is returned,
      * e.g., char becomes String, long becomes double
      *
-     * @param c the Java type class e.g., float.class
+     * @param strictDapMode if true, this only returns DAP 2.0 types. If false,
+     *   This returns all PAType types (written in DAP style).
+     * @param paType a PAType
      * @return the corresponding atomic-type String
-     * @throws Exception if trouble
+     * @throws RuntimeException if trouble
      */
-    public static String getAtomicType(Class c) throws Exception {
-        if (c == long.class ||   // DAP has no long. This is imperfect; there will be loss of precision
-            c == double.class) return "Float64";
-        if (c == float.class)  return "Float32";
-        if (c == int.class)    return "Int32";
-        if (c == short.class)  return "Int16";
-        if (c == byte.class)   return "Byte";
-        if (c == char.class ||    // DAP has no char, so represent it as a String
-            c == String.class) return "String";
-        throw new Exception(String2.ERROR + "in OpendapHelper.getAtomicType: The classType=" + 
-            PrimitiveArray.elementClassToString(c) + " is not supported.");
+    public static String getAtomicType(boolean strictDapMode, PAType paType) throws RuntimeException {
+        if (paType == PAType.DOUBLE) return "Float64";
+        if (paType == PAType.FLOAT)  return "Float32";
+        if (paType == PAType.LONG)   return strictDapMode? "Float64" : "Int64";  // DAP has no long.  This is imperfect; there will be loss of precision
+        if (paType == PAType.ULONG)  return strictDapMode? "Float64" : "UInt64"; // DAP has no ulong. This is imperfect; there will be loss of precision
+        if (paType == PAType.INT)    return "Int32";
+        if (paType == PAType.UINT)   return "UInt32";
+        if (paType == PAType.SHORT)  return "Int16";
+        if (paType == PAType.USHORT) return "UInt16";
+        if (paType == PAType.BYTE)   return "Byte";   //! technically, DAP bytes are unsigned, but for name consistency and ERDDAP/THREDDS convention, Byte means signed
+        if (paType == PAType.UBYTE)  return strictDapMode? "Byte"    : "UByte";  // DAP has no ubyte 
+        if (paType == PAType.CHAR)   return strictDapMode? "String"  : "Char";   // DAP has no char, so represent it as a String
+        if (paType == PAType.STRING) return "String";
+        throw new RuntimeException(String2.ERROR + "in OpendapHelper.getAtomicType: The classType=" + 
+            paType + " is not supported.");
     }
+
 
     /**
      * This writes the attributes to the writer in the opendap DAS format.
-     * E.g., <pre>
+     * This uses strictDapMode=true.
+     * 
+     * <p>E.g., <pre>
     altitude {
         Float32 actual_range 0.0, 0.0;
         Int32 fraction_digits 0;
@@ -729,16 +722,17 @@ public class OpendapHelper  {
      * </pre>
      * @param varName the variable's name.
      *  For global attributes, ncBrowse and netcdf-java treat "NC_GLOBAL" as special case. (I had used "GLOBAL".)
+     * @param paType The PAType of the variable.
      * @param attributes
      * @param writer
      * @param encodeAsHTML if true, characters like &lt; are converted to their 
      *    character entities and lines wrapped with \n if greater than 78 chars.
      * @throws Exception if trouble
      */
-    public static void writeToDAS(String varName, Attributes attributes,
+    public static void writeToDAS(String varName, PAType paType, Attributes attributes,
         Writer writer, boolean encodeAsHTML) throws Exception {
 
-        writer.append(dasToStringBuilder(varName, attributes, encodeAsHTML));
+        writer.append(dasToStringBuilder(varName, paType, attributes, encodeAsHTML, true)); //strictDapMode
     }
 
     /**
@@ -751,53 +745,84 @@ public class OpendapHelper  {
     }
      * </pre>
      * @param varName the variable's name
+     * @param paType The PAType of the variable.
+     *    If isUnsigned and if the attributes doesn't already include it
+     *    and if strictDapMode=true,
+     *    a new _Unsigned=true attribute will be added to the output.
+     *    Attributes with unsigned data types will always be converted to signed
+     *    when written.
      * @param attributes
      * @param encodeAsHTML if true, characters like &lt; are converted to their 
      *    character entities.
+     * @param strictDapMode if true, this sticks to DAP 2.0 standard. If false, all
+     *    PATypes are supported (with names that look like DAP names).
      * @throws Exception if trouble
      */
-    public static StringBuilder dasToStringBuilder(String varName, Attributes attributes,
-        boolean encodeAsHTML) throws Exception {
+    public static StringBuilder dasToStringBuilder(String varName, PAType paType, 
+        Attributes attributes, boolean encodeAsHTML, boolean strictDapMode) throws Exception {
         StringBuilder sb = new StringBuilder();
-
+        //String2.log(">> dasToString " + varName + " attributes:\n" + attributes.toString());
         //see EOL definition for comments about it
-        int firstUEncodedChar = encodeAsHTML? 65536 : 127;
+        int firstUEncodedChar = encodeAsHTML? 65536 : 65536;
         sb.append("  " + XML.encodeAsHTML(varName, encodeAsHTML) + " {" + EOL); 
-        String names[] = attributes.getNames();
-        for (int ni = 0; ni < names.length; ni++) {
-            PrimitiveArray pa = attributes.get(names[ni]);
-            Class et = pa.elementClass();
-            sb.append(XML.encodeAsHTML("    " + getAtomicType(et) + " " + names[ni] + " ", encodeAsHTML));
+        StringArray names = new StringArray(attributes.getNames());
+        boolean addedUnsigned = false;
+        if (strictDapMode && 
+            (paType == PAType.BYTE || paType == PAType.UBYTE) && //for bytes, explicitly say _Unsigned=true (which DAP defines) or false (which ERDDAP and TDS used as default)
+            attributes.getString("_Unsigned") == null) {
+            addedUnsigned = true;
+            names.atInsert(0, "_Unsigned");  //0 is a good guess at the correct position
+            names.sortIgnoreCase();          //but re-sort to make sure
+        }
+        for (int ni = 0; ni < names.size(); ni++) {
+            String tName = names.get(ni);
+            PrimitiveArray pa = tName.equals("_Unsigned") && addedUnsigned?
+                new StringArray(new String[]{paType == PAType.BYTE? "false" : "true"}) : attributes.get(tName);
+            PAType et = pa.elementType();
+            //technically this is wrong because DAP says bytes are unsigned
+            //but THREDDS and ERDDAP have traditionally treated bytes as signed.
+            if (strictDapMode && et == PAType.UBYTE)  //but DAP does support UInt16 and UInt32. 
+                pa = pa.makeSignedPA();  
+            sb.append(XML.encodeAsHTML("    " + getAtomicType(strictDapMode, et) + " " + tName + " ", encodeAsHTML));
             int paSize = pa.size();
-            if (et == char.class || et == String.class) {
-                //enquote, and replace internal quotes with \"
+            if (et == PAType.CHAR || et == PAType.STRING) {
+                //if (et == PAType.CHAR) String2.log(">> dasToStringBuilder char#=" + pa.getInt(0));
                 String ts = String2.toSVString(pa.toStringArray(), "\n", false);
                 if (encodeAsHTML) {
                     //was ts = String2.noLongLinesAtSpace(ts, 78, "");
                     if (ts.indexOf('\n') >= 0)
                         sb.append('\n'); //start on new line, so first line isn't super long
                 }
+                //enquote, and replace internal quotes with \"
                 //DAP 2.0 appendix A says \ becomes \\ and " becomes \"
                 //2017-05-05 I considered toJson, but DASParser doesn't like e.g., \\uhhhh
-                //ts = String2.toJson(ts, firstUEncodedChar, false),
-                //    encodeAsHTML));
-                ts = String2.replaceAll(ts, "\\", "\\\\");
-                ts = "\"" + String2.replaceAll(ts, "\"", "\\\"") + "\"";
+                //2020-05-12 Json is the logical extension of DAP spec. 
+                //    So do it but don't use \\u notation (firstUEncodedchar was 127, now 65536)
+                ts = String2.toJson(ts, firstUEncodedChar, false);
+                //ts = String2.replaceAll(ts, "\\", "\\\\");
+                //ts = "\"" + String2.replaceAll(ts, "\"", "\\\"") + "\"";
                 //String2.log(">> ts=" + ts);
                 sb.append(XML.encodeAsHTML(ts, encodeAsHTML));
-            } else if (et == double.class ||
-                       et == long.class) {
-                //the spec says must be like Ansi C printf, %g format, precision=6
+            } else if (et == PAType.LONG   ||
+                       et == PAType.ULONG) {
+                //print with full precision, even if strictDapMode. No reason not to.
+                for (int pai = 0; pai < paSize; pai++) {
+                    sb.append(pa.getRawString(pai) +
+                        //String.format("%g.6", (Object)new Double(pa.getDouble(pai))) + 
+                        (pai < paSize - 1 ? ", " : ""));  
+                }
+            } else if (et == PAType.DOUBLE) {
+                //the spec says must be like Ansi C printf, %g format, precision=6. That is clearly insufficient.
                 for (int pai = 0; pai < paSize; pai++) {
                     String ts = "" + pa.getDouble(pai);
-                    //if (et==long.class) String2.log(">> Opendap long att #" + pai + " = " + pa.getString(pai) + " => " + ts); 
+                    //if (et==PAType.LONG) String2.log(">> Opendap long att #" + pai + " = " + pa.getString(pai) + " => " + ts); 
                     ts = String2.replaceAll(ts, "E-", "e-"); //do first
                     ts = String2.replaceAll(ts, "E", "e+");
                     sb.append(ts +
                         //String.format("%g.6", (Object)new Double(pa.getDouble(pai))) + 
                         (pai < paSize - 1 ? ", " : ""));  
                 }
-            } else if (et == float.class) {
+            } else if (et == PAType.FLOAT) {
                 for (int pai = 0; pai < paSize; pai++) {
                     String ts = "" + pa.getFloat(pai);
                     ts = String2.replaceAll(ts, "E-", "e-"); //do first
@@ -837,8 +862,16 @@ public class OpendapHelper  {
             BytePrimitiveVector tpv = (BytePrimitiveVector)pv;
             for (int i = 0; i < n; i++)
                 da[i] = tpv.getValue(i);
+        } else if (pv instanceof UInt16PrimitiveVector) {  //uint16 is instanceof int16! so must test uint16 first
+            UInt16PrimitiveVector tpv = (UInt16PrimitiveVector)pv;
+            for (int i = 0; i < n; i++)
+                da[i] = tpv.getValue(i);
         } else if (pv instanceof Int16PrimitiveVector) {
             Int16PrimitiveVector tpv = (Int16PrimitiveVector)pv;
+            for (int i = 0; i < n; i++)
+                da[i] = tpv.getValue(i);
+        } else if (pv instanceof UInt32PrimitiveVector) {  //uint32 is instanceof int32! so must test uint32 first
+            UInt32PrimitiveVector tpv = (UInt32PrimitiveVector)pv;
             for (int i = 0; i < n; i++)
                 da[i] = tpv.getValue(i);
         } else if (pv instanceof Int32PrimitiveVector) {
@@ -864,11 +897,15 @@ public class OpendapHelper  {
     public static int getInt(PrimitiveVector pv, int index) throws Exception {
         Test.ensureNotNull(pv, "pv is null");
         if (pv instanceof BytePrimitiveVector) 
-            return ((BytePrimitiveVector)pv).getValue(index);
+            return      ((BytePrimitiveVector)pv).getValue(index);
+        if (pv instanceof UInt16PrimitiveVector)   //uint16 is instanceof int16! so must test uint16 first
+            return      ((UInt16PrimitiveVector)pv).getValue(index);
         if (pv instanceof Int16PrimitiveVector) 
-            return ((Int16PrimitiveVector)pv).getValue(index);
+            return      ((Int16PrimitiveVector)pv).getValue(index);
+        if (pv instanceof UInt32PrimitiveVector)   //uint32 is instanceof int32! so must test uint32 first
+            return      ((UInt32PrimitiveVector)pv).getValue(index);
         if (pv instanceof Int32PrimitiveVector) 
-            return ((Int32PrimitiveVector)pv).getValue(index);
+            return      ((Int32PrimitiveVector)pv).getValue(index);
         if (pv instanceof Float32PrimitiveVector) 
             return Math2.roundToInt(((Float32PrimitiveVector)pv).getValue(index));
         if (pv instanceof Float64PrimitiveVector) 
@@ -886,16 +923,20 @@ public class OpendapHelper  {
      */
     public static double getDouble(PrimitiveVector pv, int index) throws Exception {
         Test.ensureNotNull(pv, "pv is null");
-        if (pv instanceof Float32PrimitiveVector) 
-            return ((Float32PrimitiveVector)pv).getValue(index);
-        if (pv instanceof Float64PrimitiveVector) 
-            return ((Float64PrimitiveVector)pv).getValue(index);
-        if (pv instanceof BytePrimitiveVector) 
-            return ((BytePrimitiveVector)pv).getValue(index);
-        if (pv instanceof Int16PrimitiveVector) 
-            return ((Int16PrimitiveVector)pv).getValue(index);
-        if (pv instanceof Int32PrimitiveVector) 
-            return ((Int32PrimitiveVector)pv).getValue(index);
+        if (pv instanceof  Float32PrimitiveVector) 
+            return       ((Float32PrimitiveVector)pv).getValue(index);
+        if (pv instanceof  Float64PrimitiveVector) 
+            return       ((Float64PrimitiveVector)pv).getValue(index);
+        if (pv instanceof   BytePrimitiveVector) 
+            return        ((BytePrimitiveVector)pv).getValue(index);
+        if (pv instanceof UInt16PrimitiveVector)  //uint16 is instanceof int16! so must test uint16 first
+            return      ((UInt16PrimitiveVector)pv).getValue(index);
+        if (pv instanceof  Int16PrimitiveVector) 
+            return       ((Int16PrimitiveVector)pv).getValue(index);
+        if (pv instanceof UInt32PrimitiveVector)  //uint32 is instanceof int32! so must test uint32 first 
+            return      ((UInt32PrimitiveVector)pv).getValue(index);
+        if (pv instanceof  Int32PrimitiveVector) 
+            return       ((Int32PrimitiveVector)pv).getValue(index);
         throw new Exception(String2.ERROR + ": The PrimitiveVector is not numeric (" + pv + ").");
     }
 
@@ -913,12 +954,16 @@ public class OpendapHelper  {
             return "" + ((Float32PrimitiveVector)pv).getValue(index);
         if (pv instanceof Float64PrimitiveVector) 
             return "" + ((Float64PrimitiveVector)pv).getValue(index);
-        if (pv instanceof BytePrimitiveVector) 
-            return "" + ((BytePrimitiveVector)pv).getValue(index);
-        if (pv instanceof Int16PrimitiveVector) 
-            return "" + ((Int16PrimitiveVector)pv).getValue(index);
-        if (pv instanceof Int32PrimitiveVector) 
-            return "" + ((Int32PrimitiveVector)pv).getValue(index);
+        if (pv instanceof   BytePrimitiveVector) 
+            return "" +   ((BytePrimitiveVector)pv).getValue(index);
+        if (pv instanceof UInt16PrimitiveVector)  //uint16 is instanceof int16! so must test uint16 first
+            return "" + ((UInt16PrimitiveVector)pv).getValue(index);
+        if (pv instanceof  Int16PrimitiveVector) 
+            return "" +  ((Int16PrimitiveVector)pv).getValue(index);
+        if (pv instanceof UInt32PrimitiveVector)  //uint32 is instanceof int32! so must test uint32 first
+            return "" + ((UInt32PrimitiveVector)pv).getValue(index);
+        if (pv instanceof  Int32PrimitiveVector) 
+            return "" +  ((Int32PrimitiveVector)pv).getValue(index);
         //if (pv instanceof StringPrimitiveVector)
         //    return ((StringPrimitiveVector)pv).getValue(index);
         if (pv instanceof BooleanPrimitiveVector)
@@ -937,7 +982,9 @@ public class OpendapHelper  {
         Test.ensureNotNull(bt, "bt is null");
         if (bt instanceof DByte)     return ((DByte)bt).getValue();
         if (bt instanceof DInt16)    return ((DInt16)bt).getValue();
+        if (bt instanceof DUInt16)   return ((DUInt16)bt).getValue();
         if (bt instanceof DInt32)    return ((DInt32)bt).getValue();
+        if (bt instanceof DUInt32)   return ((DUInt32)bt).getValue();
         if (bt instanceof DFloat32)  return Math2.roundToInt(((DFloat32)bt).getValue());
         if (bt instanceof DFloat64)  return Math2.roundToInt(((DFloat64)bt).getValue());
         throw new Exception(String2.ERROR + ": The BaseType is not numeric (" + bt + ").");
@@ -956,7 +1003,9 @@ public class OpendapHelper  {
         if (bt instanceof DFloat64)  return ((DFloat64)bt).getValue();
         if (bt instanceof DByte)     return ((DByte)bt).getValue();
         if (bt instanceof DInt16)    return ((DInt16)bt).getValue();
+        if (bt instanceof DUInt16)   return ((DUInt16)bt).getValue();
         if (bt instanceof DInt32)    return ((DInt32)bt).getValue();
+        if (bt instanceof DUInt32)   return ((DUInt32)bt).getValue();
         throw new Exception(String2.ERROR + ": The BaseType is not numeric (" + bt + ").");
     }
 
@@ -973,28 +1022,46 @@ public class OpendapHelper  {
         if (bt instanceof DFloat64)  return "" + ((DFloat64)bt).getValue();
         if (bt instanceof DByte)     return "" + ((DByte)bt).getValue();
         if (bt instanceof DInt16)    return "" + ((DInt16)bt).getValue();
+        if (bt instanceof DUInt16)   return "" + ((DUInt16)bt).getValue();
         if (bt instanceof DInt32)    return "" + ((DInt32)bt).getValue();
+        if (bt instanceof DUInt32)   return "" + ((DUInt32)bt).getValue();
         if (bt instanceof DString)   return ((DString)bt).getValue();
         if (bt instanceof DBoolean)  return ((DBoolean)bt).getValue()? "true" : "false";
         throw new Exception(String2.ERROR + ": Unknown BaseType (" + bt + ").");
     }
 
     /**
-     * This returns the PrimitiveArray elementClass of a PrimitiveVector.
+     * This returns the PrimitiveArray elementPAType of a BaseType.
      *
      * @param pv 
-     * @return the PrimitiveArray elementClass of this BaseType.
+     * @return the PrimitiveArray elementPAType of this BaseType. 
+     *    This treats all Bytes as signed (it doesn't look at _Unsigned attribute).
      * @throws Exception if trouble
      */
-    public static Class getElementClass(PrimitiveVector pv) throws Exception {
+    public static PAType getElementPAType(BaseType bt) throws Exception {
+        return getElementPAType(bt.newPrimitiveVector()); //a new PV of suitable type for the BaseType
+    }
+
+    /**
+     * This returns the PrimitiveArray elementPAType of a PrimitiveVector.
+     *
+     * @param pv 
+     * @return the PrimitiveArray elementPAType of this BaseType.
+     *    This treats all Bytes as signed (it doesn't look at _Unsigned attribute).
+     * @throws Exception if trouble
+     */
+    public static PAType getElementPAType(PrimitiveVector pv) throws Exception {
         Test.ensureNotNull(pv, "pv is null");
-        if (pv instanceof Float32PrimitiveVector)  return float.class;
-        if (pv instanceof Float64PrimitiveVector)  return double.class;
-        if (pv instanceof BytePrimitiveVector)     return byte.class;
-        if (pv instanceof Int16PrimitiveVector)    return short.class;
-        if (pv instanceof Int32PrimitiveVector)    return int.class;
-        if (pv instanceof BaseTypePrimitiveVector) return String.class; //???
-        if (pv instanceof BooleanPrimitiveVector)  return boolean.class;
+        //String2.pressEnterToContinue(">> OpendapHelper.getElementPAType(" + pv.toString());
+        if (pv instanceof Float32PrimitiveVector)  return PAType.FLOAT;
+        if (pv instanceof Float64PrimitiveVector)  return PAType.DOUBLE;
+        if (pv instanceof BytePrimitiveVector)     return PAType.BYTE; //technically should be UByte, but ERDDAP and TDS traditionally treat DAP bytes as signed
+        if (pv instanceof UInt16PrimitiveVector)   return PAType.USHORT; //UInt16 is instanceof Int16! so must test uint16 first
+        if (pv instanceof UInt32PrimitiveVector)   return PAType.UINT;   //UInt32 is instanceof Int32! so must test uint32 first
+        if (pv instanceof Int16PrimitiveVector)    return PAType.SHORT;
+        if (pv instanceof Int32PrimitiveVector)    return PAType.INT;
+        if (pv instanceof BaseTypePrimitiveVector) return PAType.STRING; //???
+        if (pv instanceof BooleanPrimitiveVector)  return PAType.BOOLEAN;
         throw new Exception(String2.ERROR + ": Unknown PrimitiveVector (" + pv + ").");
     }
 
@@ -1030,7 +1097,7 @@ public class OpendapHelper  {
             }
             int nDim = dArray.numDimensions();
             //I'm confused. See 'flag' in first test of this method -- no stringLength dim!
-            //if (getElementClass(dArray.getPrimitiveVector()) == String.class)
+            //if (getElementPAType(dArray.getPrimitiveVector()) == PAType.STRING)
             //    nDim--; 
             if (nDim == 0 || nDim < dimNames.size()) 
                 continue;
@@ -1090,9 +1157,10 @@ public class OpendapHelper  {
 "time, lat, lon, PL_HD, PL_CRS, DIR, PL_WDIR, PL_SPD, SPD, PL_WSPD, P, T, RH, date, time_of_day, flag";
         Test.ensureEqual(results, expected, "results=" + results);
         } catch (Throwable t) {
-            String2.pressEnterToContinue(
-                MustBe.throwableToString(t) +
-                "Known problem with https://tds.coaps.fsu.edu: \"unable to find valid certification path\"."); 
+            Test.knownProblem(
+                "Known problem with https://tds.coaps.fsu.edu: \"unable to find valid certification path\"\n" +
+                "then 2019-11-25 'Connection cannot be opened'.",
+                "Fix this someday:", t);
         }
 
 
@@ -1125,7 +1193,9 @@ public class OpendapHelper  {
                 baseType instanceof DString  ||
                 baseType instanceof DByte    ||
                 baseType instanceof DInt16   ||
+                baseType instanceof DUInt16  ||
                 baseType instanceof DInt32   ||
+                baseType instanceof DUInt32  ||
                 baseType instanceof DFloat32 ||
                 baseType instanceof DFloat64 ||
                 baseType instanceof DBoolean;
@@ -1133,7 +1203,7 @@ public class OpendapHelper  {
 
     /** 
      * This finds all 
-     *   scalar (DBoolean, DByte, DFloat32, DFloat64, DInt16, DInt32, DString) 
+     *   scalar (DBoolean, DByte, DFloat32, DFloat64, DInt16, DUInt16, DInt32, DUInt32, DString) 
      *   and multidimensional (DGrid, DArray) variables.
      * This won't find DVectors, DLists, DStructures or DSequences.
      *
@@ -1182,18 +1252,12 @@ public class OpendapHelper  {
         //2018-09-13 https: works in browser by not yet in Java. 2019-06-28 https works in Java
         url = "https://tds.coaps.fsu.edu/thredds/dodsC/samos/data/research/WTEP/2012/WTEP_20120128v30001.nc";
         String2.log("\n*** test of DArray DAP dataset\n" + url);
-        try {
-            dConnect = new DConnect(url, true, 1, 1);
-            dds = dConnect.getDDS(DEFAULT_TIMEOUT);
-            results = String2.toCSSVString(findAllScalarOrMultiDimVars(dds));
-            expected = 
+        dConnect = new DConnect(url, true, 1, 1);
+        dds = dConnect.getDDS(DEFAULT_TIMEOUT);
+        results = String2.toCSSVString(findAllScalarOrMultiDimVars(dds));
+        expected = 
 "time, lat, lon, PL_HD, PL_CRS, DIR, PL_WDIR, PL_SPD, SPD, PL_WSPD, P, T, RH, date, time_of_day, flag, history";
-            Test.ensureEqual(results, expected, "results=" + results);
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(
-                "\nUnexpected error (server timed out 2013-10-24):\n" +
-                MustBe.throwableToString(t)); 
-        }
+        Test.ensureEqual(results, expected, "results=" + results);
 
 
         //***** test of DGrid DAP dataset
@@ -1207,7 +1271,7 @@ public class OpendapHelper  {
         Test.ensureEqual(results, expected, "results=" + results);
 
         //***** test of NODC template dataset
-        try {
+/** 2020-10-26 disabled because source is unreliable 
         String2.log("\n*** test of NODC template dataset");
         url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/timeSeries/BodegaMarineLabBuoyCombined.nc";
         dConnect = new DConnect(url, true, 1, 1);
@@ -1219,10 +1283,7 @@ public class OpendapHelper  {
 "conductivity_qc, turbidity_qc, fluorescence_qc, instrument1, instrument2, " +
 "instrument3, ht_wgs84, ht_mllw, crs";
         Test.ensureEqual(results, expected, "results=" + results);
-        } catch (Exception e) {
-            String2.log("2018-06-18 file gone? server down? server decommissioned? ");
-            String2.pressEnterToContinue();
-        }
+*/
 
         //***** test of sequence dataset  (no vars should be found
         String2.log("\n*** test of sequence dataset");
@@ -1249,7 +1310,6 @@ public class OpendapHelper  {
      * @param fullFileName the complete name (dir+name+extension) for the .nc file
      */
     public static void allDapToNc(String dapUrl, String fullFileName) throws Throwable {
-
 
         String beginError = "OpendapHelper.allDapToNc" +
             "\n  url=" + dapUrl + 
@@ -1313,6 +1373,7 @@ public class OpendapHelper  {
                 Attributes varAtts = new Attributes();
                 getAttributes(das, varNames[v], varAtts);
                 if (debug) String2.log(varAtts.toString());
+                PAType tPAType = null;
                 if (baseType instanceof DGrid) {
                     DGrid dGrid = (DGrid)baseType;
                     int nDims = dGrid.elementCount(true) - 1;                    
@@ -1331,16 +1392,16 @@ public class OpendapHelper  {
                             which = dimNames.size();
                             dimNames.add(dimName);
                             dimSizes.add(dimSize);
-                            dims.add(ncOut.addDimension(rootGroup, dimName, dimSize, true, false, false));
+                            dims.add(ncOut.addDimension(rootGroup, dimName, dimSize, false, false)); //isUnlimited, isVariableLength
                         }
                         tDims.add(dims.get(which));
                         varShape[v][d] = dimSize;
                     }
 
                     PrimitiveVector pv = ((DArray)dGrid.getVar(0)).getPrimitiveVector(); //has no data
-                    Class tClass = getElementClass(pv);
-                    if (debug) String2.log("  DGrid pv=" + pv.toString() + " tClass=" + tClass);
-                    if (tClass == String.class) {
+                    tPAType = getElementPAType(pv);
+                    if (debug) String2.log("  DGrid pv=" + pv.toString() + " tPAType=" + tPAType);
+                    if (tPAType == PAType.STRING) {
                         //make String variable
                         isString[v] = true;
                         int strlen = varAtts.getInt("DODS_strlen");
@@ -1351,7 +1412,7 @@ public class OpendapHelper  {
                         
                         //make numeric variable
                         newVars[v] = ncOut.addVariable(rootGroup, varNames[v], 
-                            NcHelper.getNc3DataType(tClass), tDims);
+                            NcHelper.getNc3DataType(tPAType), tDims);
                     }
 
                 } else if (baseType instanceof DArray) {
@@ -1370,16 +1431,16 @@ public class OpendapHelper  {
                             which = dimNames.size();
                             dimNames.add(dimName);
                             dimSizes.add(dimSize);
-                            dims.add(ncOut.addDimension(rootGroup, dimName, dimSize, true, false, false));
+                            dims.add(ncOut.addDimension(rootGroup, dimName, dimSize, false, false)); //isUnlimited, isVariableLength
                         }
                         tDims.add(dims.get(which));
                         varShape[v][d] = dimSize;
                     }
 
                     PrimitiveVector pv = dArray.getPrimitiveVector(); //has no data
-                    Class tClass = getElementClass(pv);
-                    if (debug) String2.log("  DArray pv=" + pv.toString() + " tClass=" + tClass);
-                    if (tClass == String.class) {
+                    tPAType = getElementPAType(pv);
+                    if (debug) String2.log("  DArray pv=" + pv.toString() + " tPAType=" + tPAType);
+                    if (tPAType == PAType.STRING) {
                         //make String variable
                         isString[v] = true;
                         int strlen = varAtts.getInt("DODS_strlen");
@@ -1390,16 +1451,16 @@ public class OpendapHelper  {
                     } else {
                         //make numeric variable
                         newVars[v] = ncOut.addVariable(rootGroup, varNames[v], 
-                            NcHelper.getNc3DataType(tClass), tDims);
+                            NcHelper.getNc3DataType(tPAType), tDims);
                     }
 
                 } else {
                     //it's a scalar variable
                     PrimitiveVector pv = baseType.newPrimitiveVector(); //has no data
-                    Class tClass = getElementClass(pv);
-                    if (debug) String2.log("  scalar pv=" + pv.toString() + " tClass=" + tClass);
+                    tPAType = getElementPAType(pv);
+                    if (debug) String2.log("  scalar pv=" + pv.toString() + " tPAType=" + tPAType);
 
-                    if (tClass == String.class) {
+                    if (tPAType == PAType.STRING) {
                         //make String scalar variable
                         isString[v] = true;
                         if (debug) String2.log("  isString=true");
@@ -1416,7 +1477,7 @@ public class OpendapHelper  {
                             dimNames.add(dimName);
                             dimSizes.add(dimSize);
                             dims.add(ncOut.addDimension(rootGroup, 
-                                dimName, dimSize, true, false, false));
+                                dimName, dimSize, false, false)); //isUnlimited, isVariableLength
                         }
                         ArrayList tDims = new ArrayList();
                         tDims.add(dims.get(which));
@@ -1429,12 +1490,12 @@ public class OpendapHelper  {
                         //make numeric scalar variable
                         varShape[v] = new int[0];
                         newVars[v] = ncOut.addVariable(rootGroup, varNames[v], 
-                            NcHelper.getNc3DataType(tClass), new ArrayList());
+                            NcHelper.getNc3DataType(tPAType), new ArrayList());
                     }
                 }
 
                 //write data variable attributes in ncOut
-                NcHelper.setAttributes(nc3Mode, newVars[v], varAtts);
+                NcHelper.setAttributes(nc3Mode, newVars[v], varAtts, tPAType.isUnsigned());
             }
 
             //write global attributes in ncOut
@@ -1459,15 +1520,15 @@ public class OpendapHelper  {
                 if (isString[v]) {
                     //String variable
                     int n = pas[0].size();
-                    ucar.ma2.ArrayObject.D1 ao = new 
-                        ucar.ma2.ArrayObject.D1(String.class, n); 
+                    //ArrayString.D1 doesn't work below. Why not?
+                    ArrayObject.D1 ta = (ArrayObject.D1)(Array.factory(DataType.STRING, new int[]{n})); 
                     for (int i = 0; i < n; i++)
-                        ao.set(i, pas[0].getString(i));
-                    ncOut.writeStringData(newVars[v], ao);
+                        ta.set(i, pas[0].getString(i));
+                    ncOut.writeStringData(newVars[v], ta);
                 } else {
                     //non-String variable
                     ncOut.write(newVars[v], 
-                        ucar.ma2.Array.factory(pas[0].elementClass(), 
+                        Array.factory(NcHelper.getNc3DataType(pas[0].elementType()), 
                             varShape[v], pas[0].toObjectArray()));
                 }
 
@@ -1490,8 +1551,7 @@ public class OpendapHelper  {
         } catch (Throwable t) {
             //try to close the file
             try {
-                if (ncOut != null)
-                    ncOut.close(); //it calls flush() and doesn't like flush called separately
+                if (ncOut != null) ncOut.abort();
             } catch (Throwable t2) {
                 //don't care
             }
@@ -1514,29 +1574,26 @@ public class OpendapHelper  {
         String fileName;
         String url, results, expected;
 
+        if (true) Test.knownProblem("2020-10-22 OpendapHelper.allDapToNc is not run now because the sourceUrl often stalls: https://data.nodc.noaa.gov/thredds");
+
         if (whichTests == -1 || whichTests == 0) {
-            try {
-                //this tests numeric scalars, and  numeric and String 1D arrays
-                fileName = "pointKachemakBay.nc";
-                url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/point/KachemakBay.nc";
-                allDapToNc(url, dir + fileName);
-                results = NcHelper.dds(dir + fileName);
-                String2.log(results);
-                //expected = "zztop";
-                //Test.ensureEqual(results, expected, "");
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-            }
+            //this tests numeric scalars, and  numeric and String 1D arrays
+            fileName = "pointKachemakBay.nc";
+            url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/point/KachemakBay.nc";
+            allDapToNc(url, dir + fileName);
+            results = NcHelper.dds(dir + fileName);
+            String2.log(results);
+            //expected = "zztop";
+            //Test.ensureEqual(results, expected, "");
         }
 
         if (whichTests == -1 || whichTests == 1) {
-            try {
-                //this tests numeric and String scalars, and  numeric 1D arrays
-                fileName = "timeSeriesBodegaMarineLabBuoy.nc";
-                url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/timeSeries/BodegaMarineLabBuoy.nc";
-                allDapToNc(url, dir + fileName);
-                results = NcHelper.dds(dir + fileName);
-                expected = 
+            //this tests numeric and String scalars, and  numeric 1D arrays
+            fileName = "timeSeriesBodegaMarineLabBuoy.nc";
+            url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/timeSeries/BodegaMarineLabBuoy.nc";
+            allDapToNc(url, dir + fileName);
+            results = NcHelper.dds(dir + fileName);
+            expected = 
 "netcdf c:/data/nodcTemplates/timeSeriesBodegaMarineLabBuoy.nc {\n" +
 "  dimensions:\n" +
 "    time = 63242;\n" +
@@ -1564,21 +1621,17 @@ public class OpendapHelper  {
 "    int crs;\n" +
 "  // global attributes:\n" +
 "}\n";
-                Test.ensureEqual(results, expected, "results=\n" + results);
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-            }
+            Test.ensureEqual(results, expected, "results=\n" + results);
         }
 
         if (whichTests == -1 || whichTests == 2) {
-            try {
-                //this tests numeric scalars, and    grids
-                fileName = "trajectoryAoml_tsg.nc";
-                url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/trajectory/aoml_tsg.nc";
-                allDapToNc(url, dir + fileName);
-                results = NcHelper.dds(dir + fileName);
-                String2.log(results);
-                expected = 
+            //this tests numeric scalars, and    grids
+            fileName = "trajectoryAoml_tsg.nc";
+            url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/trajectory/aoml_tsg.nc";
+            allDapToNc(url, dir + fileName);
+            results = NcHelper.dds(dir + fileName);
+            String2.log(results);
+            expected = 
 "netcdf c:/data/nodcTemplates/trajectoryAoml_tsg.nc {\n" +
 "  dimensions:\n" +
 "    trajectory = 1;\n" +
@@ -1612,22 +1665,18 @@ public class OpendapHelper  {
 "    byte crs(trajectory=1);\n" +
 "  // global attributes:\n" +
 "}\n";
-                Test.ensureEqual(results, expected, "");
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-            }
+            Test.ensureEqual(results, expected, "");
         }
 
 
         if (whichTests == -1 || whichTests == 3) {
-            try {
-                //this tests numeric scalars, and   byte/numeric arrays
-                fileName = "trajectoryJason2_satelliteAltimeter.nc";
-                url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/trajectory/jason2_satelliteAltimeter.nc";
-                allDapToNc(url, dir + fileName);
-                results = NcHelper.dds(dir + fileName);
-                String2.log(results);
-                expected = 
+            //this tests numeric scalars, and   byte/numeric arrays
+            fileName = "trajectoryJason2_satelliteAltimeter.nc";
+            url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/trajectory/jason2_satelliteAltimeter.nc";
+            allDapToNc(url, dir + fileName);
+            results = NcHelper.dds(dir + fileName);
+            String2.log(results);
+            expected = 
 "netcdf c:/data/nodcTemplates/trajectoryJason2_satelliteAltimeter.nc {\n" +
 "  dimensions:\n" +
 "    trajectory = 1;\n" +
@@ -1651,10 +1700,7 @@ public class OpendapHelper  {
 "    short ssha(trajectory=1, obs=3);\n" +
 "  // global attributes:\n" +
 "}\n";
-                Test.ensureEqual(results, expected, "");
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-            }
+            Test.ensureEqual(results, expected, "");
         }
 
 /*        if (whichTests == -1 || whichTests == 4) {
@@ -1679,14 +1725,13 @@ public class OpendapHelper  {
         }
 */
         if (whichTests == -1 || whichTests == 5) {
-            try {
-                //this tests numeric scalars, and numeric arrays
-                fileName = "timeSeriesProfileUsgs_internal_wave_timeSeries.nc";
-                url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/timeSeriesProfile/usgs_internal_wave_timeSeries.nc";
-                allDapToNc(url, dir + fileName);
-                results = NcHelper.dds(dir + fileName);
-                String2.log(results);
-                expected = 
+            //this tests numeric scalars, and numeric arrays
+            fileName = "timeSeriesProfileUsgs_internal_wave_timeSeries.nc";
+            url = "https://data.nodc.noaa.gov/thredds/dodsC/testdata/netCDFTemplateExamples/timeSeriesProfile/usgs_internal_wave_timeSeries.nc";
+            allDapToNc(url, dir + fileName);
+            results = NcHelper.dds(dir + fileName);
+            String2.log(results);
+            expected = 
 "netcdf c:/data/nodcTemplates/timeSeriesProfileUsgs_internal_wave_timeSeries.nc {\n" +
 "  dimensions:\n" +
 "    station = 1;\n" +
@@ -1708,10 +1753,7 @@ public class OpendapHelper  {
 "    int crs;\n" +
 "  // global attributes:\n" +
 "}\n";
-                Test.ensureEqual(results, expected, "");
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t)); 
-            }
+            Test.ensureEqual(results, expected, "");
         }
 
 //currently no trajectoryProfile example
@@ -1889,11 +1931,14 @@ public class OpendapHelper  {
             int nDims = sss.length / 3;
             ArrayList<Dimension> dims = new ArrayList();
             int shape[] = new int[nDims];
+            PAType dimPAType[] = new PAType[nDims];
             boolean isDGrid = true; //change if false
 
+            PAType dataPAType[] = new PAType[nVars]; 
             boolean isStringVar[] = new boolean[nVars]; //all false
             Variable newVars[] = new Variable[nVars];
             Variable newDimVars[] = new Variable[nDims];
+            PAType dimPATypes[] = new PAType[nDims];
             for (int v = 0; v < nVars; v++) {
                 //String2.log("  create var=" + varNames[v]);
                 if (varNames[v] == null) 
@@ -1923,14 +1968,15 @@ public class OpendapHelper  {
                             //String2.log("    dim#" + d + "=" + dimName + " size=" + dimSize);
                             shape[d] = dimSize;
                             dims.add(ncOut.addDimension(rootGroup, dimName, 
-                                dimSize, true, false, false));
+                                dimSize, false, false)); //isUnlimited, isVariableLength
                             PrimitiveVector pv = ((DVector)dds.getVariable(dimName)).getPrimitiveVector(); //has no data
+                            dimPATypes[d] = getElementPAType(pv);
                             newDimVars[d] = ncOut.addVariable(rootGroup, dimName, 
-                                NcHelper.getNc3DataType(getElementClass(pv)), 
+                                NcHelper.getNc3DataType(dimPATypes[d]), 
                                 Arrays.asList(dims.get(d))); 
                         } else {
                             //check that dimension names are the same
-                            if (!dimName.equals(dims.get(d).getName()))
+                            if (!dimName.equals(dims.get(d).getFullName()))
                                 throw new RuntimeException(beginError + "var=" + varNames[v] + 
                                     " has different dimensions than previous vars.");
                         }
@@ -1939,10 +1985,10 @@ public class OpendapHelper  {
 
                     //make the dataVariable
                     PrimitiveVector pv = ((DArray)dGrid.getVar(0)).getPrimitiveVector(); //has no data
-                    Class tClass = getElementClass(pv);
-                    //String2.log("pv=" + pv.toString() + " tClass=" + tClass);
+                    dataPAType[v] = getElementPAType(pv);
+                    //String2.log("v=" + v + " pv=" + pv.toString() + " dataPAType=" + dataPAType[v]);
                     newVars[v] = ncOut.addVariable(rootGroup, varNames[v], 
-                        NcHelper.getNc3DataType(tClass), dims);
+                        NcHelper.getNc3DataType(dataPAType[v]), dims);
 
                 } else if (baseType instanceof DArray) {
                     //dArray is usually 1 dim, but may be multidimensional
@@ -1967,11 +2013,11 @@ public class OpendapHelper  {
                             //String2.log("    DArray dim#" + d + "=" + dimName + " size=" + dimSize);
                             shape[d] = dimSize;
                             dims.add(ncOut.addDimension(rootGroup, dimName, dimSize, 
-                                true, false, false));
+                                false, false)); //isUnlimited, isVariableLength
                             //don't make a related variable
                         } else {
                             //check that dimension names are the same
-                            if (!dimName.equals(dims.get(d).getName()))
+                            if (!dimName.equals(dims.get(d).getFullName()))
                                 throw new RuntimeException(beginError + "var=" + varNames[v] + 
                                     " has different dimensions than previous vars.");
                         }
@@ -1980,10 +2026,10 @@ public class OpendapHelper  {
 
                     //make the dataVariable
                     PrimitiveVector pv = dArray.getPrimitiveVector(); //has no data
-                    Class tClass = getElementClass(pv);
-                    //String2.log("  pv tClass=" + tClass);
+                    dataPAType[v] = getElementPAType(pv);
+                    //String2.log("  pv dataPAType=" + dataPAType[v]);
 
-                    if (tClass == String.class) {
+                    if (dataPAType[v] == PAType.STRING) {
                         //a String variable.  Add a dim for nchars
                         isStringVar[v] = true;
                         ArrayList tDims = new ArrayList(dims);
@@ -1996,7 +2042,7 @@ public class OpendapHelper  {
                         }
                         tDims.add(ncOut.addDimension(rootGroup, 
                             varNames[v] + NcHelper.StringLengthSuffix, 
-                            nChars, true, false, false));
+                            nChars, false, false));  //isUnlimited, isVariableLength
 
                         newVars[v] = ncOut.addVariable(rootGroup, varNames[v], 
                             ucar.ma2.DataType.CHAR, tDims);
@@ -2004,7 +2050,7 @@ public class OpendapHelper  {
                     } else {
                         //a regular variable
                         newVars[v] = ncOut.addVariable(rootGroup, varNames[v], 
-                            NcHelper.getNc3DataType(tClass), dims);
+                            NcHelper.getNc3DataType(dataPAType[v]), dims);
                     }
 
                 } else {
@@ -2022,10 +2068,10 @@ public class OpendapHelper  {
             //write dimension attributes in ncOut
             if (isDGrid) {
                 for (int d = 0; d < nDims; d++) {
-                    String dimName = dims.get(d).getName();               
+                    String dimName = dims.get(d).getFullName();               
                     tAtts.clear();
                     getAttributes(das, dimName, tAtts);
-                    NcHelper.setAttributes(nc3Mode, newDimVars[d], tAtts);
+                    NcHelper.setAttributes(nc3Mode, newDimVars[d], tAtts, dimPATypes[d].isUnsigned());
                 }
             }
 
@@ -2033,7 +2079,7 @@ public class OpendapHelper  {
             for (int v = 0; v < nVars; v++) {
                 if (varNames[v] == null)
                     continue;
-                NcHelper.setAttributes(nc3Mode, newVars[v], varAtts[v]);
+                NcHelper.setAttributes(nc3Mode, newVars[v], varAtts[v], dataPAType[v].isUnsigned());
             }
 
             //leave "define" mode in ncOut
@@ -2044,10 +2090,10 @@ public class OpendapHelper  {
                 for (int d = 0; d < nDims; d++) {
                     String tProjection = "[" + sss[d*3] + ":" + sss[d*3+1] + ":" + sss[d*3+2] + "]"; 
                     PrimitiveArray pas[] = getPrimitiveArrays(dConnect, 
-                        "?" + dims.get(d).getName() + tProjection); 
+                        "?" + dims.get(d).getFullName() + tProjection); 
                     pas[0].trimToSize(); //so underlying array is exact size
                     ncOut.write(newDimVars[d], 
-                        ucar.ma2.Array.factory(pas[0].toObjectArray()));
+                        NcHelper.get1DArray(pas[0].toObjectArray(), pas[0].isUnsigned()));
                 }
             }
 
@@ -2073,7 +2119,7 @@ public class OpendapHelper  {
                         pas[0].trimToSize(); //so underlying array is exact size
                         //String2.log("pas[0]=" + pas[0].toString());
                         ncOut.write(newVars[v], origin,
-                            ucar.ma2.Array.factory(pas[0].elementClass(), 
+                            ucar.ma2.Array.factory(NcHelper.getNc3DataType(pas[0].elementType()), 
                                 jplChunkShape, pas[0].toObjectArray()));
                     }
                 } else {
@@ -2086,15 +2132,15 @@ public class OpendapHelper  {
                     if (isStringVar[v]) {
                         //String variable
                         int n = pas[0].size();
-                        ucar.ma2.ArrayObject.D1 ao = new 
-                            ucar.ma2.ArrayObject.D1(String.class, n); 
+                        //ArrayString.D1 doesn't work below. Why not?
+                        ArrayObject.D1 ta = (ArrayObject.D1)(Array.factory(DataType.STRING, new int[]{n})); 
                         for (int i = 0; i < n; i++)
-                            ao.set(i, pas[0].getString(i));
-                        ncOut.writeStringData(newVars[v], ao);
+                            ta.set(i, pas[0].getString(i));
+                        ncOut.writeStringData(newVars[v], ta);
                     } else {
                         //non-String variable
                         ncOut.write(newVars[v], 
-                            ucar.ma2.Array.factory(pas[0].elementClass(), 
+                            Array.factory(NcHelper.getNc3DataType(pas[0].elementType()), 
                                 shape, pas[0].toObjectArray()));
                     }
                 }
@@ -2119,8 +2165,7 @@ public class OpendapHelper  {
         } catch (Throwable t) {
             //try to close the file
             try {
-                if (ncOut != null)
-                    ncOut.close(); //it calls flush() and doesn't like flush called separately
+                if (ncOut != null) ncOut.abort(); 
             } catch (Throwable t2) {
                 //don't care
             }
@@ -2176,8 +2221,8 @@ public class OpendapHelper  {
         Test.ensureEqual(results, expected, "results=" + results);
         } catch (Throwable t) {
             String2.pressEnterToContinue(
-                "\nUnexpected error (server timed out 2013-10-24):\n" +
-                MustBe.throwableToString(t)); 
+                MustBe.throwableToString(t) +
+                "Fix this someday: Expected error (server timed out 2013-10-24, then connection cannot be opened 2019-11-25)");
         }
     }
 
@@ -2305,23 +2350,25 @@ public class OpendapHelper  {
 "  :site = \"OSCAR DYSON\";\n" +
 "  :start_date_time = \"2012/01/28 -- 21:36  UTC\";\n" +
 "  :title = \"OSCAR DYSON Meteorological Data\";\n" +
-" data:\n" +
-"time =\n" +
-"  {16870896, 16870897, 16870898, 16870899, 16870900, 16870901, 16870902, 16870903, 16870904, 16870905, 16870906, 16870907, 16870908, 16870909, 16870910, 16870911, 16870912, 16870913, 16870914, 16870915, 16870916, 16870917, 16870918, 16870919, 16870920, 16870921, 16870922, 16870923, 16870924, 16870925, 16870926, 16870927, 16870928, 16870929, 16870930, 16870931, 16870932, 16870933, 16870934, 16870935, 16870936, 16870937, 16870938, 16870939, 16870940, 16870941, 16870942, 16870943, 16870944, 16870945, 16870946, 16870947, 16870948, 16870949, 16870950, 16870951, 16870952, 16870953, 16870954, 16870955, 16870956, 16870957, 16870958, 16870959, 16870960, 16870961, 16870962, 16870963, 16870964, 16870965, 16870966, 16870967, 16870968, 16870969, 16870970, 16870971, 16870972, 16870973, 16870974, 16870975, 16870976, 16870977, 16870978, 16870979, 16870980, 16870981, 16870982, 16870983, 16870984, 16870985, 16870986, 16870987, 16870988, 16870989, 16870990, 16870991, 16870992, 16870993, 16870994, 16870995, 16870996, 16870997, 16870998, 16870999, 16871000, 16871001, 16871002, 16871003, 16871004, 16871005, 16871006, 16871007, 16871008, 16871009, 16871010, 16871011, 16871012, 16871013, 16871014, 16871015, 16871016, 16871017, 16871018, 16871019, 16871020, 16871021, 16871022, 16871023, 16871024, 16871025, 16871026, 16871027, 16871028, 16871029, 16871030, 16871031, 16871032, 16871033, 16871034, 16871035, 16871036, 16871037, 16871038, 16871039}\n" +
-"lat =\n" +
-"  {44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.62, 44.62, 44.62, 44.62, 44.62, 44.62, 44.62, 44.61, 44.61, 44.61, 44.61, 44.61, 44.61, 44.61, 44.61, 44.6, 44.6, 44.6, 44.6, 44.6, 44.6, 44.61, 44.61, 44.61, 44.61, 44.62, 44.62, 44.62, 44.62, 44.63, 44.63, 44.63, 44.64, 44.64, 44.64, 44.65, 44.65, 44.65, 44.66, 44.66, 44.66, 44.67, 44.67, 44.67, 44.68, 44.68, 44.68, 44.69, 44.69, 44.69, 44.7, 44.7, 44.7, 44.71, 44.71, 44.71, 44.72, 44.72, 44.72, 44.73, 44.73, 44.73, 44.73, 44.74, 44.74, 44.74, 44.75}\n" +
-"lon =\n" +
-"  {235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.94, 235.94, 235.94, 235.94, 235.94, 235.94, 235.93, 235.93, 235.93, 235.92, 235.92, 235.92, 235.91, 235.91, 235.91, 235.9, 235.9, 235.9, 235.89, 235.89, 235.88, 235.88, 235.88, 235.88, 235.88, 235.88, 235.87, 235.87, 235.87, 235.87, 235.87, 235.87, 235.87, 235.86, 235.86, 235.86, 235.86, 235.86, 235.86, 235.86, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.84, 235.84, 235.84, 235.84, 235.84, 235.84, 235.83, 235.83, 235.83, 235.83, 235.83, 235.82, 235.82, 235.82, 235.82, 235.82, 235.82, 235.82}\n" +
-"PL_HD =\n" +
-"  {75.53, 75.57, 75.97, 76.0, 75.81, 75.58, 75.99, 75.98, 75.77, 75.61, 75.72, 75.75, 75.93, 75.96, 76.01, 75.64, 75.65, 75.94, 75.93, 76.12, 76.65, 76.42, 76.25, 75.81, 76.5, 76.09, 76.35, 76.0, 76.16, 76.36, 76.43, 75.99, 75.93, 76.41, 75.85, 76.07, 76.15, 76.33, 76.7, 76.37, 76.58, 76.89, 77.14, 76.81, 74.73, 75.24, 74.52, 81.04, 80.64, 73.21, 63.34, 37.89, 347.02, 309.93, 290.99, 285.0, 279.38, 276.45, 270.26, 266.33, 266.49, 266.08, 263.59, 261.41, 259.05, 259.82, 260.35, 262.78, 258.73, 249.71, 246.52, 245.78, 246.16, 245.88, 243.52, 231.62, 223.09, 221.08, 221.01, 221.08, 220.81, 223.64, 234.12, 239.55, 241.08, 242.09, 242.04, 242.33, 242.06, 242.22, 242.11, 242.3, 242.07, 247.35, 285.6, 287.02, 287.96, 288.37, 321.32, 344.82, 346.91, 344.78, 347.95, 344.75, 344.66, 344.78, 344.7, 344.76, 343.89, 336.73, 334.01, 340.23, 344.76, 348.25, 348.74, 348.63, 351.97, 344.55, 343.77, 343.71, 347.04, 349.06, 349.45, 349.79, 349.66, 349.7, 349.74, 344.2, 343.22, 341.79, 339.11, 334.12, 334.47, 334.62, 334.7, 334.66, 327.06, 335.74, 348.25, 351.05, 355.17, 343.66, 346.85, 347.28}\n" +
-"flag =\"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZEZZSZZZZ\", \"ZZZZZEZZSZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\"\n" +
+"\n" +
+"  data:\n" +
+"    time = \n" +
+"      {16870896, 16870897, 16870898, 16870899, 16870900, 16870901, 16870902, 16870903, 16870904, 16870905, 16870906, 16870907, 16870908, 16870909, 16870910, 16870911, 16870912, 16870913, 16870914, 16870915, 16870916, 16870917, 16870918, 16870919, 16870920, 16870921, 16870922, 16870923, 16870924, 16870925, 16870926, 16870927, 16870928, 16870929, 16870930, 16870931, 16870932, 16870933, 16870934, 16870935, 16870936, 16870937, 16870938, 16870939, 16870940, 16870941, 16870942, 16870943, 16870944, 16870945, 16870946, 16870947, 16870948, 16870949, 16870950, 16870951, 16870952, 16870953, 16870954, 16870955, 16870956, 16870957, 16870958, 16870959, 16870960, 16870961, 16870962, 16870963, 16870964, 16870965, 16870966, 16870967, 16870968, 16870969, 16870970, 16870971, 16870972, 16870973, 16870974, 16870975, 16870976, 16870977, 16870978, 16870979, 16870980, 16870981, 16870982, 16870983, 16870984, 16870985, 16870986, 16870987, 16870988, 16870989, 16870990, 16870991, 16870992, 16870993, 16870994, 16870995, 16870996, 16870997, 16870998, 16870999, 16871000, 16871001, 16871002, 16871003, 16871004, 16871005, 16871006, 16871007, 16871008, 16871009, 16871010, 16871011, 16871012, 16871013, 16871014, 16871015, 16871016, 16871017, 16871018, 16871019, 16871020, 16871021, 16871022, 16871023, 16871024, 16871025, 16871026, 16871027, 16871028, 16871029, 16871030, 16871031, 16871032, 16871033, 16871034, 16871035, 16871036, 16871037, 16871038, 16871039}\n" +
+"    lat = \n" +
+"      {44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.63, 44.62, 44.62, 44.62, 44.62, 44.62, 44.62, 44.62, 44.61, 44.61, 44.61, 44.61, 44.61, 44.61, 44.61, 44.61, 44.6, 44.6, 44.6, 44.6, 44.6, 44.6, 44.61, 44.61, 44.61, 44.61, 44.62, 44.62, 44.62, 44.62, 44.63, 44.63, 44.63, 44.64, 44.64, 44.64, 44.65, 44.65, 44.65, 44.66, 44.66, 44.66, 44.67, 44.67, 44.67, 44.68, 44.68, 44.68, 44.69, 44.69, 44.69, 44.7, 44.7, 44.7, 44.71, 44.71, 44.71, 44.72, 44.72, 44.72, 44.73, 44.73, 44.73, 44.73, 44.74, 44.74, 44.74, 44.75}\n" +
+"    lon = \n" +
+"      {235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.95, 235.94, 235.94, 235.94, 235.94, 235.94, 235.94, 235.93, 235.93, 235.93, 235.92, 235.92, 235.92, 235.91, 235.91, 235.91, 235.9, 235.9, 235.9, 235.89, 235.89, 235.88, 235.88, 235.88, 235.88, 235.88, 235.88, 235.87, 235.87, 235.87, 235.87, 235.87, 235.87, 235.87, 235.86, 235.86, 235.86, 235.86, 235.86, 235.86, 235.86, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.85, 235.84, 235.84, 235.84, 235.84, 235.84, 235.84, 235.83, 235.83, 235.83, 235.83, 235.83, 235.82, 235.82, 235.82, 235.82, 235.82, 235.82, 235.82}\n" +
+"    PL_HD = \n" +
+"      {75.53, 75.57, 75.97, 76.0, 75.81, 75.58, 75.99, 75.98, 75.77, 75.61, 75.72, 75.75, 75.93, 75.96, 76.01, 75.64, 75.65, 75.94, 75.93, 76.12, 76.65, 76.42, 76.25, 75.81, 76.5, 76.09, 76.35, 76.0, 76.16, 76.36, 76.43, 75.99, 75.93, 76.41, 75.85, 76.07, 76.15, 76.33, 76.7, 76.37, 76.58, 76.89, 77.14, 76.81, 74.73, 75.24, 74.52, 81.04, 80.64, 73.21, 63.34, 37.89, 347.02, 309.93, 290.99, 285.0, 279.38, 276.45, 270.26, 266.33, 266.49, 266.08, 263.59, 261.41, 259.05, 259.82, 260.35, 262.78, 258.73, 249.71, 246.52, 245.78, 246.16, 245.88, 243.52, 231.62, 223.09, 221.08, 221.01, 221.08, 220.81, 223.64, 234.12, 239.55, 241.08, 242.09, 242.04, 242.33, 242.06, 242.22, 242.11, 242.3, 242.07, 247.35, 285.6, 287.02, 287.96, 288.37, 321.32, 344.82, 346.91, 344.78, 347.95, 344.75, 344.66, 344.78, 344.7, 344.76, 343.89, 336.73, 334.01, 340.23, 344.76, 348.25, 348.74, 348.63, 351.97, 344.55, 343.77, 343.71, 347.04, 349.06, 349.45, 349.79, 349.66, 349.7, 349.74, 344.2, 343.22, 341.79, 339.11, 334.12, 334.47, 334.62, 334.7, 334.66, 327.06, 335.74, 348.25, 351.05, 355.17, 343.66, 346.85, 347.28}\n" +
+"    flag = \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZEZZSZZZZ\", \"ZZZZZEZZSZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\", \"ZZZZZZZZZZZZZ\"\n" +
 "}\n";
             Test.ensureEqual(results, expected, "results=" + results);
             File2.delete(fileName);
         } catch (Throwable t) {
             String2.pressEnterToContinue(
-                "\nUnexpected error (server timed out 2013-10-24):\n" +
-                MustBe.throwableToString(t)); 
+                MustBe.throwableToString(t) +
+                "Fix this someday:\n" +
+                "Expected error (server timed out 2013-10-24, then 2019-11-25 'Connection cannot be opened'."); 
         }
 
         //test subset
@@ -2445,10 +2492,10 @@ PL_HD[10] 75.53, 75.72, 76.65, 76.43, 76.58, 63.34, 266.49, 246.52, 220.81, 242.
 //        at gov.noaa.pfel.coastwatch.griddata.OpendapHelper.testDapToNcDArray(OpendapHelper.java:1628)
 //        at gov.noaa.pfel.coastwatch.TestAll.main(TestAll.java:723)
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+            throw new Exception(
                 "\nUnexpected error." +
-                "\nOutOfMememoryError from TDS bug was expected." + 
-                "\n(server timed out 2013-10-24)"); 
+                "\nOutOfMememoryError from TDS bug was expected (but 404 Not Found/ 'Connection cannont be read' is common)." + 
+                "\n(server timed out 2013-10-24)", t); 
         }
 
 
@@ -2471,6 +2518,10 @@ expected =
                 String2.pressEnterToContinue(MustBe.throwableToString(t) + 
                     "\nurl=" + dArrayUrl +
                     "\n(The server timed out 2013-10-24.)"); 
+            else if (results.startsWith("dods.dap.DODSException: Connection cannot be opened"))
+                String2.pressEnterToContinue(MustBe.throwableToString(t) + 
+                    "\nurl=" + dArrayUrl +
+                    "\n(The connection can't be opened 2019-11-25.)"); 
             else Test.ensureEqual(results, expected, "results=" + results);
         }
 
@@ -2630,49 +2681,50 @@ String expected2 =
 "  :source = \"satellite observation: QuikSCAT, SeaWinds\";\n" +
 "  :sourceUrl = \"(local files)\";\n" +
 "  :Southernmost_Northing = -75.0; // double\n" +
-"  :standard_name_vocabulary = \"CF Standard Name Table v55\";\n" +
+"  :standard_name_vocabulary = \"CF Standard Name Table v70\";\n" +
 "  :summary = \"Remote Sensing Inc. distributes science quality wind velocity data from the SeaWinds instrument onboard NASA's QuikSCAT satellite.  SeaWinds is a microwave scatterometer designed to measure surface winds over the global ocean.  Wind velocity fields are provided in zonal, meridional, and modulus sets. The reference height for all wind velocities is 10 meters. (This is a monthly composite.)\";\n" +
 "  :time_coverage_end = \"2009-10-16T12:00:00Z\";\n" +
 "  :time_coverage_start = \"1999-08-16T12:00:00Z\";\n" +
 "  :title = \"Wind, QuikSCAT SeaWinds, 0.125°, Global, Science Quality, 1999-2009 (Monthly)\";\n" +
 "  :Westernmost_Easting = 0.0; // double\n" +
-" data:\n" +
-"time =\n" +
-"  {9.48024E8}\n" +
-"altitude =\n" +
-"  {10.0}\n" +
-"latitude =\n" +
-"  {-75.0, -50.0, -25.0, 0.0, 25.0, 50.0, 75.0}\n" +
-"longitude =\n" +
-"  {0.0, 25.0, 50.0, 75.0, 100.0, 125.0, 150.0, 175.0, 200.0, 225.0, 250.0, 275.0, 300.0, 325.0, 350.0}\n" +
-"x_wind =\n" +
-"  {\n" +
-"    {\n" +
+"\n" +
+"  data:\n" +
+"    time = \n" +
+"      {9.48024E8}\n" +
+"    altitude = \n" +
+"      {10.0}\n" +
+"    latitude = \n" +
+"      {-75.0, -50.0, -25.0, 0.0, 25.0, 50.0, 75.0}\n" +
+"    longitude = \n" +
+"      {0.0, 25.0, 50.0, 75.0, 100.0, 125.0, 150.0, 175.0, 200.0, 225.0, 250.0, 275.0, 300.0, 325.0, 350.0}\n" +
+"    x_wind = \n" +
 "      {\n" +
-"        {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, 0.76867574, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0},\n" +
-"        {6.903795, 7.7432585, 8.052648, 7.375461, 8.358787, 7.5664454, 4.537408, 4.349131, 2.4506109, 2.1340106, 6.4230127, 8.5656395, 5.679372, 5.775274, 6.8520603},\n" +
-"        {-3.513153, -9999999.0, -5.7222853, -4.0249896, -4.6091595, -9999999.0, -9999999.0, -3.9060166, -1.821446, -2.0546885, -2.349195, -4.2188687, -9999999.0, -0.7905332, -3.715024},\n" +
-"        {0.38850072, -9999999.0, -2.8492346, 0.7843591, -9999999.0, -0.353197, -0.93183184, -5.3337674, -7.8715024, -5.2341905, -2.1567967, 0.46681255, -9999999.0, -3.7223456, -1.3264368},\n" +
-"        {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -4.250928, -1.9779109, -2.3081408, -6.070514, -3.4209945, 2.3732827, -3.4732149, -3.2282434, -3.99131, -9999999.0},\n" +
-"        {2.3816996, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, 1.9863724, 1.746363, 5.305478, 2.3346918, -9999999.0, -9999999.0, 2.0079596, 3.4320266, 1.8692436},\n" +
-"        {0.83961326, -3.4395192, -3.1952338, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -2.9099085}\n" +
+"        {\n" +
+"          {\n" +
+"            {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, 0.76867574, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0},\n" +
+"            {6.903795, 7.7432585, 8.052648, 7.375461, 8.358787, 7.5664454, 4.537408, 4.349131, 2.4506109, 2.1340106, 6.4230127, 8.5656395, 5.679372, 5.775274, 6.8520603},\n" +
+"            {-3.513153, -9999999.0, -5.7222853, -4.0249896, -4.6091595, -9999999.0, -9999999.0, -3.9060166, -1.821446, -2.0546885, -2.349195, -4.2188687, -9999999.0, -0.7905332, -3.715024},\n" +
+"            {0.38850072, -9999999.0, -2.8492346, 0.7843591, -9999999.0, -0.353197, -0.93183184, -5.3337674, -7.8715024, -5.2341905, -2.1567967, 0.46681255, -9999999.0, -3.7223456, -1.3264368},\n" +
+"            {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -4.250928, -1.9779109, -2.3081408, -6.070514, -3.4209945, 2.3732827, -3.4732149, -3.2282434, -3.99131, -9999999.0},\n" +
+"            {2.3816996, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, 1.9863724, 1.746363, 5.305478, 2.3346918, -9999999.0, -9999999.0, 2.0079596, 3.4320266, 1.8692436},\n" +
+"            {0.83961326, -3.4395192, -3.1952338, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -2.9099085}\n" +
+"          }\n" +
+"        }\n" +
 "      }\n" +
-"    }\n" +
-"  }\n" +
-"y_wind =\n" +
-"  {\n" +
-"    {\n" +
+"    y_wind = \n" +
 "      {\n" +
-"        {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, 3.9745862, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0},\n" +
-"        {-1.6358501, -2.1310546, -1.672539, -2.8083494, -1.7282568, -2.5679686, -0.032763753, 0.6524638, 0.9784334, -2.4545083, 0.6344165, -0.5887741, -0.6837046, -0.92711323, -1.9981208},\n" +
-"        {3.7522712, -9999999.0, -0.04178731, 1.6603879, 5.321683, -9999999.0, -9999999.0, 1.5633415, -0.50912154, -2.964269, -0.92438585, 3.959174, -9999999.0, -2.2249718, 0.46982485},\n" +
-"        {4.8992314, -9999999.0, -4.7178936, -3.2770228, -9999999.0, -2.8111093, -0.9852706, 0.46997508, 0.0683085, 0.46172503, 1.2998049, 3.5235379, -9999999.0, 1.1354263, 4.7139735},\n" +
-"        {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -5.092368, -3.3667018, -0.60028434, -0.7609817, -1.114303, -3.6573937, -0.934499, -0.40036556, -2.5770886, -9999999.0},\n" +
-"        {0.56877106, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -3.2394278, 0.45922723, -0.8394715, 0.7333555, -9999999.0, -9999999.0, -2.3936603, 3.725975, 0.09879057},\n" +
-"        {-6.128998, 2.379096, 7.463917, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -11.026609}\n" +
+"        {\n" +
+"          {\n" +
+"            {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, 3.9745862, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0},\n" +
+"            {-1.6358501, -2.1310546, -1.672539, -2.8083494, -1.7282568, -2.5679686, -0.032763753, 0.6524638, 0.9784334, -2.4545083, 0.6344165, -0.5887741, -0.6837046, -0.92711323, -1.9981208},\n" +
+"            {3.7522712, -9999999.0, -0.04178731, 1.6603879, 5.321683, -9999999.0, -9999999.0, 1.5633415, -0.50912154, -2.964269, -0.92438585, 3.959174, -9999999.0, -2.2249718, 0.46982485},\n" +
+"            {4.8992314, -9999999.0, -4.7178936, -3.2770228, -9999999.0, -2.8111093, -0.9852706, 0.46997508, 0.0683085, 0.46172503, 1.2998049, 3.5235379, -9999999.0, 1.1354263, 4.7139735},\n" +
+"            {-9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -5.092368, -3.3667018, -0.60028434, -0.7609817, -1.114303, -3.6573937, -0.934499, -0.40036556, -2.5770886, -9999999.0},\n" +
+"            {0.56877106, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -3.2394278, 0.45922723, -0.8394715, 0.7333555, -9999999.0, -9999999.0, -2.3936603, 3.725975, 0.09879057},\n" +
+"            {-6.128998, 2.379096, 7.463917, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -9999999.0, -11.026609}\n" +
+"          }\n" +
+"        }\n" +
 "      }\n" +
-"    }\n" +
-"  }\n" +
 "}\n";
 /*From .asc request:
 https://coastwatch.pfeg.noaa.gov/erddap/griddap/erdQSwindmday.asc?x_wind[5][0][0:200:1200][0:200:2880],y_wind[5][0][0:200:1200][0:200:2880]
@@ -2845,7 +2897,7 @@ expected2 =
 "  :source = \"satellite observation: QuikSCAT, SeaWinds\";\n" +
 "  :sourceUrl = \"(local files)\";\n" +
 "  :Southernmost_Northing = -75.0; // double\n" +
-"  :standard_name_vocabulary = \"CF Standard Name Table v55\";\n" +
+"  :standard_name_vocabulary = \"CF Standard Name Table v70\";\n" +
 "  :summary = \"Remote Sensing Inc. distributes science quality wind velocity data from the SeaWinds instrument onboard NASA's QuikSCAT satellite.  SeaWinds is a microwave scatterometer designed to measure surface winds over the global ocean.  Wind velocity fields are provided in zonal, meridional, and modulus sets. The reference height for all wind velocities is 10 meters. (This is a monthly composite.)\";\n" +
 "  :time_coverage_end = \"2009-10-16T12:00:00Z\";\n" +
 "  :time_coverage_start = \"1999-08-16T12:00:00Z\";\n" +
@@ -2963,24 +3015,50 @@ expected2 =
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable{
-        String2.log("\n*** OpendapHelper.test()");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 6;
+        String msg = "\n^^^ OpendapHelper.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testGetAttributes();
-        testParseStartStrideStop();
-        testFindVarsWithSharedDimensions();
-        testFindAllScalarOrMultiDimVars();
-        testDapToNcDArray();
-        testDapToNcDGrid();
-        testAllDapToNc(-1);  //-1 for all tests, or 0.. for specific test
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
 
-        String2.log("\n***** OpendapHelper.test finished successfully");
-        Math2.incgc(2000); //in a test
-        /* */
-    } 
+                } else {
+                    if (test ==  0) testGetAttributes();
+                    if (test ==  1) testParseStartStrideStop();
+                    if (test ==  2) testDapToNcDArray();
+                    if (test ==  3) testFindVarsWithSharedDimensions();
+                    if (test ==  4) testFindAllScalarOrMultiDimVars();
+                    if (test ==  5) testDapToNcDGrid();
+                    if (test ==  6) testAllDapToNc(-1);  //-1 for all tests, or 0.. for specific test   
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
 
 
 

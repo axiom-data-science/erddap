@@ -5,6 +5,7 @@
 package gov.noaa.pfel.erddap.variable;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAOne;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.Math2;
 import com.cohort.util.SimpleException;
@@ -37,12 +38,12 @@ public class EDVAlt extends EDV {
      *   This takes precedence over actual_range, actual_max, or data_max metadata.
      * @throws Throwable if trouble
      */
-    public EDVAlt(String tSourceName, 
+    public EDVAlt(String tDatasetID, String tSourceName, 
         Attributes tSourceAttributes, Attributes tAddAttributes, 
-        String tSourceDataType, double tSourceMin, double tSourceMax) 
+        String tSourceDataType, PAOne tSourceMin, PAOne tSourceMax) 
         throws Throwable {
 
-        super(tSourceName, ALT_NAME, tSourceAttributes, tAddAttributes,
+        super(tDatasetID, tSourceName, ALT_NAME, tSourceAttributes, tAddAttributes,
             tSourceDataType, tSourceMin, tSourceMax); 
 
         if (destinationDataType().equals("String"))
@@ -67,7 +68,7 @@ public class EDVAlt extends EDV {
         combinedAttributes.set("units", units);        
 
         //set destinationMin max  if not set by tSourceMin,Max
-        double mm[] = extractActualRange(); //always extract 
+        PAOne mm[] = extractActualRange(); //always extract 
         setDestinationMinMax(mm[0], mm[1]);
         setActualRangeFromDestinationMinMax();
 

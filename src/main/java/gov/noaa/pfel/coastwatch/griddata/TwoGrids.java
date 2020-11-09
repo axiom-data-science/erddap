@@ -404,7 +404,7 @@ public class TwoGrids  {
                     double matrix[] = {0, grid1.latSpacing, grid1.lonSpacing, 
                                        0, grid1.lon[0],     grid1.lat[0]}; //right side up
                     rootGroup.addAttribute(new Attribute("et_affine", 
-                        NcHelper.get1DArray(matrix))); //float64[] {a, b, c, d, e, f}
+                        NcHelper.get1DArray(matrix, false))); //float64[] {a, b, c, d, e, f}
                 } else {
                     rootGroup.addAttribute(
                         NcHelper.createAttribute(nc3Mode, names[i], grid1.globalAttributes().get(names[i])));
@@ -412,7 +412,7 @@ public class TwoGrids  {
             }
 
             //time attributes
-            timeVar.addAttribute(new Attribute("actual_range",        NcHelper.get1DArray(new double[]{centerSeconds, centerSeconds})));     
+            timeVar.addAttribute(new Attribute("actual_range",        NcHelper.get1DArray(new double[]{centerSeconds, centerSeconds}, false)));     
             timeVar.addAttribute(new Attribute("axis",                "T"));
             timeVar.addAttribute(new Attribute("fraction_digits",     new Integer(0)));     
             timeVar.addAttribute(new Attribute("long_name",           "Centered Time"));
@@ -421,7 +421,7 @@ public class TwoGrids  {
             timeVar.addAttribute(new Attribute("_CoordinateAxisType", "Time"));
 
             //altitude attributes
-            altitudeVar.addAttribute(new Attribute("actual_range",           NcHelper.get1DArray(new double[]{0, 0})));     
+            altitudeVar.addAttribute(new Attribute("actual_range",           NcHelper.get1DArray(new double[]{0, 0}, false)));     
             altitudeVar.addAttribute(new Attribute("axis",                   "Z"));
             altitudeVar.addAttribute(new Attribute("fraction_digits",        new Integer(0)));     
             altitudeVar.addAttribute(new Attribute("long_name",              "Altitude"));
@@ -432,18 +432,18 @@ public class TwoGrids  {
             altitudeVar.addAttribute(new Attribute("_CoordinateZisPositive", "up"));
 
             //lat
-            NcHelper.setAttributes(nc3Mode, latVar, grid1.latAttributes());
+            NcHelper.setAttributes(nc3Mode, latVar, grid1.latAttributes(), false); //isUnsigned(DOUBLE)
             latVar.addAttribute(new Attribute("axis", "Y"));
 
             //lon
-            NcHelper.setAttributes(nc3Mode, lonVar, grid1.lonAttributes());
+            NcHelper.setAttributes(nc3Mode, lonVar, grid1.lonAttributes(), false); //isUnsigned(DOUBLE)
             lonVar.addAttribute(new Attribute("axis", "X"));
 
             //data1
-            NcHelper.setAttributes(nc3Mode, data1Var, grid1.dataAttributes());
+            NcHelper.setAttributes(nc3Mode, data1Var, grid1.dataAttributes(), false); //isUnsigned(FLOAT)
 
             //data2
-            NcHelper.setAttributes(nc3Mode, data2Var, grid2.dataAttributes());
+            NcHelper.setAttributes(nc3Mode, data2Var, grid2.dataAttributes(), false); //isUnsigned(FLOAT)
 
             //leave "define" mode
             nc.create();
@@ -490,8 +490,7 @@ public class TwoGrids  {
         } catch (Exception e) {
             //try to close the file
             try {
-                if (nc != null)
-                    nc.close(); //it calls flush() and doesn't like flush called separately
+                if (nc != null) nc.abort(); 
             } catch (Exception e2) {
                 //don't care
             }
@@ -785,23 +784,49 @@ public class TwoGrids  {
         }
     }
 */
+
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Exception if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Exception {
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ TwoGrids.test(" + interactive + ") test=";
 
-        verbose = true;
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        testSaveAsMatlab();
-        testSaveAsNetCDF();
-        testSaveAsXyz();
+                } else {
+                    if (test ==  0) testSaveAsMatlab();
+                    if (test ==  1) testSaveAsNetCDF();
+                    if (test ==  2) testSaveAsXyz();
 
-        //done
-        String2.log("\n***** TwoGrids.test finished successfully");
-        Math2.incgc(2000); //in a test
+                }
 
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

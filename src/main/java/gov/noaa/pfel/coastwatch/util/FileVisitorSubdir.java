@@ -293,7 +293,7 @@ public class FileVisitorSubdir extends SimpleFileVisitor<Path> {
     public static void testLocal() throws Throwable {
         String2.log("\n*** FileVisitorSubdir.testLocal");
         verbose = true;
-        String contextDir = SSR.getContextDirectory(); //with / separator and / at the end
+        String contextDir = String2.webInfParentDirectory(); //with / separator and / at the end
         StringArray alps;
         long time;
 
@@ -323,11 +323,10 @@ public class FileVisitorSubdir extends SimpleFileVisitor<Path> {
      * Your S3 credentials must be in 
      * <br> ~/.aws/credentials on Linux, OS X, or Unix
      * <br> C:\Users\USERNAME\.aws\credentials on Windows
-     * See http://docs.aws.amazon.com/AWSSdkDocsJava/latest/DeveloperGuide/java-dg-setup.html .
+     * See https://docs.aws.amazon.com/sdk-for-java/?id=docs_gateway#aws-sdk-for-java,-version-1 .
      */
     public static void testAWSS3() throws Throwable {
         String2.log("\n*** FileVisitorSubdir.testAWSS3");
-        try {
 
         verbose = true;
         StringArray alps;
@@ -344,10 +343,6 @@ public class FileVisitorSubdir extends SimpleFileVisitor<Path> {
 
         String2.log("\n*** FileVisitorSubdir.testAWSS3 finished.");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error.  (Did you create your AWS S3 credentials file?)"); 
-        }
     }
 
     /** 
@@ -355,13 +350,14 @@ public class FileVisitorSubdir extends SimpleFileVisitor<Path> {
      */
     public static void testWAF() throws Throwable {
         String2.log("\n*** FileVisitorSubdir.testWAF");
-        try {
 
         verbose = true;
         StringArray alps;
         long time;
+        try {
 
-        alps = oneStep("https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/",
+        alps = oneStep("https://www.fisheries.noaa.gov/inportserve/waf/", //after 2020-08-03
+            //"https://inport.nmfs.noaa.gov/inport-metadata/NOAA/NMFS/", //pre 2020-08-03
             ".*/NMFS/(|SWFSC/|NWFSC/)(|inport-xml/)(|xml/)"); //tricky!
         String results = alps.toNewlineString();
         String expected = 
@@ -374,27 +370,54 @@ public class FileVisitorSubdir extends SimpleFileVisitor<Path> {
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         String2.log("\n*** FileVisitorSubdir.testWAF finished.");
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error."); 
+        } catch (Exception e) {
+            Test.knownProblem("2020-08-03 New 'directory' in new InPort system isn't a directory but a web page with other info.", e);
         }
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n****************** FileVisitorSubdir.test() *****************\n");
-/* for releases, this line should have open/close comment */
-        //always done        
-        testLocal();
-        testAWSS3();
-        testWAF();
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ FileVisitorSubdir.test(" + interactive + ") test=";
 
-        //future: FTP?
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testLocal();
+                    if (test ==  1) testAWSS3();
+                    if (test ==  2) testWAF();
+
+                    //FUTURE: FTP?
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 

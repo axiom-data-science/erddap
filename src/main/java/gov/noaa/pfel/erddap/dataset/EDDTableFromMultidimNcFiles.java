@@ -6,6 +6,7 @@ package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -68,6 +69,7 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, String tCharset, 
+        String tSkipHeaderToRegex, String tSkipLinesRegex,
         int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
@@ -76,7 +78,8 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
         boolean tAccessibleViaFiles, boolean tRemoveMVRows, 
         int tStandardizeWhat, int tNThreads, 
-        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex,
+        String tAddVariablesWhere) 
         throws Throwable {
 
         super("EDDTableFromMultidimNcFiles", tDatasetID, 
@@ -86,12 +89,14 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
+            tCharset, tSkipHeaderToRegex, tSkipLinesRegex,
+            tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
             tRemoveMVRows, tStandardizeWhat, 
-            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex);
+            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex,
+            tAddVariablesWhere);
 
     }
 
@@ -114,10 +119,16 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
         String decompFullName = FileVisitorDNLS.decompressIfNeeded(
             tFileDir + tFileName, fileDir, decompressedDirectory(), 
             EDStatic.decompressedCacheMaxGB, true); //reuseExisting
-        table.readMultidimNc(decompFullName, sourceDataNames, null,
-            treatDimensionsAs,
-            getMetadata, standardizeWhat, removeMVRows,  
-            sourceConVars, sourceConOps, sourceConValues);
+        if (mustGetData) {
+            table.readMultidimNc(decompFullName, sourceDataNames, null,
+                treatDimensionsAs,
+                getMetadata, standardizeWhat, removeMVRows,  
+                sourceConVars, sourceConOps, sourceConValues);
+        } else {
+            //Just return a table with globalAtts, columns with atts, but no rows.
+            table.readNcMetadata(decompFullName, sourceDataNames.toArray(), sourceDataTypes,
+                standardizeWhat);
+        }
         return table;
     }
 
@@ -239,8 +250,8 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
             PrimitiveArray destPA = makeDestPAForGDX(sourcePA, sourceAtts);
             Attributes addAtts = makeReadyToUseAddVariableAttributesForDatasetsXml(
                 dataSourceTable.globalAttributes(), sourceAtts, null, colName, 
-                destPA.elementClass() != String.class, //tryToAddStandardName
-                destPA.elementClass() != String.class, //addColorBarMinMax
+                destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                destPA.elementType() != PAType.STRING, //addColorBarMinMax
                 true); //tryToFindLLAT
             dataAddTable.addColumn(c, colName, destPA, addAtts); 
 
@@ -350,8 +361,7 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
             //"    <sortedColumnSourceName>" + XML.encodeAsXML(tSortedColumnSourceName) + "</sortedColumnSourceName>\n" +
             "    <removeMVRows>" + ("" + tRemoveMVRows).toLowerCase() + "</removeMVRows>\n" +
             "    <sortFilesBySourceNames>" + XML.encodeAsXML(tSortFilesBySourceNames) + "</sortFilesBySourceNames>\n" +
-            "    <fileTableInMemory>false</fileTableInMemory>\n" +
-            "    <accessibleViaFiles>false</accessibleViaFiles>\n");
+            "    <fileTableInMemory>false</fileTableInMemory>\n");
         sb.append(writeAttsForDatasetsXml(false, dataSourceTable.globalAttributes(), "    "));
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
@@ -377,19 +387,18 @@ public class EDDTableFromMultidimNcFiles extends EDDTableFromFiles {
     public static void testGenerateDatasetsXml() throws Throwable {
         testVerboseOn();
 
-        try {
-            String results = generateDatasetsXml(
-                EDStatic.unitTestDataDir + "nc", ".*_prof\\.nc", "",
-                "N_PROF, N_LEVELS",
-                1440,
-                "^", "_prof.nc$", ".*", "fileNumber", //just for test purposes
-                true, //removeMVRows
-                "FLOAT_SERIAL_NO JULD", //sort files by 
-                "", "", "", "", 
-                -1, //defaultStandardizeWhat
-                "", //treatDimensionsAs
-                null, //cacheFromUrl
-                null) + "\n";
+        String results = generateDatasetsXml(
+            EDStatic.unitTestDataDir + "nc", ".*_prof\\.nc", "",
+            "N_PROF, N_LEVELS",
+            1440,
+            "^", "_prof.nc$", ".*", "fileNumber", //just for test purposes
+            true, //removeMVRows
+            "FLOAT_SERIAL_NO JULD", //sort files by 
+            "", "", "", "", 
+            -1, //defaultStandardizeWhat
+            "", //treatDimensionsAs
+            null, //cacheFromUrl
+            null) + "\n";
 
 String expected = 
 "<dataset type=\"EDDTableFromMultidimNcFiles\" datasetID=\"nc_65cd_4c8a_93f3\" active=\"true\">\n" +
@@ -408,7 +417,6 @@ String expected =
 "    <removeMVRows>true</removeMVRows>\n" +
 "    <sortFilesBySourceNames>FLOAT_SERIAL_NO JULD</sortFilesBySourceNames>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"Conventions\">Argo-3.1 CF-1.6</att>\n" +
 "        <att name=\"featureType\">trajectoryProfile</att>\n" +
@@ -436,7 +444,7 @@ String expected =
 "        <att name=\"keywords_vocabulary\">GCMD Science Keywords</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"subsetVariables\">DATA_TYPE, FORMAT_VERSION, HANDBOOK_VERSION, REFERENCE_DATE_TIME, DATE_CREATION, DATE_UPDATE, PLATFORM_NUMBER, PROJECT_NAME, PI_NAME, DIRECTION, DATA_CENTRE, WMO_INST_TYPE, JULD_QC, POSITION_QC, POSITIONING_SYSTEM, CONFIG_MISSION_NUMBER</att>\n" +
 "        <att name=\"summary\">Argo float vertical profile. Coriolis Global Data Assembly Centres (GDAC) data from a local source.</att>\n" +
 "    </addAttributes>\n" +
@@ -1189,11 +1197,6 @@ String expected =
 "fileNumber, DATA_TYPE, FORMAT_VERSION, HANDBOOK_VERSION, REFERENCE_DATE_TIME, DATE_CREATION, DATE_UPDATE, PLATFORM_NUMBER, PROJECT_NAME, PI_NAME, CYCLE_NUMBER, DIRECTION, DATA_CENTRE, DC_REFERENCE, DATA_STATE_INDICATOR, DATA_MODE, PLATFORM_TYPE, FLOAT_SERIAL_NO, FIRMWARE_VERSION, WMO_INST_TYPE, time, JULD_QC, JULD_LOCATION, latitude, longitude, POSITION_QC, POSITIONING_SYSTEM, PROFILE_PRES_QC, PROFILE_TEMP_QC, PROFILE_PSAL_QC, VERTICAL_SAMPLING_SCHEME, CONFIG_MISSION_NUMBER, PRES, PRES_QC, PRES_ADJUSTED, PRES_ADJUSTED_QC, PRES_ADJUSTED_ERROR, TEMP, TEMP_QC, TEMP_ADJUSTED, TEMP_ADJUSTED_QC, TEMP_ADJUSTED_ERROR, PSAL, PSAL_QC, PSAL_ADJUSTED, PSAL_ADJUSTED_QC, PSAL_ADJUSTED_ERROR", 
                 "");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml."); 
-        }
-
     }
 
     /**
@@ -1648,7 +1651,7 @@ expected=
 "    String source \"Argo float\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing 19.875999450683594;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"platform_number, project_name, pi_name, platform_type, float_serial_no, cycle_number, data_type, format_version, handbook_version, reference_date_time, date_creation, date_update, direction, data_center, dc_reference, data_state_indicator, data_mode, firmware_version, wmo_inst_type, time, time_qc, time_location, latitude, longitude, position_qc, positioning_system, profile_pres_qc, profile_temp_qc, profile_psal_qc, vertical_sampling_scheme\";\n" +
 "    String summary \"Argo float vertical profiles from Coriolis Global Data Assembly Centres\n" +
 "(GDAC). Argo is an international collaboration that collects high-quality\n" +
@@ -1818,27 +1821,26 @@ expected=
 
     /**
      * testGenerateDatasetsXml with a SeaDataNet file, specifically the 
-	 * generation of sdn_P02_urn from sdn_parameter_urn attributes.
+     * generation of sdn_P02_urn from sdn_parameter_urn attributes.
      */
     public static void testGenerateDatasetsXmlSeaDataNet() throws Throwable {
         testVerboseOn();
         //debugMode = true;
 
-        try {
-            String results = generateDatasetsXml(
-                EDStatic.unitTestDataDir + "sdn/", 
-                "netCDF_timeseries_tidegauge\\.nc", "", 
-                "INSTANCE, MAXT", //dimensions
-                1440,
-                "", "", "", "", //just for test purposes; station is already a column in the file
-                true, //removeMVRows
-                "", //sortFilesBy 
-                "", "", "", "", 
-                -1, //defaultStandardizeWhat
-                "", //treatDimensionsAs
-                null, //cacheFromUrl
-                null);
-            String2.setClipboardString(results);
+        String results = generateDatasetsXml(
+            EDStatic.unitTestDataDir + "sdn/", 
+            "netCDF_timeseries_tidegauge\\.nc", "", 
+            "INSTANCE, MAXT", //dimensions
+            1440,
+            "", "", "", "", //just for test purposes; station is already a column in the file
+            true, //removeMVRows
+            "", //sortFilesBy 
+            "", "", "", "", 
+            -1, //defaultStandardizeWhat
+            "", //treatDimensionsAs
+            null, //cacheFromUrl
+            null);
+        String2.setClipboardString(results);
 
 String expected = 
 "<dataset type=\"EDDTableFromMultidimNcFiles\" datasetID=\"sdn_3be0_2b1d_fd71\" active=\"true\">\n" +
@@ -1853,7 +1855,6 @@ String expected =
 "    <removeMVRows>true</removeMVRows>\n" +
 "    <sortFilesBySourceNames></sortFilesBySourceNames>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"Conventions\">SeaDataNet_1.0 CF 1.6</att>\n" +
 "        <att name=\"date_update\">2015-05-13T18:28+0200</att>\n" +
@@ -1876,7 +1877,7 @@ String expected =
 "        <att name=\"keywords_vocabulary\">GCMD Science Keywords</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"subsetVariables\">SDN_EDMO_CODE, SDN_CRUISE, SDN_STATION, SDN_LOCAL_CDI_ID, SDN_BOT_DEPTH, longitude, latitude, POSITION_SEADATANET_QC, crs, TIME_SEADATANET_QC, depth, DEPTH_SEADATANET_QC, ASLVZZ01_SEADATANET_QC, TEMPPR01_SEADATANET_QC, PRESPR01_SEADATANET_QC</att>\n" +
 "        <att name=\"summary\">Network Common Data Format (NetCDF) TIMESERIES - Generated by NEMO, version 1.6.0</att>\n" +
 "        <att name=\"title\">NetCDF TIMESERIES, Generated by NEMO, version 1.6.0</att>\n" +
@@ -1889,6 +1890,7 @@ String expected =
 "            <att name=\"long_name\">European Directory of Marine Organisations code for the CDI supplier</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"int\">2147483647</att>\n" +
 "            <att name=\"ioos_category\">Unknown</att>\n" +
 "        </addAttributes>\n" +
 "    </dataVariable>\n" +
@@ -1978,6 +1980,7 @@ String expected =
 "        <addAttributes>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">180.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">-180.0</att>\n" +
+"            <att name=\"grid_mapping\">null</att>\n" +
 "            <att name=\"ioos_category\">Location</att>\n" +
 "            <att name=\"sdn_P02_urn\">SDN:P02::ALAT</att>\n" +
 "        </addAttributes>\n" +
@@ -2002,6 +2005,7 @@ String expected =
 "        <addAttributes>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">90.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">-90.0</att>\n" +
+"            <att name=\"grid_mapping\">null</att>\n" +
 "            <att name=\"ioos_category\">Location</att>\n" +
 "            <att name=\"sdn_P02_urn\">SDN:P02::ALAT</att>\n" +
 "        </addAttributes>\n" +
@@ -2035,6 +2039,7 @@ String expected =
 "            <att name=\"semi_major_axis\" type=\"double\">6378137.0</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"int\">2147483647</att>\n" +
 "            <att name=\"ioos_category\">Unknown</att>\n" +
 "            <att name=\"long_name\">CRS</att>\n" +
 "        </addAttributes>\n" +
@@ -2255,14 +2260,9 @@ String expected =
 "    </dataVariable>\n" +
 "</dataset>\n" +
 "\n";
-            Test.ensureEqual(results, expected, "results=\n" + results);
-            //Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
-            //    expected, "");
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError in testGenerateDatasetsXmlSeaDataNet."); 
-        }
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
+        //    expected, "");
 
     }
 
@@ -2274,19 +2274,18 @@ String expected =
     public static void testGenerateDatasetsXmlDimensions() throws Throwable {
         testVerboseOn();
 
-        try {
-            String results = generateDatasetsXml(
-                EDStatic.unitTestDataDir + "nc", "GL_.*\\.nc", "",
-                "TIME, DEPTH",
-                1440,
-                "", "", "", "", //just for test purposes
-                false, //removeMVRows
-                "TIME", //sort files by 
-                "", "", "", "", 
-                4355, //standardizeWhat 1+2(numericTime)+256(catch numeric mv)+4096(units)
-                "LATITUDE, LONGITUDE, TIME", //treatDimensionsAs
-                null, //cacheFromUrl
-                null) + "\n";
+        String results = generateDatasetsXml(
+            EDStatic.unitTestDataDir + "nc", "GL_.*\\.nc", "",
+            "TIME, DEPTH",
+            1440,
+            "", "", "", "", //just for test purposes
+            false, //removeMVRows
+            "TIME", //sort files by 
+            "", "", "", "", 
+            4355, //standardizeWhat 1+2(numericTime)+256(catch numeric mv)+4096(units)
+            "LATITUDE, LONGITUDE, TIME", //treatDimensionsAs
+            null, //cacheFromUrl
+            null) + "\n";
 
 String expected = 
 "<dataset type=\"EDDTableFromMultidimNcFiles\" datasetID=\"nc_442a_2710_b83c\" active=\"true\">\n" +
@@ -2301,7 +2300,6 @@ String expected =
 "    <removeMVRows>false</removeMVRows>\n" +
 "    <sortFilesBySourceNames>TIME</sortFilesBySourceNames>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"area\">Global Ocean</att>\n" +
 "        <att name=\"author\">Coriolis and MyOcean data provider</att>\n" +
@@ -2355,7 +2353,7 @@ String expected =
 "        <att name=\"license\">These data follow MyOcean standards; they are public and free of charge. User assumes all risk for use of data. User must display citation in any publication or product using data. User must contact PI prior to any commercial use of data. More on: http://www.myocean.eu/data_policy</att>\n" +
 "        <att name=\"references\">http://www.myocean.eu,http://www.coriolis.eu.org</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"subsetVariables\">TIME_QC, depth, DEPTH_QC, TEMP_QC, TEMP_DM, ATPT_QC, ATPT_DM, ATMS_QC, ATMS_DM</att>\n" +
 "        <att name=\"summary\">Unknown institution data from a local source.</att>\n" +
 "        <att name=\"title\">Unknown institution data from a local source.</att>\n" +
@@ -2460,7 +2458,7 @@ String expected =
 "            <att name=\"QC_indicator\" type=\"int\">1</att>\n" +
 "            <att name=\"QC_procedure\" type=\"int\">1</att>\n" +
 "            <att name=\"standard_name\">latitude</att>\n" +
-"            <att name=\"units\">degree_north</att>\n" +
+"            <att name=\"units\">degrees_north</att>\n" +
 "            <att name=\"valid_max\" type=\"double\">90.0</att>\n" +
 "            <att name=\"valid_min\" type=\"double\">-90.0</att>\n" +
 "        </sourceAttributes -->\n" +
@@ -2468,7 +2466,6 @@ String expected =
 "            <att name=\"colorBarMaximum\" type=\"double\">90.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">-90.0</att>\n" +
 "            <att name=\"ioos_category\">Location</att>\n" +
-"            <att name=\"units\">degrees_north</att>\n" +
 "        </addAttributes>\n" +
 "    </dataVariable>\n" +
 "    <dataVariable>\n" +
@@ -2482,7 +2479,7 @@ String expected =
 "            <att name=\"QC_indicator\" type=\"int\">1</att>\n" +
 "            <att name=\"QC_procedure\" type=\"int\">1</att>\n" +
 "            <att name=\"standard_name\">longitude</att>\n" +
-"            <att name=\"units\">degree_east</att>\n" +
+"            <att name=\"units\">degrees_east</att>\n" +
 "            <att name=\"valid_max\" type=\"double\">180.0</att>\n" +
 "            <att name=\"valid_min\" type=\"double\">-180.0</att>\n" +
 "        </sourceAttributes -->\n" +
@@ -2490,7 +2487,6 @@ String expected =
 "            <att name=\"colorBarMaximum\" type=\"double\">180.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">-180.0</att>\n" +
 "            <att name=\"ioos_category\">Location</att>\n" +
-"            <att name=\"units\">degrees_east</att>\n" +
 "        </addAttributes>\n" +
 "    </dataVariable>\n" +
 "    <dataVariable>\n" +
@@ -2648,52 +2644,46 @@ String expected =
 "    </dataVariable>\n" +
 "</dataset>\n" +
 "\n\n";
-            Test.ensureEqual(results, expected, "results=\n" + results);
+        Test.ensureEqual(results, expected, "results=\n" + results);
 
-            //GenerateDatasetsXml
-            results = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
-                "EDDTableFromMultidimNcFiles", 
-                EDStatic.unitTestDataDir + "nc", "GL_.*\\.nc", "",
-                "TIME, DEPTH",
-                "1440",
-                "", "", "", "", //just for test purposes
-                "false", //removeMVRows
-                "TIME", //sort files by 
-                "", "", "", "", 
-                "4355",  //standardizeWhat 1+2(numericTime)+256(catch numeric mv)+4096(units)
-                "LATITUDE, LONGITUDE, TIME", //treatDimensionsAs                   
-                ""}, //cacheFromUrl
-                false); //doIt loop?
-            Test.ensureEqual(results, expected, "Unexpected results from GenerateDatasetsXml.doIt.");
+        //GenerateDatasetsXml
+        results = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
+            "EDDTableFromMultidimNcFiles", 
+            EDStatic.unitTestDataDir + "nc", "GL_.*\\.nc", "",
+            "TIME, DEPTH",
+            "1440",
+            "", "", "", "", //just for test purposes
+            "false", //removeMVRows
+            "TIME", //sort files by 
+            "", "", "", "", 
+            "4355",  //standardizeWhat 1+2(numericTime)+256(catch numeric mv)+4096(units)
+            "LATITUDE, LONGITUDE, TIME", //treatDimensionsAs                   
+            ""}, //cacheFromUrl
+            false); //doIt loop?
+        Test.ensureEqual(results, expected, "Unexpected results from GenerateDatasetsXml.doIt.");
 
-            //ensure it is ready-to-use by making a dataset from it
-            //with one small change to addAttributes:
-            results = String2.replaceAll(results, 
+        //ensure it is ready-to-use by making a dataset from it
+        //with one small change to addAttributes:
+        results = String2.replaceAll(results, 
 "        <att name=\"cdm_data_type\">TimeSeries</att>\n",
 "        <att name=\"cdm_data_type\">Point</att>\n");
-            results = String2.replaceAll(results, 
+        results = String2.replaceAll(results, 
 "        <att name=\"cdm_timeseries_variables\">station_id, latitude, longitude, ???</att>\n",
 "");
-            //it could be made into valid TimeSeries by adding a few more atts
-            String2.log(results);
-          
-            String tDatasetID = "nc_442a_2710_b83c";
-            EDD.deleteCachedDatasetInfo(tDatasetID);
-            EDDTableFromMultidimNcFiles edd = (EDDTableFromMultidimNcFiles)oneFromXmlFragment(null, results);
-            Test.ensureEqual(edd.datasetID(), tDatasetID, "");
-            Test.ensureEqual(edd.title(), "Unknown institution data from a local source.", "");
-            Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
+        //it could be made into valid TimeSeries by adding a few more atts
+        String2.log(results);
+      
+        String tDatasetID = "nc_442a_2710_b83c";
+        EDD.deleteCachedDatasetInfo(tDatasetID);
+        EDDTableFromMultidimNcFiles edd = (EDDTableFromMultidimNcFiles)oneFromXmlFragment(null, results);
+        Test.ensureEqual(edd.datasetID(), tDatasetID, "");
+        Test.ensureEqual(edd.title(), "Unknown institution data from a local source.", "");
+        Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
 "time, TIME_QC, depth, DEPTH_QC, latitude, longitude, TEMP, TEMP_QC, TEMP_DM, ATPT, ATPT_QC, ATPT_DM, ATMS, ATMS_QC, ATMS_DM", 
-                "");
-            Test.ensureEqual(edd.treatDimensionsAs.length, 1, TREAT_DIMENSIONS_AS);
-            Test.ensureEqual(String2.toCSSVString(edd.treatDimensionsAs[0]), 
-                "LATITUDE, LONGITUDE, TIME", TREAT_DIMENSIONS_AS);
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml."); 
-        }
-
+            "");
+        Test.ensureEqual(edd.treatDimensionsAs.length, 1, TREAT_DIMENSIONS_AS);
+        Test.ensureEqual(String2.toCSSVString(edd.treatDimensionsAs[0]), 
+            "LATITUDE, LONGITUDE, TIME", TREAT_DIMENSIONS_AS);
     }
 
     /**
@@ -2741,6 +2731,7 @@ String expected =
 "  }\n" +
 "  TIME_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 1, 1;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -2774,6 +2765,7 @@ String expected =
 "  }\n" +
 "  DEPTH_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
 "    String conventions \"OceanSites reference table 2\";\n" +
@@ -2829,6 +2821,7 @@ String expected =
 "  }\n" +
 "  TEMP_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 1, 1;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -2863,6 +2856,7 @@ String expected =
 "  }\n" +
 "  ATPT_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 0;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -2897,6 +2891,7 @@ String expected =
 "  }\n" +
 "  ATMS_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 0;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -2971,12 +2966,12 @@ expected =
 "    String source \"BUOY/MOORING: SURFACE, DRIFTING : observation\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing 47.763;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"TIME_QC, depth, DEPTH_QC, TEMP_QC, TEMP_DM, ATPT_QC, ATPT_DM, ATMS_QC, ATMS_DM\";\n" +
 "    String summary \"Unknown institution data from a local source.\";\n" +
 "    String time_coverage_end \"2012-07-31T23:00:00Z\";\n" +
 "    String time_coverage_start \"2011-11-01T00:00:00Z\";\n" +
-"    String title \"Unknown institution data from a local source.\";\n" +
+"    String title \"The Title for testTreatDimensionsAs\";\n" +
 "    String update_interval \"daily\";\n" +
 "    Float64 Westernmost_Easting -44.112;\n" +
 "    String wmo_platform_code \"44761\";\n" +
@@ -3081,6 +3076,7 @@ expected =
 "  }\n" +
 "  TIME_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 1, 1;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3144,6 +3140,7 @@ expected =
 "  }\n" +
 "  DEPH_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 7, 7;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3178,6 +3175,7 @@ expected =
 "  }\n" +
 "  RELH_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 0;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3211,6 +3209,7 @@ expected =
 "  }\n" +
 "  ATMS_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 9, 9;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3245,6 +3244,7 @@ expected =
 "  }\n" +
 "  DRYT_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 0;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3279,6 +3279,7 @@ expected =
 "  }\n" +
 "  DEWT_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 0;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3313,6 +3314,7 @@ expected =
 "  }\n" +
 "  WSPD_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 0;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3348,6 +3350,7 @@ expected =
 "  }\n" +
 "  WDIR_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3382,6 +3385,7 @@ expected =
 "  }\n" +
 "  GSPD_QC {\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 0, 9;\n" +
 "    Float64 colorBarMaximum 10.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
@@ -3459,7 +3463,7 @@ expected =
 "    String source \"land/onshore structure\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
 "    Float64 Southernmost_Northing 42.5;\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"latitude, longitude, depth\";\n" +
 "    String summary \"Unknown institution data from a local source.\";\n" +
 "    String time_coverage_end \"2017-11-29T23:30:00Z\";\n" +
@@ -4008,8 +4012,9 @@ expected =
         Test.ensureEqual(results.substring(po), expected, "\nresults=\n" + results);
 
 */
-      //make nc4 
-      try {
+        //make nc4 
+        Test.ensureTrue(String2.indexOf(dataFileTypeNames, ".nc4") >= 0, "Enable .nc4?");
+
         userDapQuery = "feature_type_instance,latitude,longitude,error_flag3&time<=2016-09-28T00:03";
         tName = eddTable.makeNewFileForDapQuery(null, null, userDapQuery, dir, 
             eddTable.className() + "_Longnc4", ".nc4"); 
@@ -4018,10 +4023,6 @@ expected =
         expected = 
 "zztop\n";
         Test.ensureEqual(results, expected, "\nresults=\n" + results);
-      } catch (Throwable t) {
-          String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-              "\nENABLE .nc4?"); 
-      }
 
     }
 
@@ -4860,31 +4861,62 @@ expected=
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromMultidimNcFiles.test()");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 12;
+        String msg = "\n^^^ EDDTableFromMultidimNcFiles.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml();
-        testGenerateDatasetsXmlSeaDataNet();
-        testGenerateDatasetsXmlDimensions();
-        
-        //String2.log(NcHelper.ncdump("/erddapTest/nc/1900081_prof.nc", "PRES_QC"));
-        testBasic(true);
-        testBasic(false);
-        testLongAndNetcdf4();
-        testTreatDimensionsAs(true);   //deleteCachedInfo
-        testTreatDimensionsAs(false);  //deleteCachedInfo
-        testTreatDimensionsAs2(true);  //deleteCachedInfo
-        testTreatDimensionsAs2(false); //deleteCachedInfo
-        testCharAsString(true);
-        testCharAsString(false);
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        /* */
-        //testW1M3A(boolean deleteCachedInfo);
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testGenerateDatasetsXmlSeaDataNet();
+                    if (test ==  2) testGenerateDatasetsXmlDimensions();
+                    
+                    //String2.log(NcHelper.ncdump(String2.unitTestDataDir + "nc/1900081_prof.nc", "PRES_QC"));
+                    if (test ==  4) testBasic(true);
+                    if (test ==  5) testBasic(false);
+                    if (test ==  6) testLongAndNetcdf4();
+                    if (test ==  7) testTreatDimensionsAs(true);   //deleteCachedInfo
+                    if (test ==  8) testTreatDimensionsAs(false);  //deleteCachedInfo
+                    if (test ==  9) testTreatDimensionsAs2(true);  //deleteCachedInfo
+                    if (test == 10) testTreatDimensionsAs2(false); //deleteCachedInfo
+                    if (test == 11) testCharAsString(true);
+                    if (test == 12) testCharAsString(false);
+
+                    /* */
+                    if (test == 1000) testW1M3A(true); //deleteCachedInfo
+                    if (test == 1001) testW1M3A(false); //deleteCachedInfo
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 }
 

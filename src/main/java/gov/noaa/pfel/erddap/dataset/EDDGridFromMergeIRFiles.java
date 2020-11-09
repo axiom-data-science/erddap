@@ -211,6 +211,8 @@ public class EDDGridFromMergeIRFiles extends EDDGridFromFiles {
      * @param tFullName the name of the decompressed data file
      * @param sourceAxisNames the names of the desired source axis variables.
      *   If there is a special axis0, this will not include axis0's name.
+     * @param sourceDataNames When there are unnamed dimensions, this is
+     *   to find out the shape of the variable to make index values 0, 1, size-1.
      * @return a PrimitiveArray[] with the results (with the requested
      *   sourceDataTypes). It needn't set sourceGlobalAttributes or
      *   sourceDataAttributes (but see getSourceMetadata).
@@ -218,7 +220,7 @@ public class EDDGridFromMergeIRFiles extends EDDGridFromFiles {
      * this doesn't call addBadFile or requestReloadASAP().
      */
     public PrimitiveArray[] lowGetSourceAxisValues(String tFullName,
-            StringArray sourceAxisNames) throws Throwable {
+            StringArray sourceAxisNames, StringArray sourceDataNames) throws Throwable {
 
         String getWhat = "";
         
@@ -310,9 +312,9 @@ public class EDDGridFromMergeIRFiles extends EDDGridFromFiles {
      * @return a PrimitiveArray[] with an element for each tDataVariable with
      *   the dataValues.
      *   <br>The dataValues are straight from the source, not modified.
-     *   <br>The primitiveArray dataTypes are usually the sourceDataTypeClass, but
+     *   <br>The primitiveArray dataTypes are usually the sourceDataPAType, but
      *   can be any type. EDDGridFromFiles will convert to the
-     *   sourceDataTypeClass.
+     *   sourceDataPAType.
      *   <br>Note the lack of axisVariable values!
      * @throws Throwable if trouble (notably, WaitThenTryAgainException). If
      *   there is trouble, this doesn't call addBadFile or requestReloadASAP().
@@ -747,7 +749,7 @@ public class EDDGridFromMergeIRFiles extends EDDGridFromFiles {
 
         String2.log("\n*** EDDGridFromMergeIRFiles.testMergeIRgz\n");
         testVerboseOn();
-        //String2.log(NcHelper.ncdump("/erddapTest/mergeIR/merg_20150101_4km-pixel", "-h"));
+        //String2.log(NcHelper.ncdump(String2.unitTestDataDir + "mergeIR/merg_20150101_4km-pixel", "-h"));
         deleteCachedDatasetInfo("mergeIR");
         deleteCachedDatasetInfo("mergeIRZ");
         deleteCachedDatasetInfo("mergeIRgz");
@@ -997,11 +999,46 @@ String expected2 =
         String2.log("\n*** EDDGridFromMergeIRFiles.testMergeIR() finished successfully");
     }
 
-    /** This tests this class. */
-    public static void test() throws Throwable {
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml();
-        testMergeIR();
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 1;
+        String msg = "\n^^^ EDDGridFromMergeIRFiles.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testMergeIR();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

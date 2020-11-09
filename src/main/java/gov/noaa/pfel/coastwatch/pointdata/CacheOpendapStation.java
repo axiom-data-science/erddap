@@ -227,17 +227,17 @@ public class CacheOpendapStation {
                         //get the variable
                         Variable variable = in.findVariable(variableNames[v]);
                         Test.ensureNotNull(variable, errorInMethod + "variable not found: " + variableNames[v]);
-                        boolean isStringVariable = variable.getDataType() == DataType.CHAR;
+                        boolean isCharArrayVariable = variable.getDataType() == DataType.CHAR;
 
                         //get dimensions
                         List<Dimension> dimList = variable.getDimensions();
                         Test.ensureTrue(
-                            (dimList.size() == 4 && !isStringVariable) ||
-                            (dimList.size() == 5 &&  isStringVariable), 
+                            (dimList.size() == 4 && !isCharArrayVariable) ||
+                            (dimList.size() == 5 &&  isCharArrayVariable), 
                             errorInMethod + 
                                 "  dimList.size=" + dimList.size() + 
                                 " for variable=" + variable.getName() + 
-                                " isStringVariable=" + isStringVariable); 
+                                " isCharArrayVariable=" + isCharArrayVariable); 
                         for (int d = 0; d < dimList.size(); d++) {
                             Dimension dim = dimList.get(d);
                             String dimName = dim.getName();
@@ -500,17 +500,17 @@ public class CacheOpendapStation {
                         //get the variable
                         Variable inVariable = in.findVariable(variableNames[v]);
                         Test.ensureNotNull(inVariable, errorInMethod + "variable not found: " + variableNames[v]);
-                        boolean isStringVariable = inVariable.getDataType() == DataType.CHAR;
+                        boolean isCharArrayVariable = inVariable.getDataType() == DataType.CHAR;
 
                         //get dimensions
                         List<Dimension> inDimList = inVariable.getDimensions();
                         Test.ensureTrue(
-                            (inDimList.size() == 4 && !isStringVariable) ||
-                            (inDimList.size() == 5 &&  isStringVariable), 
+                            (inDimList.size() == 4 && !isCharArrayVariable) ||
+                            (inDimList.size() == 5 &&  isCharArrayVariable), 
                             errorInMethod + 
                                 "  inDimList.size=" + inDimList.size() + 
                                 " for variable=" + inVariable.getName() + 
-                                " isStringVariable=" + isStringVariable); 
+                                " isCharArrayVariable=" + isCharArrayVariable); 
                         Dimension newDims[] = new Dimension[inDimList.size()];
                         Variable newDimVars[] = new Variable[inDimList.size()];
                         for (int d = 0; d < inDimList.size(); d++) {
@@ -527,8 +527,8 @@ public class CacheOpendapStation {
                             if (!dimNameHashSet.contains(dimName)) {
                                 dimNameHashSet.add(dimName);
                                 newDims[d] = out.addDimension(outRootGroup, 
-                                    dimName, dim.getLength(), true, //shared
-                                    dim.isUnlimited(), false);  //isUnknownLength
+                                    dimName, dim.getLength(), 
+                                    dim.isUnlimited(), false);  //isVariableLength
 
                                 //add the related variable (5th/char dimension doesn't have a variable(?))
                                 if (d < 4) {
@@ -644,10 +644,11 @@ public class CacheOpendapStation {
 
                     //I care about exception from this 
                     out.close();
+                    out = null;
 
                 } catch (Exception e) {
                     try {
-                        out.close();
+                        if (out != null) out.close();
                     } catch (Exception e2) {
                         //don't care
                     }
@@ -1044,7 +1045,7 @@ public class CacheOpendapStation {
     }
 
     /** This tests using this class to create a cache file. */
-    public static void test() throws Exception {
+    public static void basicTest() throws Exception {
         verbose = true;
         DataHelper.verbose = true;
         Table.verbose = true;
@@ -1058,7 +1059,7 @@ public class CacheOpendapStation {
 
 
         //adcp stations chosen because I think they give gibberish answers sometimes (ascii and opendap)
-        String2.log("\n*** CacheOpendapStation.test");
+        String2.log("\n*** CacheOpendapStation.basicTest");
 
         //***************
         //M0: get ascii response
@@ -1277,6 +1278,49 @@ public class CacheOpendapStation {
 */    
     }
 
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ CacheOpendapStation.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+
+                    if (test == 1000) testMbariOpendapReliability(); //don't run routinely; runs forever
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
 
 
 }

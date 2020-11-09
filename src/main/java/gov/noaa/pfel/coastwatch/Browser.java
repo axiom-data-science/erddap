@@ -42,6 +42,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.GregorianCalendar;
 import java.util.Iterator;
 import java.util.Map.Entry;
@@ -986,22 +989,32 @@ public abstract class Browser extends HttpServlet {
         //allow only one response per user to be processed at once
         //see Java Servlet Programming 2nd Ed., pg 38
         User user = getUser(request);
-        synchronized(user) {   
+        ReentrantLock lock = String2.canonicalLock(user);
+        try {
+            if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+                throw new TimeoutException("Timeout waiting for user's lock.");
+            try {
 
-            //reset (look for new data) if needed
-            resetIfNeeded();
+                //reset (look for new data) if needed
+                resetIfNeeded();
 
-            //process the form so user settings are noted (don't care if valid)
-            processRequest(request);
+                //process the form so user settings are noted (don't care if valid)
+                processRequest(request);
 
-            //for testing purposes, uncomment this to force reset to defaults
-            //addDefaultsToSession(request.getSession()); 
-            out.println(getStartHtmlHead());
-            out.println(getJavaScript());
-            out.println("</head>");
+                //for testing purposes, uncomment this to force reset to defaults
+                //addDefaultsToSession(request.getSession()); 
+                out.println(getStartHtmlHead());
+                out.println(getJavaScript());
+                out.println("</head>");
 
-            out.println(getHtmlBody(request, false));
-        } //end of synchronization 
+                out.println(getHtmlBody(request, false));
+            } finally {
+                lock.unlock();
+            } 
+        } catch (Exception e) {
+            response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,  //a.k.a. Error 500
+                MustBe.throwableToString(e)); 
+        }
 
         out.println("</html>");
     }
@@ -1802,7 +1815,10 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
                     //same file, so there would be two simultaneous attempts to create it.
                     //(Think of Dave demoing the program to a class with 20 users on 20 computers.)
                     cleanQuery = String2.canonical(cleanQuery);
-                    synchronized(cleanQuery) {
+                    ReentrantLock lock = String2.canonicalLock(cleanQuery);
+                    if (!lock.tryLock(String2.longTimeoutSeconds, TimeUnit.SECONDS))
+                        throw new TimeoutException("Timeout waiting for lock on cleanQuery.");
+                    try {
 
                         //create the file
                         String2.log("  GET query is clean. create the .nc file...");
@@ -3478,7 +3494,9 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
                             return true;
                         }
 
-                    } //end synchronized lock
+                    } finally {
+                        lock.unlock(); //essential                        
+                    }
                 } 
             } catch (Exception e) {
                 String subject = "Unexpected " + String2.ERROR + " in " + oneOf.shortClassName() + "?get"; 
@@ -4717,7 +4735,7 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
             oneOf.lowResLogoImageFile(),
             grid.lon[0], grid.lon[grid.lon.length - 1],
             grid.lat[0], grid.lat[grid.lat.length - 1],
-            drawLandAsMask,
+            drawLandAsMask? "over" : "under",
 
             true, //grid
             grid, 
@@ -4772,7 +4790,7 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
             oneOf.lowResLogoImageFile(),
             grid.lon[0], grid.lon[grid.lon.length - 1],
             grid.lat[0], grid.lat[grid.lat.length - 1],
-            drawLandAsMask,
+            drawLandAsMask? "over" : "under",
 
             true, //grid
             grid, 
@@ -4852,7 +4870,7 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
             oneOf.lowResLogoImageFile(),
             xGrid.lon[0], xGrid.lon[xGrid.lon.length - 1],
             xGrid.lat[0], xGrid.lat[xGrid.lat.length - 1],
-            drawLandAsMask,
+            drawLandAsMask? "over" : "under",
             //grid 
             false, null, -1, -1, -1, null, null, null, null, null,
             SgtMap.NO_LAKES_AND_RIVERS,
@@ -5007,7 +5025,7 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
                 oneOf.fullContextDirectory() + "images/", 
                 oneOf.lowResLogoImageFile(),
                 minLon, maxLon, minLat, maxLat,
-                drawLandAsMask,
+                drawLandAsMask? "over" : "under",
 
                 //grid data
                 false, null, 1, 1, 0,
@@ -5151,7 +5169,7 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
                 oneOf.fullContextDirectory() + "images/", 
                 oneOf.lowResLogoImageFile(),
                 minLon, maxLon, minLat, maxLat,
-                drawLandAsMask,
+                drawLandAsMask? "over" : "under",
 
                 //grid data
                 false, null, 1, 1, 0,
@@ -5320,7 +5338,7 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
             oneOf.fullContextDirectory() + "images/", 
             oneOf.lowResLogoImageFile(),
             lonRange[0], lonRange[1], latRange[0], latRange[1],
-            drawLandAsMask,
+            drawLandAsMask? "over" : "under",
 
             //grid data
             false, null, 1, 1, 0,
@@ -5380,45 +5398,78 @@ minLon=-135&maxLon=-105&minLat=22&maxLat=50&nLon=400&nLat=200&fileType=.nc</tt>
             alternate.add("");
     */
 
-    public static void test() throws Exception {
-        String2.log("\n*** Browser.test()");
+    public static void interactiveTest() throws Exception {
+        String2.log("\n*** Browser.basicTest()");
         String testDir = "c:/temp/browser/";
         
-        try {
-            String tName = "coverage.kml";
-            File2.delete(testDir + tName);
-            String url = "https://coastwatch.pfeg.noaa.gov/coastwatch/CWBrowserWW360.jsp?" +
-                "get=gridData&dataSet=TMBchla&timePeriod=8day&centeredTime=2006-01-23T00:00:00" +
-                "&maxLat=50&minLon=220&maxLon=250&minLat=20&fileType=GoogleEarth";
-            SSR.downloadFile(url, testDir + tName, true);
-            SSR.displayInBrowser("file://" + testDir + tName);
-            String2.pressEnterToContinue(
-                "Is GoogleEarth showing a coverage? \n" +
-                "Close it, then..."); 
-        } catch (Exception e) {
-            String2.pressEnterToContinue(MustBe.throwableToString(e) + 
-                "\nUnexpected error."); 
-        }
+        String tName = "coverage.kml";
+        File2.delete(testDir + tName);
+        String url = "https://coastwatch.pfeg.noaa.gov/coastwatch/CWBrowserWW360.jsp?" +
+            "get=gridData&dataSet=TMBchla&timePeriod=8day&centeredTime=2006-01-23T00:00:00" +
+            "&maxLat=50&minLon=220&maxLon=250&minLat=20&fileType=GoogleEarth";
+        SSR.downloadFile(url, testDir + tName, true);
+        SSR.displayInBrowser("file://" + testDir + tName);
+        String2.pressEnterToContinue(
+            "Is GoogleEarth showing a coverage? \n" +
+            "Close it, then..."); 
 
-        try {
-            String tName = "station.kml";
-            File2.delete(testDir + tName);
-            SSR.downloadFile(
-                "https://coastwatch.pfeg.noaa.gov/coastwatch/CWBrowserWW360.jsp?" +
-                "get=stationData&dataSet=PNBwtmp&timePeriod=8day&beginTime=2008-08-26T22:00:00" +
-                "&endTime=2008-09-26T22:00:00&minLon=220.0&maxLon=250.0&minLat=20.0&maxLat=50.0" +
-                "&minDepth=0&maxDepth=0&fileType=GoogleEarth",
-                testDir + tName, true);
-            SSR.displayInBrowser("file://" + testDir + tName);
-            String2.pressEnterToContinue(
-                "Is GoogleEarth showing stations? \n" +
-                "Close it, then..."); 
-        } catch (Exception e) {
-            String2.pressEnterToContinue(MustBe.throwableToString(e) + 
-                "\nUnexpected error."); 
-        }
-
-
+        //2020-03-03 This test of CWBrowsers stopped working after I removed NDBCMet data from public browsers
+        /*
+        String tName = "station.kml";
+        File2.delete(testDir + tName);
+        SSR.downloadFile(
+            "https://coastwatch.pfeg.noaa.gov/coastwatch/CWBrowserWW360.jsp?" +
+            "get=stationData&dataSet=PNBwtmp&timePeriod=8day&beginTime=2008-08-26T22:00:00" +
+            "&endTime=2008-09-26T22:00:00&minLon=220.0&maxLon=250.0&minLat=20.0&maxLat=50.0" +
+            "&minDepth=0&maxDepth=0&fileType=GoogleEarth",
+            testDir + tName, true);
+        SSR.displayInBrowser("file://" + testDir + tName);
+        String2.pressEnterToContinue(
+            "Is GoogleEarth showing stations? \n" +
+            "Close it, then..."); 
+        }*/
 
     }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 0 : -1;
+        String msg = "\n^^^ Browser.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) interactiveTest();
+
+                } else {
+                    //if (test ==  0) ...;
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
 }

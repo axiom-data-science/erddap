@@ -8,6 +8,7 @@ import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -70,6 +71,7 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, String tCharset, 
+        String tSkipHeaderToRegex, String tSkipLinesRegex,
         int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
@@ -77,7 +79,8 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
         boolean tSourceNeedsExpandedFP_EQ, 
         boolean tFileTableInMemory, boolean tAccessibleViaFiles,
         boolean tRemoveMVRows, int tStandardizeWhat, int tNThreads, 
-        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex,
+        String tAddVariablesWhere) 
         throws Throwable {
 
         super("EDDTableFromAwsXmlFiles", tDatasetID, 
@@ -87,13 +90,15 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
+            tCharset, tSkipHeaderToRegex, tSkipLinesRegex,
+            tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, 
             tFileTableInMemory, tAccessibleViaFiles,
             tRemoveMVRows, tStandardizeWhat, 
-            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex);
+            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex,
+            tAddVariablesWhere);
 
     }
 
@@ -112,6 +117,8 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
         boolean getMetadata, boolean mustGetData) 
         throws Throwable {
 
+        //Future: more efficient if !mustGetData is handled differently
+
         Table table = new Table();
         table.readAwsXmlFile(tFileDir + tFileName);
 
@@ -121,9 +128,9 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
             int sd = sourceDataNames.indexOf(table.getColumnName(tc));
             if (sd >= 0) {
                 PrimitiveArray pa = table.getColumn(tc);
-                if (!sourceDataTypes[sd].equals(pa.elementClassString())) {
+                if (!sourceDataTypes[sd].equals(pa.elementTypeString())) {
                     PrimitiveArray newPa = PrimitiveArray.factory(
-                        PrimitiveArray.elementStringToClass(sourceDataTypes[sd]), 1, false);
+                        PAType.fromCohortString(sourceDataTypes[sd]), 1, false);
                     newPa.append(pa);
                     table.setColumn(tc, newPa);
                 }
@@ -250,13 +257,13 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
             String colName = dataSourceTable.getColumnName(col);
             Attributes sourceAtts = dataSourceTable.columnAttributes(col);
             PrimitiveArray sourcePA = (PrimitiveArray)dataSourceTable.getColumn(col).clone();
-            PrimitiveArray destPA = makeDestPAForGDX(sourcePA, sourceAtts);
+            PrimitiveArray destPA = makeDestPAForGDX(sourcePA, sourceAtts); 
             dataAddTable.addColumn(col, colName, destPA,
                 makeReadyToUseAddVariableAttributesForDatasetsXml(
                     null, //no source global attributes
                     sourceAtts, null, colName, 
-                    destPA.elementClass() != String.class, //tryToAddStandardName
-                    destPA.elementClass() != String.class, //addColorBarMinMax
+                    destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                    destPA.elementType() != PAType.STRING, //addColorBarMinMax
                     true)); //tryToFindLLAT
             Attributes addAtts = dataAddTable.columnAttributes(col);
 
@@ -336,8 +343,7 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
               "    <columnNameForExtract>" + XML.encodeAsXML(tColumnNameForExtract) + "</columnNameForExtract>\n" : "") +
             "    <sortedColumnSourceName>" + XML.encodeAsXML(tSortedColumnSourceName) + "</sortedColumnSourceName>\n" +
             "    <sortFilesBySourceNames>" + XML.encodeAsXML(tSortFilesBySourceNames) + "</sortFilesBySourceNames>\n" +
-            "    <fileTableInMemory>false</fileTableInMemory>\n" +
-            "    <accessibleViaFiles>false</accessibleViaFiles>\n");
+            "    <fileTableInMemory>false</fileTableInMemory>\n");
         sb.append(writeAttsForDatasetsXml(false, dataSourceTable.globalAttributes(), "    "));
         sb.append(cdmSuggestion());
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
@@ -360,29 +366,28 @@ public class EDDTableFromAwsXmlFiles extends EDDTableFromFiles {
     public static void testGenerateDatasetsXml() throws Throwable {
         testVerboseOn();
 
-        try {
-            Attributes externalAddAttributes = new Attributes();
-            externalAddAttributes.add("title", "New Title!");
-            String results = generateDatasetsXml(
-                String2.unitTestDataDir + "aws/xml/",  ".*\\.xml", "", 
-                1, 2, 1440,
-                "", "-.*$", ".*", "fileName",  //just for test purposes; station is already a column in the file
-                "ob-date", "station-id ob-date", 
-                "http://www.exploratorium.edu", "exploratorium", "The new summary!", "The Newer Title!",
-                -1, null, //defaultStandardizeWhat
-                externalAddAttributes) + "\n";
+        Attributes externalAddAttributes = new Attributes();
+        externalAddAttributes.add("title", "New Title!");
+        String results = generateDatasetsXml(
+            String2.unitTestDataDir + "aws/xml/",  ".*\\.xml", "", 
+            1, 2, 1440,
+            "", "-.*$", ".*", "fileName",  //just for test purposes; station is already a column in the file
+            "ob-date", "station-id ob-date", 
+            "http://www.exploratorium.edu", "exploratorium", "The new summary!", "The Newer Title!",
+            -1, null, //defaultStandardizeWhat
+            externalAddAttributes) + "\n";
 
-            //GenerateDatasetsXml
-            String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
-                "EDDTableFromAwsXmlFiles",
-                String2.unitTestDataDir + "aws/xml/",  ".*\\.xml", "", 
-                "1", "2", "1440",
-                "", "-.*$", ".*", "fileName",  //just for test purposes; station is already a column in the file
-                "ob-date", "station-id ob-date", 
-                "http://www.exploratorium.edu", "exploratorium", "The new summary!", "The Newer Title!",
-                "-1", ""}, //defaultStandardizeWhat
-                false); //doIt loop?
-            Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
+        //GenerateDatasetsXml
+        String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
+            "EDDTableFromAwsXmlFiles",
+            String2.unitTestDataDir + "aws/xml/",  ".*\\.xml", "", 
+            "1", "2", "1440",
+            "", "-.*$", ".*", "fileName",  //just for test purposes; station is already a column in the file
+            "ob-date", "station-id ob-date", 
+            "http://www.exploratorium.edu", "exploratorium", "The new summary!", "The Newer Title!",
+            "-1", ""}, //defaultStandardizeWhat
+            false); //doIt loop?
+        Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
 
 String expected = 
 "<!-- NOTE! Since the source files don't have any metadata, you must add metadata\n" +
@@ -405,7 +410,6 @@ String expected =
 "    <sortedColumnSourceName>ob-date</sortedColumnSourceName>\n" +
 "    <sortFilesBySourceNames>station-id ob-date</sortFilesBySourceNames>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "    </sourceAttributes -->\n" +
 "    <!-- Please specify the actual cdm_data_type (TimeSeries?) and related info below, for example...\n" +
@@ -423,7 +427,7 @@ String expected =
 "        <att name=\"keywords_vocabulary\">GCMD Science Keywords</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"summary\">The new summary! exploratorium data from a local source.</att>\n" +
 "        <att name=\"title\">The Newer Title!</att>\n" +
 "    </addAttributes>\n" +
@@ -515,6 +519,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">104.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">14.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -529,6 +534,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">10.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">-10.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -543,6 +549,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">104.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">14.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -558,6 +565,7 @@ String expected =
 "            <att name=\"units\">ft</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"ioos_category\">Location</att>\n" +
 "            <att name=\"long_name\">Altitude</att>\n" +
 "            <att name=\"scale_factor\" type=\"float\">0.3048</att>\n" +
@@ -574,6 +582,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">104.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">14.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -612,6 +621,7 @@ String expected =
 "            <att name=\"units\">mph</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">30.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
 "            <att name=\"ioos_category\">Wind</att>\n" +
@@ -627,6 +637,7 @@ String expected =
 "            <att name=\"units\">&#37;</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">100.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
@@ -643,6 +654,7 @@ String expected =
 "            <att name=\"units\">&#37;</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">100.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
@@ -659,6 +671,7 @@ String expected =
 "            <att name=\"units\">&#37;</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">100.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
@@ -674,6 +687,7 @@ String expected =
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
 "            <att name=\"long_name\">Humidity-rate</att>\n" +
 "        </addAttributes>\n" +
@@ -686,6 +700,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">104.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">14.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -746,6 +761,7 @@ String expected =
 "        <!-- sourceAttributes>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"ioos_category\">Unknown</att>\n" +
 "            <att name=\"long_name\">Moon-phase</att>\n" +
 "        </addAttributes>\n" +
@@ -818,6 +834,7 @@ String expected =
 "            <att name=\"units\">inches/h</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
 "            <att name=\"long_name\">Rain-rate</att>\n" +
 "        </addAttributes>\n" +
@@ -830,6 +847,7 @@ String expected =
 "            <att name=\"units\">inches/h</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
 "            <att name=\"long_name\">Rain-rate-max</att>\n" +
 "        </addAttributes>\n" +
@@ -842,6 +860,7 @@ String expected =
 "            <att name=\"units\">inches</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"ioos_category\">Meteorology</att>\n" +
 "            <att name=\"long_name\">Rain-today</att>\n" +
 "        </addAttributes>\n" +
@@ -880,6 +899,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">104.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">14.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -894,6 +914,7 @@ String expected =
 "            <att name=\"units\">degree_F</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">104.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">14.0</att>\n" +
 "            <att name=\"ioos_category\">Temperature</att>\n" +
@@ -963,6 +984,7 @@ String expected =
 "            <att name=\"units\">mph</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">15.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
 "            <att name=\"ioos_category\">Wind</att>\n" +
@@ -978,6 +1000,7 @@ String expected =
 "            <att name=\"units\">mph</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"byte\">127</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">15.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">0.0</att>\n" +
 "            <att name=\"ioos_category\">Wind</att>\n" +
@@ -1009,22 +1032,17 @@ String expected =
 "    </dataVariable>\n" +
 "</dataset>\n" +
 "\n\n";
-            Test.ensureEqual(results, expected, "results=\n" + results);
+        Test.ensureEqual(results, expected, "results=\n" + results);
 
-            //ensure it is ready-to-use by making a dataset from it
-            //!!! actually this will fail with a specific error which is caught below
-            String tDatasetID = "xml_5540_32bf_7f9d";
-            EDD.deleteCachedDatasetInfo(tDatasetID);
-            EDD edd = oneFromXmlFragment(null, results);
-            Test.ensureEqual(edd.datasetID(), "xml_5540_32bf_7f9d", "");
-            Test.ensureEqual(edd.title(), "The Newer Title!", "");
-            Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
+        //ensure it is ready-to-use by making a dataset from it
+        //!!! actually this will fail with a specific error which is caught below
+        String tDatasetID = "xml_5540_32bf_7f9d";
+        EDD.deleteCachedDatasetInfo(tDatasetID);
+        EDD edd = oneFromXmlFragment(null, results);
+        Test.ensureEqual(edd.datasetID(), "xml_5540_32bf_7f9d", "");
+        Test.ensureEqual(edd.title(), "The Newer Title!", "");
+        Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
 "fileName, time, station_id, station, city_state_zip, city_state, site_url, aux_temp, aux_temp_rate, dew_point, altitude, feels_like, gust_time, gust_direction, gust_speed, humidity, humidity_high, humidity_low, humidity_rate, indoor_temp, indoor_temp_rate, light, light_rate, moon_phase_moon_phase_img, moon_phase, pressure, pressure_high, pressure_low, pressure_rate, rain_month, rain_rate, rain_rate_max, rain_today, rain_year, temp, temp_high, temp_low, temp_rate, sunrise, sunset, wet_bulb, wind_speed, wind_speed_avg, wind_direction, wind_direction_avg", "");
-
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nUnexpected error using generateDatasetsXml."); 
-        }
 
     }
 
@@ -1219,6 +1237,8 @@ String expected =
 "    String long_name \"Moon-phase-moon-phase-img\";\n" +
 "  }\n" +
 "  moon_phase {\n" +
+"    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" + //ERDDAP adds
 "    Byte actual_range 82, 82;\n" +
 "    String ioos_category \"Unknown\";\n" +
 "    String long_name \"Moon-phase\";\n" +
@@ -1391,7 +1411,7 @@ String expected2 =
 "particular purpose, or assumes any legal liability for the accuracy,\n" +
 "completeness, or usefulness, of this information.\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"fileName, station_id, station, city_state_zip, city_state, site_url, altitude\";\n" +
 "    String summary \"The new summary!\";\n" +
 "    String time_coverage_end \"2012-11-03T20:30:00Z\";\n" +
@@ -1485,22 +1505,49 @@ String expected2 =
 
     }
 
+
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromAwsXmlFiles\n");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 2;
+        String msg = "\n^^^ EDDTableFromAwsXmlFiles.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml();
-        testBasic(true);
-        testBasic(false);
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
 
-        //not usually run
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testBasic(true);
+                    if (test ==  2) testBasic(false);
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
-
 
 }
 

@@ -5,11 +5,17 @@
 package gov.noaa.pfel.coastwatch.griddata;
 
 import com.cohort.array.IntArray;
+import com.cohort.array.PAType;
+import com.cohort.array.PAOne;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.array.NDimensionalIndex;
+import com.cohort.array.UByteArray;
+import com.cohort.array.UShortArray;
+import com.cohort.array.UIntArray;
 import com.cohort.util.File2;
 import com.cohort.util.Math2;
+import com.cohort.util.MustBe;
 import com.cohort.util.String2;
 import com.cohort.util.Test;
 
@@ -138,14 +144,16 @@ clear sst2
     public final static int mxUINT16_CLASS = 11;
     public final static int mxINT32_CLASS  = 12;
     public final static int mxUINT32_CLASS = 13;
+    public final static int mxINT64_CLASS  = 14;
+    public final static int mxUINT64_CLASS = 15;
 
     /** The name associated with the mx constants. */
     public final static String[] mxNames = {
         "mx0", "mxCELL_CLASS", "mxSTRUCT_CLASS", "mxOBJECT_CLASS", 
         "mxCHAR_CLASS", "mxSPARSE_CLASS", "mxDOUBLE_CLASS", 
         "mxSINGLE_CLASS", "mxINT8_CLASS", "mxUINT8_CLASS", 
-        "mxINT16_CLASS", "mxUINT16_CLASS", "mxINT32_CLASS", "mxUINT32_CLASS"};
-        
+        "mxINT16_CLASS", "mxUINT16_CLASS", "mxINT32_CLASS", "mxUINT32_CLASS",
+        "mxINT64_CLASS", "mxUINT64_CLASS"};        
 
 
     /**
@@ -421,7 +429,7 @@ clear sst2
     public static int sizeOfNDimensionalArray(String name,
         PrimitiveArray pa, NDimensionalIndex ndIndex) throws Exception {
 
-        return sizeOfNDimensionalArray(name, pa.elementClass(), ndIndex);
+        return sizeOfNDimensionalArray(name, pa.elementType(), ndIndex);
     }
 
     /**
@@ -429,16 +437,16 @@ clear sst2
      * 8 bytes for type and size).
      *
      * @param name the name for the matrix (name will be truncated if >31 char)
-     * @param type is from pa.getElementType (e.g., float.class or String.class)
+     * @param type is from pa.getElementType (e.g., PAType.FLOAT or PAType.STRING)
      * @param ndIndex allows nDimensional (at least 2) access to pa as if from make2DNDIndex().
      * @throws Exception if trouble  (e.g., &gt;= Integer.MAX_VALUE bytes)
      */
     public static int sizeOfNDimensionalArray(String name,
-        Class type, NDimensionalIndex ndIndex) throws Exception {
+        PAType type, NDimensionalIndex ndIndex) throws Exception {
 
         int nDimensions = ndIndex.nDimensions();
         int nElements = (int)ndIndex.size(); //safe since data is in pa, nElements must be an int
-        int elementSize = type == String.class? 2 : PrimitiveArray.elementSize(type);
+        int elementSize = type == PAType.STRING? 2 : PAType.elementSize(type);
         long nDataBytes = elementSize * (long)nElements;
         long nBytes = 16 + //array flags nBytes       see pg 1-20
             Math2.hiDiv(8 + nDimensions * 4, 8) * 8L + //dimensions nBytes
@@ -469,7 +477,7 @@ clear sst2
 
         //do the 2 parts:
         int nDataBytes = writeNDimensionalArray1(stream, name, 
-            pa.elementClass(), ndIndex);
+            pa.elementType(), ndIndex);
         writeNDimensionalArray2(stream, pa, ndIndex, nDataBytes);
     }
 
@@ -481,29 +489,33 @@ clear sst2
      * @throws Exception if trouble
      */
     public static int writeNDimensionalArray1(DataOutputStream stream, String name,
-        Class paElementType, NDimensionalIndex ndIndex) throws Exception {
+        PAType paElementType, NDimensionalIndex ndIndex) throws Exception {
 
         if (name.length() > 31) name = name.substring(0, 31); //Matlab's limit pg 1-30
         byte nameInfo[] = nameInfo(name); 
 
         //ensure charNDIndex was used for StringArrays
-        boolean isStringArray = paElementType == String.class;
+        boolean isStringArray = paElementType == PAType.STRING;
 
         int shape[] = ndIndex.shape();
         int nDimensions = shape.length;
-        int elementSize = isStringArray? 2 : PrimitiveArray.elementSize(paElementType);
+        int elementSize = isStringArray? 2 : PAType.elementSize(paElementType);
         int nElements = (int)ndIndex.size(); //safe since data is in pa, nElements must be an int
         int arrayType, dataType;
-        if      (paElementType == double.class) {arrayType = mxDOUBLE_CLASS; dataType = miDOUBLE; }
-        else if (paElementType == float.class)  {arrayType = mxSINGLE_CLASS; dataType = miSINGLE; }
-        else if (paElementType == long.class)   {arrayType = mxDOUBLE_CLASS; dataType = miDOUBLE; } //no mxINT64_CLASS! so use doubles
-        else if (paElementType == int.class)    {arrayType = mxINT32_CLASS;  dataType = miINT32; }
-        else if (paElementType == short.class)  {arrayType = mxINT16_CLASS;  dataType = miINT16; }
-        else if (paElementType == byte.class)   {arrayType = mxINT8_CLASS;   dataType = miINT8; }
-        else if (paElementType == char.class)   {arrayType = mxCHAR_CLASS;   dataType = miUINT16; }  //pg 1-18
-        else if (paElementType == String.class) {arrayType = mxCHAR_CLASS;   dataType = miUINT16; }  //pg 1-18   
+        if      (paElementType == PAType.DOUBLE) {arrayType = mxDOUBLE_CLASS; dataType = miDOUBLE; }
+        else if (paElementType == PAType.FLOAT)  {arrayType = mxSINGLE_CLASS; dataType = miSINGLE; }
+        else if (paElementType == PAType.LONG)   {arrayType = mxINT64_CLASS;  dataType = miINT64;  } 
+        else if (paElementType == PAType.ULONG)  {arrayType = mxUINT64_CLASS; dataType = miUINT64; } 
+        else if (paElementType == PAType.INT)    {arrayType = mxINT32_CLASS;  dataType = miINT32;  }
+        else if (paElementType == PAType.UINT)   {arrayType = mxUINT32_CLASS; dataType = miUINT32; }
+        else if (paElementType == PAType.SHORT)  {arrayType = mxINT16_CLASS;  dataType = miINT16;  }
+        else if (paElementType == PAType.USHORT) {arrayType = mxUINT16_CLASS; dataType = miUINT16; }
+        else if (paElementType == PAType.BYTE)   {arrayType = mxINT8_CLASS;   dataType = miINT8;   }
+        else if (paElementType == PAType.UBYTE)  {arrayType = mxUINT8_CLASS;  dataType = miUINT8;  }
+        else if (paElementType == PAType.CHAR)   {arrayType = mxCHAR_CLASS;   dataType = miUINT16; }  //pg 1-18
+        else if (paElementType == PAType.STRING) {arrayType = mxCHAR_CLASS;   dataType = miUINT16; }  //pg 1-18   
         else throw new Exception(String2.ERROR + " in Matlab.writeNDimensionalArray: " +
-            "unsupported type=" + PrimitiveArray.elementClassToString(paElementType));
+            "unsupported type=" + paElementType);
 
         //write the miMatrix dataType and nBytes
         int nDataBytes = elementSize * nElements;
@@ -543,16 +555,9 @@ clear sst2
     public static void writeNDimensionalArray2(DataOutputStream stream, 
         PrimitiveArray pa, NDimensionalIndex ndIndex, int nDataBytes) throws Exception {
 
-        Class paElementType = pa.elementClass();
+        PAType paElementType = pa.elementType();
 
-        if      (paElementType == double.class) while (ndIndex.incrementCM()) stream.writeDouble(pa.getDouble((int)ndIndex.getIndex()));  //safe since pa max size is int
-        else if (paElementType == float.class)  while (ndIndex.incrementCM()) stream.writeFloat( pa.getFloat((int)ndIndex.getIndex()));   //safe since pa max size is int
-        else if (paElementType == long.class)   while (ndIndex.incrementCM()) stream.writeDouble(pa.getDouble((int)ndIndex.getIndex()));  //safe since pa max size is int
-        else if (paElementType == int.class)    while (ndIndex.incrementCM()) stream.writeInt(   pa.getInt((int)ndIndex.getIndex()));     //safe since pa max size is int
-        else if (paElementType == short.class)  while (ndIndex.incrementCM()) stream.writeShort( pa.getInt((int)ndIndex.getIndex()));     //safe since pa max size is int
-        else if (paElementType == byte.class)   while (ndIndex.incrementCM()) stream.writeByte(  pa.getInt((int)ndIndex.getIndex()));     //safe since pa max size is int
-        else if (paElementType == char.class)   while (ndIndex.incrementCM()) stream.writeChar(  pa.getInt((int)ndIndex.getIndex()));     //safe since pa max size is int
-        else if (paElementType == String.class) {
+        if (paElementType == PAType.STRING) {
             //isStringArray, so write strings padded to maxLength
             int n = pa.size();
             int shape[] = ndIndex.shape();
@@ -563,6 +568,10 @@ clear sst2
                     stream.writeChar(po < s.length()? s.charAt(po) : ' ');
                 }
             }
+        } else {
+            PAOne paOne = new PAOne(paElementType);
+            while (ndIndex.incrementCM()) 
+                paOne.readFrom(pa, (int)ndIndex.getIndex()).writeToDOS(stream);
         }
 
         //pad data to 8 byte boundary
@@ -728,7 +737,17 @@ clear sst2
                                 littleEndian, stream, buffer, dim[0], dim[1], dim[2]);
                             vector.add(a);
                         } else Test.ensureEqual(dim.length, 2, methodName + "miMATRIX dim.length != 2 or 3.");
-                    } else if (subMIDataType == miINT32 || subMIDataType == miUINT32) { //convert uint -> int
+                    } else if (subMIDataType == miINT64 || subMIDataType == miUINT64) { //trouble
+                        if (dim.length == 2) {
+                            long a[][] = DataStream.read2DCMLongArray(
+                                littleEndian, stream, buffer, dim[0], dim[1]);
+                            vector.add(a);
+                        } else if (dim.length == 3) {
+                            long a[][][] = DataStream.read3DLongArray(
+                                littleEndian, stream, buffer, dim[0], dim[1], dim[2]);
+                            vector.add(a);
+                        } else Test.ensureEqual(dim.length, 2, methodName + "miMATRIX dim.length != 2 or 3.");
+                    } else if (subMIDataType == miINT32 || subMIDataType == miUINT32) { //trouble
                         if (dim.length == 2) {
                             int a[][] = DataStream.read2DCMIntArray(
                                 littleEndian, stream, buffer, dim[0], dim[1]);
@@ -738,7 +757,7 @@ clear sst2
                                 littleEndian, stream, buffer, dim[0], dim[1], dim[2]);
                             vector.add(a);
                         } else Test.ensureEqual(dim.length, 2, methodName + "miMATRIX dim.length != 2 or 3.");
-                    } else if (subMIDataType == miINT16 || subMIDataType == miUINT16) { //convert uint -> int
+                    } else if (subMIDataType == miINT16 || subMIDataType == miUINT16) { //trouble
                         if (dim.length == 2) {
                             short a[][] = DataStream.read2DCMShortArray(
                                 littleEndian, stream, buffer, dim[0], dim[1]);
@@ -748,7 +767,7 @@ clear sst2
                                 littleEndian, stream, buffer, dim[0], dim[1], dim[2]);
                             vector.add(a);
                         } else Test.ensureEqual(dim.length, 2, methodName + "miMATRIX dim.length != 2 or 3.");
-                    } else if (subMIDataType == miINT8 || subMIDataType == miUINT8) { //convert uint -> int
+                    } else if (subMIDataType == miINT8 || subMIDataType == miUINT8) { //trouble
                         if (dim.length == 2) {
                             byte a[][] = DataStream.read2DCMByteArray(
                                 stream, dim[0], dim[1]);
@@ -787,7 +806,7 @@ clear sst2
     /**
      * This tests the methods in this class.
      */
-    public static void main(String args[]) throws Exception {
+    public static void basicTest() throws Exception {
         verbose = true;
         String dir = "c:/temp/";
 
@@ -829,7 +848,7 @@ clear sst2
         tempFile = dir + "MatlabInt.mat";       
         dos = DataStream.getDataOutputStream(tempFile);
         writeMatlabHeader(dos);
-        IntArray ia = (IntArray)PrimitiveArray.csvFactory(int.class, "1,2,3,4,5,6");
+        IntArray ia = (IntArray)PrimitiveArray.csvFactory(PAType.INT, "1,2,3,4,5,6");
         NDimensionalIndex ndIndex = new NDimensionalIndex(new int[]{2,3});
         writeNDimensionalArray(dos, "MyInts", ia, ndIndex);      
         dos.close();
@@ -840,7 +859,7 @@ clear sst2
         tempFile = dir + "MatlabString.mat";       
         dos = DataStream.getDataOutputStream(tempFile);
         writeMatlabHeader(dos);
-        StringArray sa = (StringArray)PrimitiveArray.csvFactory(String.class, "a, simple, test");
+        StringArray sa = (StringArray)PrimitiveArray.csvFactory(PAType.STRING, "a, simple, test");
         ndIndex = make2DNDIndex(sa);
         writeNDimensionalArray(dos, "MyStrings", sa, ndIndex);      
         dos.close();
@@ -853,4 +872,47 @@ clear sst2
         //    SSR.MakeMat, "ssta", true, false); 
 
     }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ Matlab.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
+
 }

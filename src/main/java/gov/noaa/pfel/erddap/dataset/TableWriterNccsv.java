@@ -36,6 +36,7 @@ public class TableWriterNccsv extends TableWriter {
 
     //set by firstTime
     protected volatile boolean isLong[];
+    protected volatile boolean isULong[];
     protected volatile boolean isTimeStamp[];
     protected volatile String time_precision[];
     protected volatile BufferedWriter writer;
@@ -82,20 +83,22 @@ public class TableWriterNccsv extends TableWriter {
         if (firstTime) {
 
             //write the header
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.ISO_8859_1), String2.ISO_8859_1));
+            writer = String2.getBufferedOutputStreamWriter88591(
+                outputStreamSource.outputStream(String2.ISO_8859_1));
 
             //write the global attributes   (ensureCompatibly added newHistory)
             writer.write(globalAttributes.toNccsvString(String2.NCCSV_GLOBAL));
 
             //write the column attributes   
             isLong      = new boolean[nColumns];
+            isULong     = new boolean[nColumns];
             isTimeStamp = new boolean[nColumns];
             time_precision = new String[nColumns];
             for (int col = 0; col < nColumns; col++) {
 
-                String tClass = table.getColumn(col).elementClassString();
-                isLong[col] = tClass.equals("long");
+                String tClass = table.getColumn(col).elementTypeString();
+                isLong[ col] = tClass.equals("long");
+                isULong[col] = tClass.equals("ulong");
                 Attributes catts = table.columnAttributes(col);
                 String u = catts.getString("units");
                 isTimeStamp[col] = u != null && 
@@ -139,9 +142,10 @@ public class TableWriterNccsv extends TableWriter {
         //no: convertToStandardMissingValues(table);  //NaNs; not the method in Table, so metadata is unchanged
 
         int nRows = table.nRows();
+        boolean flushAfterward = totalNRows == 0;  //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
         //no: avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
-        //no: EDStatic.ensureArraySizeOkay(totalNRows, "NCCSV");
+        //no: Math2.ensureArraySizeOkay(totalNRows, "NCCSV");
 
         //write the data
         PrimitiveArray pas[] = new PrimitiveArray[nColumns];
@@ -155,16 +159,21 @@ public class TableWriterNccsv extends TableWriter {
                         time_precision[col], pas[col].getDouble(row), ""));
                 } else {
                     String ts = pas[col].getNccsvDataString(row);
+                    //String2.log(">> row=" + row + " col=" + col + " ts=" + ts + " maxIsMV=" + pas[col].getMaxIsMV());
                     writer.write(ts);
-                    if (isLong[col] && ts.length() > 0)
-                        writer.write('L'); //special case not handled by getNccsvDataString
+                    if (isLong[col]) {
+                        if (ts.length() > 0)
+                            writer.write('L'); //special case not handled by getNccsvDataString
+                    } else if (isULong[col]) {
+                        if (ts.length() > 0)
+                            writer.write("uL"); //special case not handled by getNccsvDataString
+                    }
                 }
                 writer.write(col == nColumns -1? "\n" : ",");
             }
         }       
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward) 
             writer.flush(); 
     }
 

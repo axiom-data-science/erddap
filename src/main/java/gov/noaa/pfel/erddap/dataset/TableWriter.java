@@ -5,6 +5,7 @@
 package gov.noaa.pfel.erddap.dataset;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
@@ -55,10 +56,11 @@ public abstract class TableWriter {
 
     //these are set the first time ensureCompatible is called
     protected String[] columnNames;
-    protected Class[] columnTypes;
+    protected PAType[] columnTypes;
     protected Attributes[] columnAttributes;
     protected Attributes globalAttributes;
 
+    protected boolean[] columnMaxIsMV;  //default is all false. Once 'true', it stays true.
 
     /**
      * The constructor.
@@ -90,15 +92,16 @@ public abstract class TableWriter {
     protected void ensureCompatible(Table table) throws Throwable {
         String[] tColumnNames = table.getColumnNames();
         int nColumns = tColumnNames.length;
-        Class[] tColumnTypes = new Class[nColumns];
+        PAType[] tColumnTypes = new PAType[nColumns];
         for (int c = 0; c < nColumns; c++)
-            tColumnTypes[c] = table.getColumn(c).elementClass();
+            tColumnTypes[c] = table.getColumn(c).elementType();
 
         //first time this is called? note column names, types, and metadata
         if (columnNames == null) {
             columnNames = tColumnNames;
             columnTypes = tColumnTypes;
             columnAttributes = new Attributes[nColumns];
+            columnMaxIsMV    = new boolean[nColumns];
             for (int col = 0; col < nColumns; col++) {
                 Attributes colAttsClone = null;
                 if (edd != null) {
@@ -116,6 +119,12 @@ public abstract class TableWriter {
                 if (colAttsClone == null)
                     colAttsClone = new Attributes(table.columnAttributes(col));
                 columnAttributes[col] = colAttsClone; 
+
+                //if maxIsMV is ever true for a column, it stays true
+                //if ("testULong".equals(columnNames[col])) String2.log(">> ensureCompatible testULong twawm=" + this + " maxIsMV=" + table.getColumn(col).getMaxIsMV());
+                if (table.getColumn(col).getMaxIsMV()) 
+                    columnMaxIsMV[col] = true;   
+
                 //String2.log("\nTableWriter attributes " + columnNames[col] + "\n" + columnAttributes[col]);
             }
             if (edd == null) 
@@ -137,8 +146,13 @@ public abstract class TableWriter {
                     " != oldName=" + columnNames[c] + ".");
             if (!columnTypes[c].equals(tColumnTypes[c]))
                 throw new RuntimeException("Internal error in TableWriter: for column#" + c + "=" + columnNames[c] +
-                      ", newType=" + PrimitiveArray.elementClassToString(tColumnTypes[c]) + 
-                    " != oldType=" + PrimitiveArray.elementClassToString(columnTypes[c]) + ".");
+                      ", newType=" + tColumnTypes[c] + " != oldType=" + columnTypes[c] + ".");
+
+            //if maxIsMV is ever true for a column, it stays true
+            if (table.getColumn(c).getMaxIsMV())  
+                columnMaxIsMV[c] = true;   
+            //set this column to be like previous
+            table.getColumn(c).setMaxIsMV(columnMaxIsMV[c]);
 
             //restore missing_value and _FillValue attributes 
             //  (if removed via convertToStandardMissingValues() and reuse of the table)
@@ -226,7 +240,17 @@ public abstract class TableWriter {
      * @param col   0..
      * @return one of the destination column's types.
      */
-    public Class columnType(int col) {return columnTypes[col];}
+    public PAType columnType(int col) {return columnTypes[col];}
+
+    /**
+     * This returns maxIsMV for the specified column.
+     *
+     * @param col   0..
+     * @return maxIsMV for the specified column.
+     */
+    public boolean columnMaxIsMV(int col) {
+        return columnMaxIsMV[col];
+    }
 
     /**
      * This returns one of the destination column's columnAttributes.
@@ -256,10 +280,11 @@ public abstract class TableWriter {
         int nColumns = columnNames.length;
         Table table = new Table();
         table.globalAttributes().set(globalAttributes);
-        for (int col = 0; col < nColumns; col++) 
-            table.addColumn(col, columnNames[col], 
-                PrimitiveArray.factory(columnTypes[col], 1024, false), 
-                columnAttributes[col]);
+        for (int col = 0; col < nColumns; col++) {
+            PrimitiveArray pa = PrimitiveArray.factory(columnTypes[col], 1024, false);
+            pa.setMaxIsMV(columnMaxIsMV[col]);
+            table.addColumn(col, columnNames[col], pa, columnAttributes[col]);
+        }
         return table;
     }
 

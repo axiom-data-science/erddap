@@ -8,6 +8,7 @@ import com.cohort.array.Attributes;
 import com.cohort.array.CharArray;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.util.Calendar2;
+import com.cohort.util.Math2;
 import com.cohort.util.MustBe;
 import com.cohort.util.SimpleException;
 import com.cohort.util.String2;
@@ -64,7 +65,7 @@ public class TableWriterJson extends TableWriter {
         super(tEdd, tNewHistory, tOutputStreamSource);
         jsonp = tJsonp;
         if (jsonp != null && !String2.isJsonpNameSafe(jsonp))
-            throw new SimpleException(EDStatic.errorJsonpFunctionName);
+            throw new SimpleException(EDStatic.queryError + EDStatic.errorJsonpFunctionName);
         writeUnits = tWriteUnits;
     }
 
@@ -115,8 +116,8 @@ public class TableWriterJson extends TableWriter {
             }
 
             //write the header
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.UTF_8), String2.UTF_8));
+            writer = String2.getBufferedOutputStreamWriterUtf8(
+                outputStreamSource.outputStream(String2.UTF_8));
             if (jsonp != null) 
                 writer.write(jsonp + "(");
 
@@ -133,7 +134,7 @@ public class TableWriterJson extends TableWriter {
             //write the types   
             writer.write("    \"columnTypes\": [");
             for (int col = 0; col < nColumns; col++) {
-                String s = pas[col].elementClassString();
+                String s = pas[col].elementTypeString();
                 if (isTimeStamp[col])
                     s = "String"; //not "double"
                 writer.write(String2.toJson(s));  //nulls written as: null
@@ -161,8 +162,9 @@ public class TableWriterJson extends TableWriter {
 
         //avoid writing more data than can be reasonable processed (Integer.MAX_VALUES rows)
         int nRows = table.nRows();
+        boolean flushAfterward = totalNRows == 0; //flush initial chunk so info gets to user quickly
         totalNRows += nRows;
-        EDStatic.ensureArraySizeOkay(totalNRows, "json");
+        Math2.ensureArraySizeOkay(totalNRows, "json");
 
         //write the data
         if (rowsWritten) writer.write(",\n"); //end previous row
@@ -183,10 +185,8 @@ public class TableWriterJson extends TableWriter {
         }       
         if (nRows > 0) rowsWritten = true;
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward) 
             writer.flush(); 
-
     }
 
     

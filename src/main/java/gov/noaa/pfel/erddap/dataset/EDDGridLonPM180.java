@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.PAOne;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -82,6 +83,7 @@ public class EDDGridLonPM180 extends EDDGrid {
         String tAccessibleTo = null;
         String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
         String tIso19115File = null;
@@ -109,7 +111,7 @@ public class EDDGridLonPM180 extends EDDGrid {
             if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -145,6 +147,8 @@ public class EDDGridLonPM180 extends EDDGrid {
             else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<accessibleViaWMS>")) {}
             else if (localTags.equals("</accessibleViaWMS>")) tAccessibleViaWMS = String2.parseBoolean(content);
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content);
             else if (localTags.equals( "<onChange>")) {}
             else if (localTags.equals("</onChange>")) tOnChange.add(content); 
             else if (localTags.equals( "<fgdcFile>")) {}
@@ -165,7 +169,7 @@ public class EDDGridLonPM180 extends EDDGrid {
 
         //make the main dataset based on the information gathered
         return new EDDGridLonPM180(erddap, tDatasetID, 
-            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS,
+            tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS, tAccessibleViaFiles,
             tOnChange, tFgdcFile, tIso19115File, tDefaultDataQuery, tDefaultGraphQuery,
             tReloadEveryNMinutes, tUpdateEveryNMillis,
             tChildDataset, tnThreads, tDimensionValuesInMemory);
@@ -194,7 +198,8 @@ public class EDDGridLonPM180 extends EDDGrid {
      * @throws Throwable if trouble
      */
     public EDDGridLonPM180(Erddap tErddap, String tDatasetID, 
-        String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS,
+        String tAccessibleTo, String tGraphsAccessibleTo, 
+        boolean tAccessibleViaWMS, boolean tAccessibleViaFiles,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
@@ -229,6 +234,7 @@ public class EDDGridLonPM180 extends EDDGrid {
             throw new RuntimeException(errorInMethod + 
                 "This dataset's datasetID must not be the same as the child's datasetID.");
 
+
         //is oChildDataset a fromErddap from this erddap?
         //Get childDataset or localChildDataset. Work with stable local reference.
         EDDGrid tChildDataset = null;
@@ -258,6 +264,8 @@ public class EDDGridLonPM180 extends EDDGrid {
             tChildDataset = oChildDataset;        
         }
         //for rest of constructor, use temporary, stable tChildDataset reference.
+        //String2.log(">> accessibleViaFiles " + EDStatic.filesActive + " " + tAccessibleViaFiles + " " + tChildDataset.accessibleViaFiles);
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles && tChildDataset.accessibleViaFiles;
 
         //UNUSUAL: if valid value not specified, copy from childDataset
         setReloadEveryNMinutes(tReloadEveryNMinutes < Integer.MAX_VALUE?
@@ -266,16 +274,6 @@ public class EDDGridLonPM180 extends EDDGrid {
         setUpdateEveryNMillis( tUpdateEveryNMillis  < Integer.MAX_VALUE?
             tUpdateEveryNMillis :
             tChildDataset.updateEveryNMillis);
-
-        //accessibleViaFiles if child avfDir is local
-        String avfDir = tChildDataset.accessibleViaFilesDir();
-        if (String2.isSomething(avfDir) &&
-            (avfDir.startsWith("file://") || avfDir.startsWith("/") || avfDir.startsWith("\\"))) {
-            //but not accessible if some url
-            accessibleViaFilesDir       = avfDir;
-            accessibleViaFilesRegex     = tChildDataset.accessibleViaFilesRegex();
-            accessibleViaFilesRecursive = tChildDataset.accessibleViaFilesRecursive();
-        }
 
         //make/copy the local globalAttributes
         localSourceUrl           = tChildDataset.localSourceUrl();
@@ -314,10 +312,10 @@ if (lonIndex < nAv - 1)
         if (!childLon.isAscending())
             throw new RuntimeException(errorInMethod + 
                 "The child longitude axis has descending values!");
-        if (childLon.destinationMax() <= 180)
+        if (childLon.destinationMaxDouble() <= 180)
             throw new RuntimeException(errorInMethod + 
                 "The child longitude axis has no values >180 (max=" + 
-                childLon.destinationMax() + ")!");
+                childLon.destinationMaxDouble() + ")!");
         PrimitiveArray childLonValues = childLon.destinationValues();
         int nChildLonValues = childLonValues.size();
 
@@ -325,9 +323,10 @@ if (lonIndex < nAv - 1)
 // old: [ignored] ||      0,  90, 179 ||      180, 270,  359           || [ignored]
 // new:                                      -180, -90,   -1 insert359 || insert0,  0, 90, 179 
         //all of the searches use EXACT math 
-        if (childLon.destinationMin() < 180) {
-            sloni0   = childLonValues.binaryFindFirstGE(0,     nChildLonValues - 1,   0); //first index >=0
-            sloni179 = childLonValues.binaryFindLastLE(sloni0, nChildLonValues - 1, 180); //last index <180
+        PAOne clvPAOne = new PAOne(childLonValues);
+        if (childLon.destinationMinDouble() < 180) {
+            sloni0   = childLonValues.binaryFindFirstGE(0,     nChildLonValues - 1, clvPAOne.setDouble(  0)); //first index >=0
+            sloni179 = childLonValues.binaryFindLastLE(sloni0, nChildLonValues - 1, clvPAOne.setDouble(180)); //last index <180
             if (childLonValues.getDouble(sloni179) == 180)
                 sloni179--;
         } else {
@@ -338,7 +337,7 @@ if (lonIndex < nAv - 1)
         if (childLonValues.getDouble(sloni180) > 360)
             throw new RuntimeException(errorInMethod + 
                 "There are no child longitude values in the range 180 to 360!");
-        sloni359 = childLonValues.binaryFindLastLE(sloni180, nChildLonValues - 1, 360); //last index <=360
+        sloni359 = childLonValues.binaryFindLastLE(sloni180, nChildLonValues - 1, clvPAOne.setDouble(360)); //last index <=360
         if (childLonValues.getDouble(sloni359) == 360 && //there is a value=360
             sloni359 > sloni180 &&  //and it isn't the only value in the range 180 to 360...
             sloni0 >= 0 &&                         //and if there is a sloni0
@@ -362,7 +361,7 @@ if (lonIndex < nAv - 1)
 
                 //throw new RuntimeException(errorInMethod + 
                 //    "The child longitude axis has no values >180 (max=" + 
-                //    childLon.destinationMax() + ")!");
+                //    childLon.destinationMaxDouble() + ")!");
 
                 insert359i = newLonValues.size();
                 for (int i = 1; i <= insertN; i++) {
@@ -402,6 +401,7 @@ if (lonIndex < nAv - 1)
             tryToSubscribeToChildFromErddap(oChildDataset);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (reallyVerbose? "\n" + toString() +
                  "dloni180=" + dloni180 + " dloni359=" + dloni359 + 
@@ -409,7 +409,7 @@ if (lonIndex < nAv - 1)
                 " dloni0=" + dloni0 + " dloni179=" + dloni179 + "\n": "") + 
             "localChildDatasetID=" + localChildDatasetID + "\n" +
             "\n*** EDDGridLonPM180 " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -463,23 +463,42 @@ if (lonIndex < nAv - 1)
     }
 
     /** 
-     * This returns a fileTable (formatted like 
-     * FileVisitorDNLS.oneStep(tDirectoriesToo=false, size is LongArray,
-     * and lastMod is LongArray of epochMillis)
+     * This returns a fileTable
      * with valid files (or null if unavailable or any trouble).
      * This is a copy of any internal data, so client can modify the contents.
      *
      * @param nextPath is the partial path (with trailing slash) to be appended 
      *   onto the local fileDir (or wherever files are, even url).
      * @return null if trouble,
-     *   or Object[2] where [0] is a sorted DNLS table which just has files in fileDir + nextPath and 
-     *   [1] is a sorted String[] with the short names of directories that are 1 level lower.
+     *   or Object[3]
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
      */
     public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
         //Get childDataset or localChildDataset. Work with stable local reference.
         EDDGrid tChildDataset = getChildDataset();
         return tChildDataset.accessibleViaFilesFileTable(nextPath);
     }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+     public String accessibleViaFilesGetLocal(String relativeFileName) {
+         if (!accessibleViaFiles)
+             return null;
+        //Get childDataset or localChildDataset. Work with stable local reference.
+        EDDGrid tChildDataset = getChildDataset();
+        return tChildDataset.accessibleViaFilesGetLocal(relativeFileName);
+     }
+
 
     /**
      * This does the actual incremental update of this dataset 
@@ -699,7 +718,7 @@ if (lonIndex < nAv - 1)
         //and make the results data variables
         for (int tdv = 0; tdv < tnDV; tdv++) 
             results[nAV + tdv] = PrimitiveArray.factory(
-                tDataVariables[tdv].sourceDataTypeClass(), nValues, false);
+                tDataVariables[tdv].sourceDataPAType(), nValues, false);
 
         //dest is: dloni180...dloni359, [insert359i...insert0i,]  [dloni0...dloni179]
         //becomes      -180...-1,       [insert359i...insert0i,]  [     0...     179]
@@ -771,7 +790,7 @@ if (lonIndex < nAv - 1)
         }
         Table table = new Table();
         table.readASCII(query, 
-            br, 0, 2, "", null, null, null, null, false); //simplify
+            br, "", "", 0, 2, "", null, null, null, null, false); //simplify
         PrimitiveArray datasetIDPA = table.findColumn("datasetID");
         PrimitiveArray titlePA     = table.findColumn("title");
         PrimitiveArray minLonPA    = table.findColumn("minLongitude");
@@ -1045,9 +1064,7 @@ expected =
         int po;
         String dir = EDStatic.fullTestCacheDirectory;
 
-        EDDGrid eddGrid;
-      try {
-        eddGrid = (EDDGrid)oneFromDatasetsXml(null, "erdRWdhws1day_LonPM180");       
+        EDDGrid eddGrid = (EDDGrid)oneFromDatasetsXml(null, "erdRWdhws1day_LonPM180");       
  
         tName = eddGrid.makeNewFileForDapQuery(null, null, "", dir, 
             eddGrid.className() + "_1to359_Entire", ".dds"); 
@@ -1201,20 +1218,16 @@ expected =
             dir, eddGrid.className() + "_1to359", ".png"); 
         SSR.displayInBrowser("file://" + dir + tName);
 
+//THIS TEST NEEDS A NEW DATASET because source is now from tds, so no files available
         //test of /files/ system for fromErddap in local host dataset
-        String2.log("\n* Test getting /files/ from local host erddap...");
-        results = SSR.getUrlResponseStringUnchanged(
-            "http://localhost:8080/cwexperimental/files/erdRWdhws1day_LonPM180/");
-        expected = "PH2001244&#x5f;2001273&#x5f;dhw&#x2e;nc"; //"PH2001244_2001273_dhw.nc";
-        Test.ensureTrue(results.indexOf(expected) >= 0, "results=\n" + results);
+//        String2.log("\n* Test getting /files/ from local host erddap...");
+//        results = SSR.getUrlResponseStringUnchanged(
+//            "http://localhost:8080/cwexperimental/files/erdRWdhws1day_LonPM180/");
+//        expected = "PH2001244&#x5f;2001273&#x5f;dhw&#x2e;nc"; //"PH2001244_2001273_dhw.nc";
+//        Test.ensureTrue(results.indexOf(expected) >= 0, "results=\n" + results);
 
         String2.log("\n*** EDDGridLonPM180.test1to359 finished.");
 
-      } catch (Throwable t) {
-          String2.pressEnterToContinue("\n" +
-              MustBe.throwableToString(t) + "\n" +
-              "*** THIS TEST NEEDS A NEW TEST DATASET.");
-      }
 
     }
 
@@ -1462,15 +1475,15 @@ expected =
         results = String2.directReadFrom88591File(dir + tName);
         expected = 
 "Dataset {\n" +
-"  Float64 time[time = 129];\n" + //changes
+"  Float64 time[time = 142];\n" + //changes
 "  Float64 altitude[altitude = 1];\n" +
 "  Float64 latitude[latitude = 4401];\n" +
 "  Float64 longitude[longitude = 14400];\n" +
 "  GRID {\n" +
 "    ARRAY:\n" +
-"      Float32 sst[time = 129][altitude = 1][latitude = 4401][longitude = 14400];\n" +  //changes
+"      Float32 sst[time = 142][altitude = 1][latitude = 4401][longitude = 14400];\n" +  //changes
 "    MAPS:\n" +
-"      Float64 time[time = 129];\n" +  //changes
+"      Float64 time[time = 142];\n" +  //changes
 "      Float64 altitude[altitude = 1];\n" +
 "      Float64 latitude[latitude = 4401];\n" +
 "      Float64 longitude[longitude = 14400];\n" +
@@ -1798,29 +1811,148 @@ expected =
 
    
     /**
-     * This tests the methods in this class.
-     *
-     * @throws Throwable if trouble
+     * This tests the /files/ "files" system.
+     * This requires local_erdMWchlamday_LonPM180 in the localhost ERDDAP.
      */
-    public static void test() throws Throwable {
+    public static void testFiles() throws Throwable {
 
-        String2.log("\n****************** EDDGridLonPM180.test() *****************\n");
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXmlFromErddapCatalog(); 
-        testGT180();  //this also tests /files/ working for fromErddap localhost dataset
-        test1to359(); //NEEDS UPDATE.   this also tests /files/ working for fromNcFiles dataset
-        test0to360();
-        test120to320(); //if fails, try again
-        testHardFlag(); //if fails, try again
+        String2.log("\n*** EDDGridLonPM180.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
 
-        //note that I have NO TEST of dataset where lon isn't the rightmost dimension.
-        //so there is a test for that in the constructor, 
-        //which asks admin to send me an example for testing.
-        /*  */
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"MW2002182_2002212_chla.nc.gz,1332025888000,17339003,\n" +
+"MW2002213_2002243_chla.nc.gz,1332026460000,18217295,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
 
-        //not usually run
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/");
+            Test.ensureTrue(results.indexOf("MW2002182&#x5f;2002212&#x5f;chla&#x2e;nc") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf(">17339003<")                               > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+
+            //download a file in root
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/MW2002182_2002212_chla.nc.gz").substring(0, 50));
+            expected = 
+"[31][139][8][8] [26]eO[0][3]MW2002182_2002212_chla.nc[0][228][216][127][140]#[231]][199]q[223][229][238]r?[end]"; 
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //download a file in subdir
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/local_erdMWchlamday_LonPM180/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existant subdir
+
+ 
+
+        } catch (Throwable t) {
+            throw new RuntimeException("Unexpected error. This test requires local_erdMWchlamday_LonPM180 in the localhost ERDDAP.", t); 
+        } 
     }
 
+
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 3 : 2;
+        String msg = "\n^^^ EDDGridLonPM180.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testGT180();  //this also tests /files/ working for fromErddap localhost dataset
+                    if (test ==  1) test1to359(); //NEEDS UPDATE.   this also tests /files/ working for fromNcFiles dataset
+                    if (test ==  2) test0to360();
+                    if (test ==  3) test120to320(); //if fails, try again
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXmlFromErddapCatalog(); 
+                    if (test ==  1) testHardFlag(); //if fails, try again
+                    if (test ==  2) testFiles();
+
+                    //note that I have NO TEST of dataset where lon isn't the rightmost dimension.
+                    //so there is a test for that in the constructor, 
+                    //which asks admin to send me an example for testing.
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
 
 
 }

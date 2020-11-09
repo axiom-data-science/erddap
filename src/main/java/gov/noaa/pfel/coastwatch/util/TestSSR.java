@@ -96,23 +96,18 @@ public class TestSSR {
         /* 2014-08-05 DEACTIVATED BECAUSE NOT USED. IF NEEDED, SWITCH TO Apache commons-net???
         //sftp
         String2.log("test sftp");
-        String password = String2.getPasswordFromSystemIn(String2.beep(1) +
+        String password = String2.getPasswordFromSystemIn(//String2.beep(1) +
             "cwatch password for coastwatch computer (enter \"\" to skip the test)? ");
         if (password.length() > 0) {
-            try {
-                String fileName = "Rainbow.cpt";
-                StringBuilder cmds = new StringBuilder(
-                    "lcd " + SSR.getTempDirectory() + "\n" +
-                    "cd /u00/cwatch/bobtemp\n" +  //on coastwatch computer; don't use String2.testU00Dir
-                    "get " + fileName);
-                File2.delete(SSR.getTempDirectory() + fileName);
-                SSR.sftp("coastwatch.pfeg.noaa.gov", "cwatch", password, cmds.toString());
-                Test.ensureEqual(File2.length(SSR.getTempDirectory() + fileName), 214, "a");
-                File2.delete(SSR.getTempDirectory() + fileName);
-            } catch (Exception e) {
-                String2.pressEnterToContinue(MustBe.throwableToString(e) + 
-                    "\nUnexpected error."); 
-            }
+            String fileName = "Rainbow.cpt";
+            StringBuilder cmds = new StringBuilder(
+                "lcd " + SSR.getTempDirectory() + "\n" +
+                "cd /u00/cwatch/bobtemp\n" +  //on coastwatch computer; don't use String2.testU00Dir
+                "get " + fileName);
+            File2.delete(SSR.getTempDirectory() + fileName);
+            SSR.sftp("coastwatch.pfeg.noaa.gov", "cwatch", password, cmds.toString());
+            Test.ensureEqual(File2.length(SSR.getTempDirectory() + fileName), 214, "a");
+            File2.delete(SSR.getTempDirectory() + fileName);
         }
         Math2.sleep(3000); //allow j2ssh to finish closing and writing messages
         */
@@ -126,14 +121,14 @@ public class TestSSR {
 
         //dosShell
         String2.log("test dosShell");
-        String tempGif = SSR.getContextDirectory() + //with / separator and / at the end
+        String tempGif = String2.webInfParentDirectory() + //with / separator and / at the end
             "images/temp.gif";
         File2.delete(tempGif);
         try {
             Test.ensureEqual(
                 String2.toNewlineString(SSR.dosShell(
                     "\"C:\\Program Files (x86)\\ImageMagick-6.8.0-Q16\\convert\" " +
-                    SSR.getContextDirectory() + //with / separator and / at the end
+                    String2.webInfParentDirectory() + //with / separator and / at the end
                         "images/subtitle.jpg " +
                     tempGif, 10).toArray()),
                 "", "dosShell a");
@@ -254,12 +249,12 @@ public class TestSSR {
         testEmail();
         
         //getURLResponse (which uses getURLInputStream)
-        //future: test various compressed url's
+        //FUTURE: test various compressed url's
         String2.log("test getURLResponse");
         try {
-            sar = SSR.getUrlResponseLines("https://www.pfeg.noaa.gov/"); //"http://www.cohort.com");
+            sar = SSR.getUrlResponseLines("https://coastwatch.pfeg.noaa.gov/erddap/index.html");
             Test.ensureEqual(
-                String2.lineContaining(sar, "Disclaimer and Privacy Policy") == -1, //"A free RPN scientific calculator applet") == -1,
+                String2.lineContaining(sar, "ERDDAP is a data server that gives you a simple, consistent way") == -1, 
                 false, "Response=" + String2.toNewlineString(sar));
         } catch (Exception e) {
             String2.log(MustBe.throwableToString(e));
@@ -281,14 +276,9 @@ public class TestSSR {
         //note there is no continuity (session cookie isn't being sent)
         //but you can put as many params on one line as needed (from any screen)
         //and put edit=... to determine which screen gets returned
-        try {
-            sar = SSR.getUrlResponseLines("https://coastwatch.pfeg.noaa.gov/coastwatch/CWBrowser.jsp?edit=Grid+Data");
-            String2.log("****beginResponse\n" + String2.toNewlineString(sar) + "\n****endResponse");
-            Test.ensureNotEqual(String2.lineContaining(sar, "Download the grid data:"), -1, "e");
-        } catch (Exception e) {
-            String2.pressEnterToContinue(MustBe.throwableToString(e) + 
-                "\nUnexpected error."); 
-        }
+        sar = SSR.getUrlResponseLines("https://coastwatch.pfeg.noaa.gov/coastwatch/CWBrowser.jsp?edit=Grid+Data");
+        String2.log("****beginResponse\n" + String2.toNewlineString(sar) + "\n****endResponse");
+        Test.ensureNotEqual(String2.lineContaining(sar, "Download the grid data:"), -1, "e");
 
         //postHTMLForm     (always right after contact the website above)
         //I NEVER GOT THIS WORKING. JUST USE 'GET' TESTS ABOVE
@@ -327,19 +317,19 @@ public class TestSSR {
 
         //getContextDirectory
         String2.log("test getContextDirectory current=" + 
-            SSR.getContextDirectory()); //with / separator and / at the end
+            String2.webInfParentDirectory()); //with / separator and / at the end
         //there is no way to test this and have it work with different installations
         //test for my computer (comment out on other computers):
         //ensureEqual(String2.getContextDirectory(), //with / separator and / at the end
         //  "C:/programs/_tomcat/webapps/cwexperimental/", "a");
         //wimpy test, but works on all computers
-        Test.ensureNotNull(SSR.getContextDirectory(), //with / separator and / at the end
+        Test.ensureNotNull(String2.webInfParentDirectory(), //with / separator and / at the end
             "contextDirectory");
 
         //getTempDirectory
         String2.log("test getTempDirectory current=" + SSR.getTempDirectory());
         //wimpy test
-        Test.ensureEqual(SSR.getTempDirectory(), SSR.getContextDirectory() + "WEB-INF/temp/", "a");
+        Test.ensureEqual(SSR.getTempDirectory(), String2.webInfParentDirectory() + "WEB-INF/temp/", "a");
 
 
         //done 
@@ -373,7 +363,7 @@ public class TestSSR {
 
         emailPassword = String2.getPasswordFromSystemIn(
             "gmail email password\n" +
-            "(e.g., password (or \"\" to skip this test)? ");
+            "(e.g., password (or \"\" to skip this test. Bob: use 'application specific password')? ");
         
         if (emailPassword.length() > 0) {
             emailReplyToAddress = String2.getStringFromSystemIn( 
@@ -426,29 +416,33 @@ public class TestSSR {
      * Test posting info and getting response.
      */
     public static void testPostFormGetResponseString() throws Exception {
-        try {
-            String s = SSR.postFormGetResponseString(
-                "https://coastwatch.pfeg.noaa.gov/erddap/search/index.html?page=1&itemsPerPage=1000&searchFor=jplmursst41");
-            String2.log("\nSSR.testPostFormGetResponseString() result:\n" + s);
-            Test.ensureTrue(s.indexOf("Do a Full Text Search for Datasets:") >= 0, "");
-            Test.ensureTrue(s.indexOf("Multi-scale Ultra-high Resolution (MUR) SST Analysis fv04.1, Global") >= 0, "");
-            Test.ensureTrue(s.indexOf("ERDDAP, Version") >= 0, "");
+        for (int i = 0; i < 2; i++) {
+            try {
+                String s = SSR.postFormGetResponseString(
+                    "https://coastwatch.pfeg.noaa.gov/erddap/search/index.html?page=1&itemsPerPage=1000&searchFor=jplmursst41");
+                String2.log("\nSSR.testPostFormGetResponseString() result:\n" + s);
+                Test.ensureTrue(s.indexOf("Do a Full Text Search for Datasets:") >= 0, "");
+                Test.ensureTrue(s.indexOf("Multi-scale Ultra-high Resolution (MUR) SST Analysis fv04.1, Global") >= 0, "");
+                Test.ensureTrue(s.indexOf("ERDDAP, Version") >= 0, "");
 
-            //2018-10-24 I verified that 
-            //* This request appears as a POST (not GET) in tomcat's localhost_access_lot[date].txt
-            //* The parameters don't appear in that file (whereas they do for GET requests)
-            //* The parameters don't appear in ERDDAP log (whereas they do for GET requests),
-            //*    and it is labelled as a POST request.
-            s = SSR.postFormGetResponseString(
-                "http://localhost:8080/cwexperimental/search/index.html?page=1&itemsPerPage=1000&searchFor=jplmursst41");
-            String2.log("\nSSR.testPostFormGetResponseString() result:\n" + s);
-            Test.ensureTrue(s.indexOf("Do a Full Text Search for Datasets:") >= 0, "");
-            Test.ensureTrue(s.indexOf("Multi-scale Ultra-high Resolution (MUR) SST Analysis fv04.1, Global") >= 0, 
-                "This test requires MUR 4.1 in the local host ERDDAP.");
-            Test.ensureTrue(s.indexOf("ERDDAP, Version") >= 0, "");
-        } catch (Exception e) {
-            String2.pressEnterToContinue(MustBe.throwableToString(e) +
-                "This requires localhost ERDDAP."); 
+                //2018-10-24 I verified that 
+                //* This request appears as a POST (not GET) in tomcat's localhost_access_lot[date].txt
+                //* The parameters don't appear in that file (whereas they do for GET requests)
+                //* The parameters don't appear in ERDDAP log (whereas they do for GET requests),
+                //*    and it is labelled as a POST request.
+                s = SSR.postFormGetResponseString(
+                    "http://localhost:8080/cwexperimental/search/index.html?page=1&itemsPerPage=1000&searchFor=jplmursst41");
+                String2.log("\nSSR.testPostFormGetResponseString() result:\n" + s);
+                Test.ensureTrue(s.indexOf("Do a Full Text Search for Datasets:") >= 0, "");
+                Test.ensureTrue(s.indexOf("Multi-scale Ultra-high Resolution (MUR) SST Analysis fv04.1, Global") >= 0, 
+                    "This test requires MUR 4.1 in the local host ERDDAP.");
+                Test.ensureTrue(s.indexOf("ERDDAP, Version") >= 0, "");
+                break; //if successful, don't do i=1 loop
+            } catch (Exception e) {
+                String2.pressEnterToContinue(MustBe.throwableToString(e) +
+                    "This requires localhost ERDDAP.\nPress Enter to " +
+                    (i == 0? "try again." : "skip this test.")); 
+            }
         }
     }
 
@@ -464,13 +458,55 @@ public class TestSSR {
     }
 
     /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 1 : -1;
+        String msg = "\n^^^ TestSSR.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) runNonUnixTests();
+                    if (test ==  1) testPostFormGetResponseString();
+
+                    if (test == 1000) runUnixTests();
+
+                } else {
+                    //if (test ==  0) ...;
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
+
+    /**
      * Run all of the tests
      */
     public static void main(String args[]) throws Throwable {
         SSR.verbose = true;
-/* for releases, this line should have open/close comment */
-        runNonUnixTests();
-        testPostFormGetResponseString();
         
 //        runUnixTests();
     }

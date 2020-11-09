@@ -4,6 +4,9 @@
  */
 package com.cohort.util;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.MathContext;
 import java.nio.ByteBuffer;
 import java.text.MessageFormat;
 import java.util.Arrays;
@@ -26,11 +29,24 @@ public class Math2 {
      */
     public static final float fEps = 1e-5f; //epsilon suitable for floats
     public static final double dEps = 1e-13; //epsilon suitable for doubles
-    public static final double OneRadian = 180.0 / Math.PI; //are these double precision?
-    public static final double TwoPi = 2 * Math.PI; //are these double precision?
+    public static final double OneRadian = 180.0 / Math.PI;
+    public static final double TwoPi = 2 * Math.PI; 
     public static final double ln10 = Math.log(10.0); //2.302585092994046;
     public static final double ln2 = Math.log(2.0);
     public static final double kelvinToC = -273.15;
+    public static final short  UBYTE_MIN_VALUE  = 0;
+    public static final int    USHORT_MIN_VALUE = 0;
+    public static final long   UINT_MIN_VALUE   = 0;
+    public static final BigInteger LONG_MIN_VALUE  = new BigInteger("" + Long.MIN_VALUE);  
+    public static final BigInteger ULONG_MIN_VALUE = BigInteger.ZERO;  
+    public static final short  UBYTE_MAX_VALUE  = 255;
+    public static final int    USHORT_MAX_VALUE = 65535;
+    //int MAX_VALUE is 2147483647
+    public static final long   UINT_MAX_VALUE   = 4294967295L;
+    //long MAX_VALUE is 
+    public static final BigInteger LONG_MAX_VALUE  = new BigInteger("" + Long.MAX_VALUE);  
+    public static final BigInteger ULONG_MAX_VALUE = new BigInteger("18446744073709551615");
+    public static final double ULONG_MAX_VALUE_AS_DOUBLE = 18446744073709551615.0; //trouble: won't be stored exactly
     public static final int Binary0 = -2000; //less than -980-980
     public static final int BinaryLimit = 980; //2^980 = ~1e295
     public static final int BytesPerKB = 1024;
@@ -50,7 +66,7 @@ public class Math2 {
     public static long maxSafeMemory = Math.max(
         maxMemory - 500L * BytesPerMB,  //if maxMemory>2GB, just keep 500MB aside for safety
         (maxMemory / 4) * 3); //operator order avoids numeric overflow 
-    public static long ensureMemoryAvailableTrigger = maxSafeMemory / 8;
+    public static long alwaysOkayMemoryRequest = maxSafeMemory / 16;
 
     /** 
      * These are *not* final so EDStatic can replace them with translated Strings. 
@@ -100,6 +116,7 @@ public class Math2 {
     public final static double meterPerFoot = 1200.0 / 3927.0;
     public final static double mPerMile = 5280 * meterPerFoot;
     public final static double kmPerMile = mPerMile * 0.001;
+    public final static double kmPerNMile = 1.852; //#exact in UDUNITS
 
     /**
      *<tt>two</tt> defines powers of two,
@@ -443,12 +460,13 @@ public class Math2 {
      */
     public static void ensureMemoryAvailable(long nBytes, String attributeTo) {
 
-        if (nBytes < ensureMemoryAvailableTrigger) //e.g., 8GB -&gt; maxSafe=6GB  /8=750MB    //2014-09-05 was 10MB!
+        //this is a little risky, but avoids frequent calls to calculate memoryInUse
+        if (nBytes < alwaysOkayMemoryRequest) //e.g., 8GB -&gt; maxSafe=6GB  /8=750MB    //2014-09-05 was 10MB!
             return;
         String attributeToParen = 
             attributeTo == null || attributeTo.length() == 0? "" : " (" + attributeTo + ")";
        
-        //is this single request too big under any circumstances?
+        //is this single request by itself too big under any circumstances?
         if (nBytes > maxSafeMemory) {
             throw new RuntimeException(memoryTooMuchData + "  " +
                 MessageFormat.format(memoryThanSafe, "" + (nBytes / BytesPerMB),  
@@ -487,8 +505,6 @@ public class Math2 {
     /** 
      * Even if JavaBits is 64, the limit on an array size is Integer.MAX_VALUE.
      * 
-     * <p>This is almost identical to EDStatic.ensureArraySizeOkay, but lacks tallying.
-     * 
      * @param tSize
      * @param attributeTo for a WARNING or ERROR message, this is the string 
      *   to which this not-enough-memory issue should be attributed.
@@ -496,10 +512,11 @@ public class Math2 {
      *  (equals is forbidden for safety since I often use if as missing value / trouble)
      */
     public static void ensureArraySizeOkay(long tSize, String attributeTo) { 
-        if (tSize >= Integer.MAX_VALUE) 
+        if (tSize >= Integer.MAX_VALUE) {
             throw new RuntimeException(memoryTooMuchData + "  " +
                 MessageFormat.format(memoryArraySize, "" + tSize, "" + Integer.MAX_VALUE) +
                 (attributeTo == null || attributeTo.length() == 0? "" : " (" + attributeTo + ")"));
+        }
     }
 
     /**
@@ -565,7 +582,7 @@ public class Math2 {
      *     NaN and Infinity correctly return false.
      */
     public static final boolean almost0(double d) {
-        return (Math.abs(d) < dEps);
+        return Math.abs(d) < dEps;
     }
 
     /**
@@ -781,9 +798,23 @@ public class Math2 {
      *   Undesirable: d.5 rounds up for positive numbers, down for negative.
      */
     public static final byte roundToByte(double d) {
-        return d > Byte.MAX_VALUE || d <= Byte.MIN_VALUE - 0.5 || !Double.isFinite(d)? 
+        return d >= Byte.MAX_VALUE || d <= Byte.MIN_VALUE - 0.5 || !Double.isFinite(d)? 
             Byte.MAX_VALUE : 
             (byte)Math.round(d);
+    }
+
+    /**
+     * Safely rounds a double to a ubyte.
+     * 
+     * @param d any double
+     * @return 255 if d is too small, too big, or NaN;
+     *   otherwise d, rounded to the nearest byte.
+     *   Undesirable: d.5 rounds up for positive numbers, down for negative.
+     */
+    public static final short roundToUByte(double d) {
+        return d >= 255 || d <= -0.5 || !Double.isFinite(d)? 
+            255 : 
+            (short)Math.round(d);
     }
 
     /**
@@ -815,6 +846,20 @@ public class Math2 {
     }
 
     /**
+     * Safely rounds a double to a ushort.
+     * 
+     * @param d any double
+     * @return 0xffff if d is too small, too big, or NaN;
+     *   otherwise d, rounded to the nearest short.
+     *   Undesirable: d.5 rounds up for positive numbers, down for negative.
+     */
+    public static final int roundToUShort(double d) {
+        return d > 0xffff || d <= -0.5 || !Double.isFinite(d)? 
+            0xffff : 
+            (short)Math.round(d);
+    }
+
+    /**
      * Safely rounds a double to an int.
      * (Math.round but rounds to a long and not safely.)
      * 
@@ -827,6 +872,20 @@ public class Math2 {
         return d > Integer.MAX_VALUE || d <= Integer.MIN_VALUE - 0.5 || !Double.isFinite(d)? 
             Integer.MAX_VALUE : 
             (int)Math.round(d); //safe since checked for larger values above
+    }
+
+    /**
+     * Safely rounds a double to a uint.
+     * 
+     * @param d any double
+     * @return UINT_MAX_VALUE if d is too small, too big, or NaN;
+     *   otherwise d, rounded to the nearest short.
+     *   Undesirable: d.5 rounds up for positive numbers, down for negative.
+     */
+    public static final long roundToUInt(double d) {
+        return d > UINT_MAX_VALUE || d <= -0.5 || !Double.isFinite(d)? 
+            UINT_MAX_VALUE : 
+            Math.round(d);
     }
 
     /**
@@ -844,6 +903,62 @@ public class Math2 {
     }
 
     /**
+     * Safely rounds a double to a ulong.
+     * 
+     * @param d any double
+     * @return ULONG_MAX_VALUE if d is too small, too big, or NaN;
+     *   otherwise d, rounded (with MathContext.DECIMAL128) to the nearest integer double
+     *   in the ULONG range.
+     */
+    public static BigInteger roundToULong(double d) {
+        BigInteger bi = roundToULongOrNull(d);
+        return bi == null? ULONG_MAX_VALUE : bi; 
+    }
+
+    /**
+     * This rounds a double to a ulong (or null if trouble).
+     * 
+     * @param d any double
+     * @return null if d is too small, too big, or NaN;
+     *   otherwise d, rounded (with MathContext.DECIMAL128) to the nearest integer double
+     *   in the ULONG range.
+     */
+    public static BigInteger roundToULongOrNull(double d) {
+        if (d <= -0.5 || !Double.isFinite(d)) 
+            return null; 
+        return roundToULong(new BigDecimal(d));
+    }
+
+    /**
+     * Safely rounds a BigDecimal to a ulong.
+     * 
+     * @param d any double
+     * @return ULONG_MAX_VALUE if d is too small, too big, or NaN;
+     *   otherwise d, rounded (with MathContext.DECIMAL128) to the nearest integer double
+     *   in the ULONG range.
+     */
+    public static BigInteger roundToULong(BigDecimal d) {
+        BigInteger bi = roundToULongOrNull(d);
+        return bi == null? ULONG_MAX_VALUE : bi; 
+    }
+
+    /**
+     * This rounds a BigDecimal to a ulong (or null if trouble).
+     * 
+     * @param bd any BigDecimal
+     * @return null if d is too small, too big, or NaN;
+     *   otherwise d, rounded (with MathContext.DECIMAL128) to the nearest integer
+     *   in the ULONG range.
+     */
+    public static BigInteger roundToULongOrNull(BigDecimal bd) {
+        if (bd == null) 
+            return null; 
+        BigInteger bi = bd.round(MathContext.DECIMAL128).toBigInteger();
+        return bi.compareTo(BigInteger.ZERO) < 0 || bi.compareTo(ULONG_MAX_VALUE) >= 0? null : bi; 
+    }
+
+
+    /**
      * Safely rounds a double to the nearest integer (stored as a double).
      * 
      * @param d any double
@@ -855,6 +970,20 @@ public class Math2 {
      */
     public static final double roundToDouble(double d) {
         return Double.isFinite(d)? Math.floor(d + 0.5) : Double.NaN;
+    }
+
+    /**
+     * Safely rounds a double to the nearest integer (stored as a double).
+     * 
+     * @param bi any BigInteger
+     * @return Double.NaN if d is &gt;= ULONG_MAX_VALUE, otherwise bi rounded to the nearest double.
+     *   !!!Rounding method???
+     */
+    public static final double roundToDouble(BigInteger bi) {
+        double d = bi == null || bi.compareTo(Math2.ULONG_MAX_VALUE) >= 0? 
+            Double.NaN : 
+            bi.doubleValue();
+        return Double.isFinite(d)? d : Double.NaN;
     }
 
     /**
@@ -893,6 +1022,19 @@ public class Math2 {
     }
 
     /**
+     * Safely narrows a BigInteger to a byte.
+     * 
+     * @param i any BigInteger
+     * @return Byte.MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final byte narrowToByte(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + Byte.MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + Byte.MIN_VALUE)) < 0? 
+            Byte.MAX_VALUE : (byte)i.intValue();
+    }
+
+    /**
      * Safely narrows an int to a char.
      * 
      * @param i any int
@@ -912,6 +1054,19 @@ public class Math2 {
     public static final char narrowToChar(long i) {
         return i > Character.MAX_VALUE || i < Character.MIN_VALUE? 
             Character.MAX_VALUE : (char)i;
+    }
+
+    /**
+     * Safely narrows a BigInteger to a char.
+     * 
+     * @param i any BigInteger
+     * @return Character.MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final char narrowToChar(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + (int)Character.MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + (int)Character.MIN_VALUE)) < 0? 
+            Character.MAX_VALUE : (char)i.longValue();
     }
 
     /**
@@ -937,6 +1092,19 @@ public class Math2 {
     }
 
     /**
+     * Safely narrows a BigInteger to a short.
+     * 
+     * @param i any BigInteger
+     * @return Short.MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final short narrowToShort(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + Short.MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + Short.MIN_VALUE)) < 0? 
+            Short.MAX_VALUE : (short)i.longValue();
+    }
+
+    /**
      * Safely narrows a long to an int.
      * 
      * @param i any long
@@ -946,6 +1114,127 @@ public class Math2 {
         return i > Integer.MAX_VALUE || i < Integer.MIN_VALUE? 
             Integer.MAX_VALUE : (int)i;
     }
+
+    /**
+     * Safely narrows a BigInteger to a int.
+     * 
+     * @param i any BigInteger
+     * @return Integer.MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final int narrowToInt(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + Integer.MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + Integer.MIN_VALUE)) < 0? 
+            Integer.MAX_VALUE : (int)i.longValue();
+    }
+
+    /**
+     * Safely narrows an int to a ubyte.
+     * 
+     * @param i any int
+     * @return UBYTE_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final short narrowToUByte(int i) {
+        return i > UBYTE_MAX_VALUE || i < UBYTE_MIN_VALUE? 
+            UBYTE_MAX_VALUE : (short)i;
+    }
+
+    /**
+     * Safely narrows a long to a ubyte.
+     * 
+     * @param i any long
+     * @return UBYTE_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final short narrowToUByte(long i) {
+        return i > UBYTE_MAX_VALUE || i < UBYTE_MIN_VALUE? 
+            UBYTE_MAX_VALUE : (short)i;
+    }
+
+    /**
+     * Safely narrows a BigInteger to a ubyte.
+     * 
+     * @param i any BigInteger
+     * @return UBYTE_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final short narrowToUByte(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + UBYTE_MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + UBYTE_MIN_VALUE)) < 0? 
+            UBYTE_MAX_VALUE : (short)i.longValue();
+    }
+
+    /**
+     * Safely narrows an int to a ushort.
+     * 
+     * @param i any int
+     * @return USHORT_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final int narrowToUShort(int i) {
+        return i > USHORT_MAX_VALUE || i < USHORT_MIN_VALUE? 
+            USHORT_MAX_VALUE : i;
+    }
+
+    /**
+     * Safely narrows a long to a ushort.
+     * 
+     * @param i any long
+     * @return USHORT_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final int narrowToUShort(long i) {
+        return i > USHORT_MAX_VALUE || i < USHORT_MIN_VALUE? 
+            USHORT_MAX_VALUE : (int)i;
+    }
+
+    /**
+     * Safely narrows a BigInteger to a ushort.
+     * 
+     * @param i any BigInteger
+     * @return UBYTE_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final int narrowToUShort(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + USHORT_MAX_VALUE)) > 0 ||
+               i.compareTo(new BigInteger("" + USHORT_MIN_VALUE)) < 0? 
+            USHORT_MAX_VALUE : (int)i.longValue();
+    }
+
+    /**
+     * Safely narrows a long to a uint.
+     * 
+     * @param i any long
+     * @return UINT_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final long narrowToUInt(long i) {
+        return i > UINT_MAX_VALUE || i < UINT_MIN_VALUE? 
+            UINT_MAX_VALUE : i;
+    }
+
+    /**
+     * Safely narrows a BigInteger to a uint.
+     * 
+     * @param i any BigInteger
+     * @return UBYTE_MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final long narrowToUInt(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + UINT_MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + UINT_MIN_VALUE)) < 0? 
+            UINT_MAX_VALUE : (long)i.longValue();
+    }
+
+    /**
+     * Safely narrows a BigInteger to a long.
+     * 
+     * @param i any BigInteger
+     * @return Long.MAX_VALUE if i is too small or too big; otherwise i.
+     */
+    public static final long narrowToLong(BigInteger i) {
+        return i == null ||
+               i.compareTo(new BigInteger("" + Long.MAX_VALUE)) > 0 || 
+               i.compareTo(new BigInteger("" + Long.MIN_VALUE)) < 0? 
+            Long.MAX_VALUE : i.longValue();
+    }
+
 
     /**
      * Safely converts a byte (-128..127) to char (0..255).
@@ -1211,16 +1500,42 @@ public class Math2 {
      *
      * @param tl
      * @return a double.
-     *    If f is NaN or +-INFINITY, this returns Double.NaN.
+     *    If tl is Long.MAX_VALUE, this returns Double.NaN.
      */
     public static final double longToDoubleNaN(long tl) {
         if (tl == Long.MAX_VALUE)
             return Double.NaN;
-        //make sure round(d) is legit long. Low numbers are not a problem. 
-        //ideally    9223372036854775806
-        if (tl >     9223372036854774784L)   //best available
-            return  9.223372036854774784E18;
         return tl;
+    }
+
+    /**
+     * This converts a ulong (stored as a BigInteger) to a double (MAX_VALUE becomes NaN).
+     *
+     * @param bi a ulong stored in a BigInteger.
+     * @return a double.
+     *    If tl is ULongArray.MAX_VALUE, this returns Double.NaN.
+     */
+    public static final double ulongToDoubleNaN(BigInteger bi) {
+        if (bi == null || bi.equals(ULONG_MAX_VALUE))
+            return Double.NaN;
+        return bi.doubleValue();
+    }
+
+    /**
+     * This converts an unsigned long (packed as a long) to a double.
+     * !!! Possible loss of precision!
+     * This does nothing with default "cohort" NaN from Long.MAX_VALUE,
+     * because that is presumably a legit number in the middle of the unsigned long range.
+     *
+     * @param tl
+     * @return a double.
+     */
+    public static final double ulongToDouble(long tl) {
+        //https://www.unidata.ucar.edu/software/thredds/current/netcdf-java/reference/faq.html#Unsigned
+        //  9,223,372,036,854,775,808
+        // +9,223,372,036,854,775,808
+        //=18 446 744 073 709 551 616
+        return tl < 0? tl + 18446744073709551616.0 : tl; //2^64
     }
 
     /**
@@ -1301,10 +1616,9 @@ public class Math2 {
      */
     public static void setSeed(long seed) {
 
-        //this is probably thread-safe
-        //http://www.velocityreviews.com/forums/t367261-java-util-random-nextint-thread-safety.html
-        //but synchronize it to be extra careful
-        synchronized (random) {
+        //Random is threadsafe, but has issues in a multi threaded situation.
+        //So synchronize it to be extra careful
+        synchronized(random) {
             random.setSeed(seed);
         }
     }
@@ -1319,10 +1633,9 @@ public class Math2 {
      */
     public static int random(int max) {
 
-        //this is probably thread-safe
-        //http://www.velocityreviews.com/forums/t367261-java-util-random-nextint-thread-safety.html
-        //but synchronize it to be extra careful
-        synchronized (random) {
+        //Random is threadsafe, but has issues in a multi threaded situation.
+        //So synchronize it to be extra careful
+        synchronized(random) {
             return random.nextInt(max);
         }
     }
@@ -1933,6 +2246,52 @@ public class Math2 {
         return a == b ||   //handles +infinity==+infinity and -infinity==-infinity
                (Float.isNaN(a) && Float.isNaN(b));
     }
+
+    /** 
+     * This converts a BigDecimal[] into a double[].
+     * null values are converted to Double.NaN values.
+     *
+     * @param bdar a BigDecimal array
+     */
+    public static double[] toDoubleArray(BigDecimal bdar[]) {
+        if (bdar == null)
+            return null;
+        int n = bdar.length;
+        double dar[] = new double[n];
+        for (int i = 0; i < n; i++) 
+            dar[i] = bdar[i] == null? Double.NaN : bdar[i].doubleValue();
+        return dar;
+    }
+
+
+    /** 
+     * This converts a BigDecimal[] into a double[].
+     * null values are converted to Double.NaN values.
+     *
+     * @param dar a double array
+     *
+     */
+    public static BigDecimal[] toBigDecimalArray(double dar[]) {
+        if (dar == null)
+            return null;
+        int n = dar.length;
+        BigDecimal bdar[] = new BigDecimal[n];
+        for (int i = 0; i < n; i++) 
+            bdar[i] = Double.isFinite(dar[i])? new BigDecimal(dar[i]) : null;
+        return bdar;
+    }
+
+    /** 
+     * This returns the d*d.
+     *
+     * @param d a double value
+     * @return d*d.
+     */
+    public static double sqr(double d) {
+        return d*d;
+    }
+    
+
 
 
 } //End of Math2 class.

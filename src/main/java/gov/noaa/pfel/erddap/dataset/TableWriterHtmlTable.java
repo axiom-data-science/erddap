@@ -226,8 +226,8 @@ public class TableWriterHtmlTable extends TableWriter {
             }
 
             //write the header
-            writer = new BufferedWriter(new OutputStreamWriter(
-                outputStreamSource.outputStream(String2.UTF_8), String2.UTF_8)); 
+            writer = String2.getBufferedOutputStreamWriterUtf8(
+                outputStreamSource.outputStream(String2.UTF_8)); 
             if (writeHeadAndBodyTags) {
                 if (xhtmlMode)
                     writer.write(
@@ -418,10 +418,10 @@ public class TableWriterHtmlTable extends TableWriter {
             writer.write("</tr>\n");
             rowsShown++;
         }       
+        boolean flushAfterward = totalRows == 0; //flush initial chunk so info gets to user quickly
         totalRows += nRows;
 
-        //ensure it gets to user right away
-        if (nRows > 1) //some callers work one row at a time; avoid excessive flushing
+        if (flushAfterward)
             writer.flush(); 
     }
 

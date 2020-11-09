@@ -8,6 +8,7 @@ import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.LongArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -75,6 +76,7 @@ public class EDDTableFromAudioFiles extends EDDTableFromFiles {
         int tReloadEveryNMinutes, int tUpdateEveryNMillis,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
         String tMetadataFrom, String tCharset, 
+        String tSkipHeaderToRegex, String tSkipLinesRegex,
         int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
@@ -82,7 +84,8 @@ public class EDDTableFromAudioFiles extends EDDTableFromFiles {
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
         boolean tAccessibleViaFiles, boolean tRemoveMVRows, 
         int tStandardizeWhat, int tNThreads, 
-        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex) 
+        String tCacheFromUrl, int tCacheSizeGB, String tCachePartialPathRegex,
+        String tAddVariablesWhere) 
         throws Throwable {
 
         super("EDDTableFromAudioFiles", tDatasetID, 
@@ -92,12 +95,14 @@ public class EDDTableFromAudioFiles extends EDDTableFromFiles {
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator,
+            tCharset, tSkipHeaderToRegex, tSkipLinesRegex,
+            tColumnNamesRow, tFirstDataRow, tColumnSeparator,
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, tAccessibleViaFiles,
             tRemoveMVRows, tStandardizeWhat, 
-            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex);
+            tNThreads, tCacheFromUrl, tCacheSizeGB, tCachePartialPathRegex,
+            tAddVariablesWhere);
 
         //String2.log(">> EDDTableFromAudioFiles end of constructor:\n" + toString());
     }
@@ -223,20 +228,20 @@ public class EDDTableFromAudioFiles extends EDDTableFromFiles {
             String colName = dataSourceTable.getColumnName(c);
             Attributes sourceAtts = dataSourceTable.columnAttributes(c);
             PrimitiveArray sourcePA = dataSourceTable.getColumn(c);
-            PrimitiveArray destPA = makeDestPAForGDX(sourcePA, sourceAtts);
+            PrimitiveArray destPA = makeDestPAForGDX(sourcePA, sourceAtts); 
             dataAddTable.addColumn(c, colName, destPA,
                 makeReadyToUseAddVariableAttributesForDatasetsXml(
                     dataSourceTable.globalAttributes(), sourceAtts, null, colName, 
-                    destPA.elementClass() != String.class, //tryToAddStandardName
-                    destPA.elementClass() != String.class, //addColorBarMinMax
+                    destPA.elementType() != PAType.STRING, //tryToAddStandardName
+                    destPA.elementType() != PAType.STRING, //addColorBarMinMax
                     true)); //tryToFindLLAT
             if (c > 0) {
                 if (EDStatic.variablesMustHaveIoosCategory)
                     dataAddTable.columnAttributes(c).set("ioos_category", "Other");
                 if (sourcePA.isIntegerType()) {
                     dataAddTable.columnAttributes(c)
-                        .add("colorBarMinimum", Math2.niceDouble(-sourcePA.missingValue(), 2))
-                        .add("colorBarMaximum", Math2.niceDouble( sourcePA.missingValue(), 2));
+                        .add("colorBarMinimum", Math2.niceDouble(-sourcePA.missingValueAsDouble(), 2))
+                        .add("colorBarMaximum", Math2.niceDouble( sourcePA.missingValueAsDouble(), 2));
                 }
             }
 
@@ -337,8 +342,7 @@ public class EDDTableFromAudioFiles extends EDDTableFromFiles {
               "    <columnNameForExtract>" + XML.encodeAsXML(tColumnNameForExtract) + "</columnNameForExtract>\n" : "") +
             "    <sortedColumnSourceName>" + XML.encodeAsXML(Table.ELAPSED_TIME) + "</sortedColumnSourceName>\n" +
             "    <sortFilesBySourceNames>" + XML.encodeAsXML(tSortFilesBySourceNames) + "</sortFilesBySourceNames>\n" +
-            "    <fileTableInMemory>false</fileTableInMemory>\n" +
-            "    <accessibleViaFiles>false</accessibleViaFiles>\n");
+            "    <fileTableInMemory>false</fileTableInMemory>\n");
         sb.append(writeAttsForDatasetsXml(false, dataSourceTable.globalAttributes(), "    "));
         sb.append(writeAttsForDatasetsXml(true,     dataAddTable.globalAttributes(), "    "));
 
@@ -363,31 +367,30 @@ public class EDDTableFromAudioFiles extends EDDTableFromFiles {
         boolean oEDDDebugMode = EDD.debugMode;
         //EDD.debugMode = true;
 
-        try {
-            String results = generateDatasetsXml(
-                EDStatic.unitTestDataDir + "audio/wav", //test no trailing /
-                ".*\\.wav",
-                "",
-                1440,
-                "aco_acoustic\\.", "\\.wav", ".*", "time", "yyyyMMdd'_'HHmmss",
-                "", "", "", "", "", 
-                -1, null, //defaultStandardizeWhat
-                null) + "\n";
+        String results = generateDatasetsXml(
+            EDStatic.unitTestDataDir + "audio/wav", //test no trailing /
+            ".*\\.wav",
+            "",
+            1440,
+            "aco_acoustic\\.", "\\.wav", ".*", "time", "yyyyMMdd'_'HHmmss",
+            "", "", "", "", "", 
+            -1, null, //defaultStandardizeWhat
+            null) + "\n";
 
-            String2.log(results);
+        String2.log(results);
 
-            //GenerateDatasetsXml
-            String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
-                "EDDTableFromAudioFiles",
-                EDStatic.unitTestDataDir + "audio/wav", 
-                ".*\\.wav",
-                "",
-                "1440",
-                "aco_acoustic\\.", "\\.wav", ".*", "time", "yyyyMMdd'_'HHmmss",
-                "", "", "", "", "", 
-                "-1", ""}, //defaultStandardizeWhat
-                false); //doIt loop?
-            Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
+        //GenerateDatasetsXml
+        String gdxResults = (new GenerateDatasetsXml()).doIt(new String[]{"-verbose", 
+            "EDDTableFromAudioFiles",
+            EDStatic.unitTestDataDir + "audio/wav", 
+            ".*\\.wav",
+            "",
+            "1440",
+            "aco_acoustic\\.", "\\.wav", ".*", "time", "yyyyMMdd'_'HHmmss",
+            "", "", "", "", "", 
+            "-1", ""}, //defaultStandardizeWhat
+            false); //doIt loop?
+        Test.ensureEqual(gdxResults, results, "Unexpected results from GenerateDatasetsXml.doIt.");
 
 String expected = 
 "<dataset type=\"EDDTableFromAudioFiles\" datasetID=\"wav_56d5_230d_1887\" active=\"true\">\n" +
@@ -408,7 +411,6 @@ String expected =
 "    <sortedColumnSourceName>elapsedTime</sortedColumnSourceName>\n" +
 "    <sortFilesBySourceNames>time</sortFilesBySourceNames>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"audioBigEndian\">false</att>\n" +
 "        <att name=\"audioChannels\" type=\"int\">1</att>\n" +
@@ -426,7 +428,7 @@ String expected =
 "        <att name=\"keywords\">channel, channel_1, data, elapsed, elapsedTime, local, source, time</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
 "        <att name=\"sourceUrl\">(local files)</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"subsetVariables\">time</att>\n" +
 "        <att name=\"summary\">Audio data from a local source.</att>\n" +
 "        <att name=\"title\">Audio data from a local source.</att>\n" +
@@ -470,23 +472,19 @@ String expected =
 "    </dataVariable>\n" +
 "</dataset>\n" +
 "\n\n";
-            Test.ensureEqual(results, expected, "results=\n" + results);
-            //Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
-            //    expected, "");
+        Test.ensureEqual(results, expected, "results=\n" + results);
+        //Test.ensureEqual(results.substring(0, Math.min(results.length(), expected.length())), 
+        //    expected, "");
 
-            String tDatasetID = "wav_56d5_230d_1887";
-            EDD.deleteCachedDatasetInfo(tDatasetID);
-            EDD edd = oneFromXmlFragment(null, results);
-            Test.ensureEqual(edd.datasetID(), "wav_56d5_230d_1887", "");
-            Test.ensureEqual(edd.title(), "Audio data from a local source.", "");
-            Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
-                "time, elapsedTime, channel_1", 
-                "");
+        String tDatasetID = "wav_56d5_230d_1887";
+        EDD.deleteCachedDatasetInfo(tDatasetID);
+        EDD edd = oneFromXmlFragment(null, results);
+        Test.ensureEqual(edd.datasetID(), "wav_56d5_230d_1887", "");
+        Test.ensureEqual(edd.title(), "Audio data from a local source.", "");
+        Test.ensureEqual(String2.toCSSVString(edd.dataVariableDestinationNames()), 
+            "time, elapsedTime, channel_1", 
+            "");
 
-        } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\nError using generateDatasetsXml."); 
-        }
         EDD.debugMode = oEDDDebugMode;
 
     }
@@ -573,7 +571,7 @@ expected =
 "particular purpose, or assumes any legal liability for the accuracy,\n" +
 "completeness, or usefulness, of this information.\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String subsetVariables \"time\";\n" +
 "    String summary \"Audio data from a local source.\";\n" +
 "    String time_coverage_end \"2014-11-19T00:20:00Z\";\n" +
@@ -684,18 +682,46 @@ expected =
     }
 
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n*** EDDTableFromAudioFiles.test()");
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 1 : 0;
+        String msg = "\n^^^ EDDTableFromAudioFiles.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml();
-        testBasic(true); //deleteCachedDatasetInfo
-        testBasic(false); //deleteCachedDatasetInfo
-        /* */
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testBasic(true); //deleteCachedDatasetInfo
+                    if (test ==  1) testBasic(false); //deleteCachedDatasetInfo
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
+
 }
 

@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.LongArray;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -84,6 +85,7 @@ public class EDDGridSideBySide extends EDDGrid {
         String tAccessibleTo = null;
         String tGraphsAccessibleTo = null;
         boolean tAccessibleViaWMS = true;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         int tMatchAxisNDigits = DEFAULT_MATCH_AXIS_N_DIGITS;
         StringArray tOnChange = new StringArray();
         String tFgdcFile = null;
@@ -111,7 +113,7 @@ public class EDDGridSideBySide extends EDDGrid {
             if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -160,6 +162,8 @@ public class EDDGridSideBySide extends EDDGrid {
             else if (localTags.equals("</graphsAccessibleTo>")) tGraphsAccessibleTo = content;
             else if (localTags.equals( "<accessibleViaWMS>")) {}
             else if (localTags.equals("</accessibleViaWMS>")) tAccessibleViaWMS = String2.parseBoolean(content);
+            else if (localTags.equals( "<accessibleViaFiles>")) {}
+            else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals( "<fgdcFile>")) {}
             else if (localTags.equals("</fgdcFile>"))     tFgdcFile = content; 
             else if (localTags.equals( "<iso19115File>")) {}
@@ -188,6 +192,7 @@ public class EDDGridSideBySide extends EDDGrid {
         //make the main dataset based on the information gathered
         return new EDDGridSideBySide(tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo, tAccessibleViaWMS, 
+            tAccessibleViaFiles, 
             tMatchAxisNDigits, tOnChange, tFgdcFile, tIso19115File,
             tDefaultDataQuery, tDefaultGraphQuery, tcds, 
             tnThreads, tDimensionValuesInMemory);
@@ -216,10 +221,12 @@ public class EDDGridSideBySide extends EDDGrid {
      */
     public EDDGridSideBySide(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, boolean tAccessibleViaWMS,
+        boolean tAccessibleViaFiles, 
         int tMatchAxisNDigits, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tDefaultDataQuery, String tDefaultGraphQuery, 
-        EDDGrid tChildDatasets[], int tnThreads, boolean tDimensionValuesInMemory) throws Throwable {
+        EDDGrid tChildDatasets[], 
+        int tnThreads, boolean tDimensionValuesInMemory) throws Throwable {
 
         if (verbose) String2.log("\n*** constructing EDDGridSideBySide " + tDatasetID); 
         long constructionStartMillis = System.currentTimeMillis();
@@ -244,6 +251,16 @@ public class EDDGridSideBySide extends EDDGrid {
         childStopsAt = new int[nChildren];
         matchAxisNDigits = tMatchAxisNDigits;
         nThreads = tnThreads; //interpret invalid values (like -1) as EDStatic.nGridThreads
+
+        //ensure at least one child is accessibleViaFiles
+        boolean cAccessibleViaFiles = false;
+        for (int c = 0; c < nChildren; c++) {
+            if (childDatasets[c].accessibleViaFiles) {
+                cAccessibleViaFiles = true;
+                break;
+            }
+        }
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles && cAccessibleViaFiles;
 
         //check the siblings and create childStopsAt
         EDDGrid firstChild = childDatasets[0];
@@ -287,7 +304,7 @@ public class EDDGridSideBySide extends EDDGrid {
             if (verbose) String2.log("child[" + c + "].axisVariables[0].size()=" + axis0SourceValues[c].size());
         }
         PrimitiveArray newAxis0Values = PrimitiveArray.factory(
-            axis0SourceValues[0].elementClass(), axis0SourceValues[0].size() + 100, false);
+            axis0SourceValues[0].elementType(), axis0SourceValues[0].size() + 100, false);
         while (true) {
             //repeatedly: 
             //find children which share the lowest axis0 value  (all axis values are numeric and not-NaN)
@@ -367,10 +384,11 @@ public class EDDGridSideBySide extends EDDGrid {
                 tryToSubscribeToChildFromErddap(childDatasets[c]);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDGridSideBySide " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
         //very last thing: saveDimensionValuesInFile
         if (!dimensionValuesInMemory)
@@ -484,7 +502,7 @@ public class EDDGridSideBySide extends EDDGrid {
 
         //simple approach (not most efficient for tiny request, but fine for big requests):
         //  get results for each tDataVariable, one-by-one
-        //future: more efficient to gang together all dataVariables from a given child
+        //FUTURE: more efficient to gang together all dataVariables from a given child
         int nAv = axisVariables.length;
         int nDv = dataVariables.length;
         int tnDv = tDataVariables.length;
@@ -507,12 +525,12 @@ public class EDDGridSideBySide extends EDDGrid {
 
             //make a PrimitiveArray to hold the results for this dv
             PrimitiveArray dvResults = PrimitiveArray.factory(
-                tDataVariables[tdv].sourceDataTypeClass(), nValues, false);
+                tDataVariables[tdv].sourceDataPAType(), nValues, false);
             cumResults[nAv + tdv] = dvResults;
             double tdvSourceMissingValue = tDataVariables[tdv].sourceMissingValue();
 
             //what is its dataVariable number in this aggregate dataset?
-            //future: faster search with hash, but this is fast unless huge number of dataVars
+            //FUTURE: faster search with hash, but this is fast unless huge number of dataVars
             int dvn = 0;
             while (tDataVariables[tdv] != dataVariables[dvn])
                 dvn++;
@@ -584,6 +602,108 @@ public class EDDGridSideBySide extends EDDGrid {
         return cumResults;
     }
 
+    /** 
+     * This returns a fileTable 
+     * with valid files (or null if unavailable or any trouble).
+     * This is a copy of any internal data, so client can modify the contents.
+     *
+     * @param nextPath is the partial path (with trailing slash) to be appended 
+     *   onto the local fileDir (or wherever files are, even url).
+     * @return null if trouble,
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
+     */
+    public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
+        try {
+            int nChild = childDatasets.length;
+
+            //if nextPath is nothing, return list of child id's as directories
+            if (nextPath.length() == 0) {
+                Table table = new Table();
+                table.addColumn("Name",          new StringArray());
+                table.addColumn("Last modified", new LongArray().setMaxIsMV(true));
+                table.addColumn("Size",          new LongArray().setMaxIsMV(true));            
+                table.addColumn("Description",   new StringArray());
+                StringArray subDirs = new StringArray();
+                for (int child = 0; child < nChild; child++) {
+                    if (childDatasets[child].accessibleViaFiles)
+                        subDirs.add(childDatasets[child].datasetID());
+                }
+                subDirs.sortIgnoreCase();
+                return new Object[]{table, subDirs.toStringArray(), null};
+            }
+
+            //ensure start of nextPath is a child datasetID
+            int po = nextPath.indexOf('/');
+            if (po < 0) {
+                String2.log("ERROR: no slash in nextPath.");
+                return null;
+            }
+
+            //start of nextPath is a child datasetID
+            String tID = nextPath.substring(0, po);
+            nextPath = nextPath.substring(po + 1);
+            for (int child = 0; child < nChild; child++) {
+                EDD edd = childDatasets[child];
+                if (tID.equals(edd.datasetID())) 
+                    return edd.accessibleViaFilesFileTable(nextPath);
+            }
+            //or it isn't
+            String2.log("ERROR: " + tID + " isn't a child's datasetID.");
+            return null;
+
+        } catch (Exception e) {
+            String2.log(MustBe.throwableToString(e));
+            return null;
+        }
+    }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+    public String accessibleViaFilesGetLocal(String relativeFileName) {
+        if (!accessibleViaFiles)
+            return null;
+        String msg = datasetID() + " accessibleViaFilesGetLocal(" + relativeFileName + "): ";
+
+        try {
+
+            //first dir -> childDatasetName
+            int po = relativeFileName.indexOf('/');
+            if (po <= 0) {
+                String2.log(msg + "no '/' in relatveFileName, so no child datasetID.");
+                return null;
+            }
+            String childID           = relativeFileName.substring(0, po);
+            String relativeFileName2 = relativeFileName.substring(po + 1);
+ 
+            //which child?
+            int nChild = childDatasets.length;
+            for (int c = 0; c < nChild; c++) {
+                if (childID.equals(childDatasets[c].datasetID())) {
+                    //then redirect request to that child
+                    return childDatasets[c].accessibleViaFilesGetLocal(relativeFileName2);
+                }
+            }
+            String2.log(msg + "childID=" + childID + " not found.");
+            return null;
+
+        } catch (Exception e) {
+            String2.log(msg + ":\n" +
+                MustBe.throwableToString(e));
+            return null;
+        }
+         
+    }
 
 
     /**
@@ -1030,25 +1150,163 @@ public class EDDGridSideBySide extends EDDGrid {
     }
 
     /**
-     * This tests the methods in this class.
-     *
-     * @param doGraphicsTests this is the only place that tests grid vector graphs.
-     * @throws Throwable if trouble
+     * This tests the /files/ "files" system.
+     * This requires erdTAgeo1day in the localhost ERDDAP.
      */
-    public static void test(boolean doGraphicsTests) throws Throwable {
+    public static void testFiles() throws Throwable {
 
-        String2.log("\n*** EDDGridSideBySide.test()\n");
-/* for releases, this line should have open/close comment */
-        //usually done
-        testQSWind(doGraphicsTests); 
-        testQSStress();
-        testTransparentPng();
+        String2.log("\n*** EDDGridSideBySide.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
 
-        //usually not done
-        //testOneTime();
-        /* */
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/erdTAgeo1day/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"erdTAugeo1day/,NaN,NaN,\n" +
+"erdTAvgeo1day/,NaN,NaN,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/erdTAgeo1day/");
+            Test.ensureTrue(results.indexOf("erdTAugeo1day&#x2f;") > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("erdTAugeo1day/")      > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/erdTAgeo1day/erdTAvgeo1day/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"TA1992288_1992288_vgeo.nc,1354883738000,4178528,\n" +
+"TA1992295_1992295_vgeo.nc,1354883742000,4178528,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //download a file in root
+ 
+            //download a file in subdir
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/erdTAgeo1day/erdTAvgeo1day/TA1992288_1992288_vgeo.nc").substring(0, 50));
+            expected = 
+"CDF[1][0][0][0][0][0][0][0][10]\n" +
+"[0][0][0][4][0][0][0][4]time[0][0][0][1][0][0][0][8]altitude[0][0][0][1][0][0][0][3]la[end]"; 
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/erdTAgeo1day/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/erdTAgeo1day/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/erdTAgeo1day/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/erdTAgeo1day/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existant subdir
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/erdTAgeo1day/subdir/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/erdTAgeo1day/subdir/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+ 
+
+        } catch (Throwable t) {
+            throw new RuntimeException("Unexpected error. This test requires erdTAgeo1day in the localhost ERDDAP.", t); 
+        } 
+    }
 
 
-        String2.log("\n*** EDDGridSideBySide.test finished.");
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 1 : 2;
+        String msg = "\n^^^ EDDGridSideBySide.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testQSWind(true); //doGraphicsTests
+                    if (test ==  1) testTransparentPng();
+
+                } else {
+                    if (test ==  0) testQSWind(false); //doGraphicsTests 
+                    if (test ==  1) testQSStress();
+                    if (test ==  2) testFiles();
+
+                    //not usually done
+                    if (test == 1000) testOneTime();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 }

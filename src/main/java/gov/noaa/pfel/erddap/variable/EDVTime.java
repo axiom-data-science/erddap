@@ -5,6 +5,7 @@
 package gov.noaa.pfel.erddap.variable;
 
 import com.cohort.array.Attributes;
+import com.cohort.array.PAOne;
 import com.cohort.util.String2;
 
 /** 
@@ -18,12 +19,12 @@ public class EDVTime extends EDVTimeStamp {
      /** The constructor. 
       * This constructor gets source / sets destination actual_range.
       */
-    public EDVTime(String tSourceName, 
+    public EDVTime(String tDatasetID, String tSourceName, 
         Attributes tSourceAttributes, Attributes tAddAttributes,
         String tSourceDataType) 
         throws Throwable {
 
-        super(tSourceName, EDV.TIME_NAME, tSourceAttributes, tAddAttributes,
+        super(tDatasetID, tSourceName, EDV.TIME_NAME, tSourceAttributes, tAddAttributes,
             tSourceDataType); 
     }
         

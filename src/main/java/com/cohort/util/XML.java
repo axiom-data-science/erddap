@@ -118,7 +118,7 @@ public class XML {
                 }
                 //save href from <a> or <img>
                 String tag = htmlString.substring(po1, po);
-                String href = String2.extractCaptureGroup(tag, ".*href=\"(.*?)\".*", 1);
+                String href = String2.extractCaptureGroup(tag, "href=\"(.*?)\"", 1);
                 if (String2.isUrl(href))  //just show if it is a complete URL, not if relative fragment
                     sb.append(
                         (sb.length() > 0 && !String2.isWhite(sb.charAt(sb.length() - 1)) ? " " : "") + 
@@ -139,7 +139,7 @@ public class XML {
      * @return the encoded string
      */
     public static String encodeAsHTML(String plainText) {
-//future: should it convert pairs of spaces to sp + &nbsp;  ?
+//FUTURE: should it convert pairs of spaces to sp + &nbsp;  ?
         int size = plainText.length();
         StringBuilder output = new StringBuilder(size * 2);
 
@@ -845,9 +845,8 @@ public class XML {
      *
      * @throws Exception if trouble
      */
-    public static void test() throws Exception {
-        String2.log("\n*********************************************************** XML.test");
-/* for releases, this line should have open/close comment */
+    public static void basicTest() throws Exception {
+        String2.log("\n*** XML.basicTest");
 
         //test removeHTMLTags
         String2.log("test removeHTMLTags");
@@ -973,4 +972,46 @@ public class XML {
 
     }
 
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ XML.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
+    }
+
 }
+

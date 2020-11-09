@@ -8,6 +8,7 @@ import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.PAOne;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -80,6 +81,7 @@ public class EDDTableAggregateRows extends EDDTable{
         int tUpdateEveryNMillis = 0;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -98,7 +100,7 @@ public class EDDTableAggregateRows extends EDDTable{
             if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -136,6 +138,8 @@ public class EDDTableAggregateRows extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
             else if (localTags.equals("<addAttributes>")) {
                 tAddGlobalAttributes = getAttributesFromXml(xmlReader);
             } else {
@@ -151,7 +155,8 @@ public class EDDTableAggregateRows extends EDDTable{
         return new EDDTableAggregateRows(tErddap, tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo,
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tAddGlobalAttributes,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
+            tAddGlobalAttributes,
             tReloadEveryNMinutes, tUpdateEveryNMillis, 
             ttChildren);
     }
@@ -165,7 +170,7 @@ public class EDDTableAggregateRows extends EDDTable{
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery,
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere,
         Attributes tAddGlobalAttributes,
         int tReloadEveryNMinutes, int tUpdateEveryNMillis, 
         EDDTable oChildren[]) throws Throwable {
@@ -280,8 +285,8 @@ public class EDDTableAggregateRows extends EDDTable{
             String tUnits          = childVar.units();
             double tMV             = childVar.destinationMissingValue();
             double tFV             = childVar.destinationFillValue();
-            double tMin            = childVar.destinationMin(); 
-            double tMax            = childVar.destinationMax();
+            PAOne tMin             = childVar.destinationMin(); 
+            PAOne tMax             = childVar.destinationMax();
 
             //ensure all tChildren are consistent
             for (int c = 1; c < nChildren; c++) {
@@ -322,40 +327,43 @@ public class EDDTableAggregateRows extends EDDTable{
                         "_FillValue=" + tFV + ".");
 
                 //and get the minimum min and maximum max
-                tMin = Math.min(tMin, cEdv.destinationMin()); //if either is NaN -> NaN
-                tMax = Math.max(tMax, cEdv.destinationMax()); //if either is NaN -> NaN
+                tMin = tMin.min(cEdv.destinationMin()); 
+                tMax = tMax.max(cEdv.destinationMax()); 
             }
 
             //make the variable
             EDV newVar = null;
             if (tSourceName.equals(EDV.LON_NAME)) {
-                newVar = new EDVLon(tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
+                newVar = new EDVLon(datasetID, tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
                 lonIndex = dv;
             } else if (tSourceName.equals(EDV.LAT_NAME)) {
-                newVar = new EDVLat(tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
+                newVar = new EDVLat(datasetID, tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
                 latIndex = dv;
             } else if (tSourceName.equals(EDV.ALT_NAME)) {
-                newVar = new EDVAlt(tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
+                newVar = new EDVAlt(datasetID, tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
                 altIndex = dv;
             } else if (tSourceName.equals(EDV.DEPTH_NAME)) {
-                newVar = new EDVDepth(tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
+                newVar = new EDVDepth(datasetID, tSourceName, tSourceAtts, tAddAtts, tDataType, tMin, tMax);
                 depthIndex = dv;
             } else if (tSourceName.equals(EDV.TIME_NAME)) { //do time before timeStamp
                 tAddAtts.add("data_min", "" + tMin); //data_min/max have priority                
                 tAddAtts.add("data_max", "" + tMax); //tMin tMax are epochSeconds    
-                newVar = new EDVTime(tSourceName, tSourceAtts, tAddAtts, 
+                newVar = new EDVTime(datasetID, tSourceName, tSourceAtts, tAddAtts, 
                     tDataType); //this constructor gets source / sets destination actual_range
                 timeIndex = dv;
             } else if (EDVTimeStamp.hasTimeUnits(tSourceAtts, tAddAtts)) {
                 tAddAtts.add("data_min", "" + tMin); //data_min/max have priority                
                 tAddAtts.add("data_max", "" + tMax); //tMin tMax are epochSeconds    
-                newVar = new EDVTimeStamp(tSourceName, "", tSourceAtts, tAddAtts,
+                newVar = new EDVTimeStamp(datasetID, tSourceName, "", tSourceAtts, tAddAtts,
                     tDataType); //this constructor gets source / sets destination actual_range
-            } else newVar = new EDV(tSourceName, "", tSourceAtts, tAddAtts, tDataType, tMin, tMax);
+            } else newVar = new EDV(datasetID, tSourceName, "", tSourceAtts, tAddAtts, tDataType, tMin, tMax);
 
             newVar.setActualRangeFromDestinationMinMax();
             dataVariables[dv] = newVar;
         }
+
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
 
         //ensure the setup is valid
         ensureValid();
@@ -367,10 +375,11 @@ public class EDDTableAggregateRows extends EDDTable{
         }
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableAggregateRows " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
     }
 
 
@@ -400,8 +409,12 @@ public class EDDTableAggregateRows extends EDDTable{
         //update the children
         boolean anyChange = false;
         int ndv = dataVariables.length;
-        double tMin[] = new double[ndv]; Arrays.fill(tMin, Double.NaN);
-        double tMax[] = new double[ndv]; Arrays.fill(tMax, Double.NaN);
+        PAOne tMin[] = new PAOne[ndv]; 
+        PAOne tMax[] = new PAOne[ndv]; 
+        for (int dvi = 0; dvi < ndv; dvi++) {
+            tMin[dvi] = PAOne.fromDouble(Double.NaN);
+            tMax[dvi] = PAOne.fromDouble(Double.NaN);
+        }
         for (int c = 0; c < nChildren; c++) {
             EDDTable tChild = getChild(c);
             if (tChild.lowUpdate(msg, startUpdateMillis))
@@ -414,8 +427,8 @@ public class EDDTableAggregateRows extends EDDTable{
                     tMin[dvi] = cEdv.destinationMin();
                     tMax[dvi] = cEdv.destinationMax();
                 } else {
-                    tMin[dvi] = Math.min(tMin[dvi], cEdv.destinationMin()); //if either is NaN -> NaN
-                    tMax[dvi] = Math.max(tMax[dvi], cEdv.destinationMax()); //if either is NaN -> NaN
+                    tMin[dvi] = tMin[dvi].min(cEdv.destinationMin()); 
+                    tMax[dvi] = tMax[dvi].max(cEdv.destinationMax()); 
                 }
             }
         }
@@ -618,6 +631,7 @@ public class EDDTableAggregateRows extends EDDTable{
 "  }\n" +
 "  wtmp {\n" +
 "    Float32 _FillValue -9999999.0;\n" +
+"    Float32 actual_range 4.3, 32.6;\n" +
 "    Float64 colorBarMaximum 32.0;\n" +
 "    Float64 colorBarMinimum 0.0;\n" +
 "    String comment \"Sea surface temperature (Celsius). For sensor depth, see Hull Description.\";\n" +
@@ -887,19 +901,45 @@ expected =
     }
 
 
-     
     /**
-     * This tests the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @throws Throwable if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void test() throws Throwable {
-        String2.log("\n****************** EDDTableAggregateRows.test() *****************\n");
-        testVerboseOn();
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDTableAggregateRows.test(" + interactive + ") test=";
 
-/* for releases, this line should have open/close comment */
-        //always done        
-        testBasic();
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) testBasic();
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

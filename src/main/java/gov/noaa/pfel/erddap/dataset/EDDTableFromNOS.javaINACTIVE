@@ -124,6 +124,7 @@ public class EDDTableFromNOS extends EDDTable{
             tRowElementXPath = null;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
+        String tAddVariablesWhere = null;
 
         //process the tags
         String startOfTags = xmlReader.allTags();
@@ -175,6 +176,8 @@ public class EDDTableFromNOS extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
 
             else xmlReader.unexpectedTagException();
         }
@@ -185,8 +188,8 @@ public class EDDTableFromNOS extends EDDTable{
 
         return new EDDTableFromNOS(tDatasetID, tAccessibleTo, tGraphsAccessibleTo,
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tGlobalAttributes,
-            ttDataVariables,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere,
+            tGlobalAttributes, ttDataVariables,
             tReloadEveryNMinutes, tLocalSourceUrl,
             tXmlns, tGetWhat, tWsdlUrl, tRequestTimeFormat, tRowElementXPath);
     }
@@ -257,7 +260,7 @@ public class EDDTableFromNOS extends EDDTable{
      *      <li> a java.time.format.DateTimeFormatter string
      *        (which is compatible with java.text.SimpleDateFormat) describing how to interpret 
      *        string times  (e.g., the ISO8601TZ_FORMAT "yyyy-MM-dd'T'HH:mm:ssZ", see 
-     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/DateTimeFomatter.html or 
+     *        https://docs.oracle.com/javase/8/docs/api/index.html?java/time/format/DateTimeFomatter.html or 
      *        https://docs.oracle.com/javase/8/docs/api/index.html?java/text/SimpleDateFormat.html)).
      *      </ul>
      *   The altitude and time variables (if any) should have actual_range metadata.
@@ -277,7 +280,7 @@ public class EDDTableFromNOS extends EDDTable{
     public EDDTableFromNOS(String tDatasetID, String tAccessibleTo, String tGraphsAccessibleTo,
         StringArray tOnChange, String tFgdcFile, String tIso19115File, 
         String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         Attributes tAddGlobalAttributes,
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
@@ -341,7 +344,7 @@ public class EDDTableFromNOS extends EDDTable{
         //*** get the station table   (many datasets may share this)
         if (stationTable == null) {
             stationTable = new Table();
-            InputStreamReader reader = new InputStreamReader(SSR.getUrlInputStream(stationUrl));            
+            Reader reader = new BufferedReader(new InputStreamReader(SSR.getUrlBufferedInputStream(stationUrl)));            
             stationTable.readXml(reader, false, //no validate since no .dtd
                 "/stations/station", new String[]{"name", "ID"}, true);
             Test.ensureEqual(stationTable.getColumnName(STATION_NAME_COL), "name", "\"name\" column not found in station table.");
@@ -485,14 +488,18 @@ public class EDDTableFromNOS extends EDDTable{
             }
         }
 
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
+
         //ensure the setup is valid
         ensureValid();
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
-            (reallyVerbose? "\n" + toString() : "") +
+            (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableFromNOS " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -652,9 +659,9 @@ public class EDDTableFromNOS extends EDDTable{
                     if (requestedBeginTime > requestedEndTime)  //epochSeconds
                         throw new SimpleException(MustBe.THERE_IS_NO_DATA + 
                             " (The requested beginTime=" +
-                            Calendar2.epochSecondsToIsoStringT(requestedBeginTime) +
+                            Calendar2.epochSecondsToIsoStringTZ(requestedBeginTime) +
                             " is after the requested endTime=" +
-                            Calendar2.epochSecondsToIsoStringT(requestedEndTime) + ".)");
+                            Calendar2.epochSecondsToIsoStringTZ(requestedEndTime) + ".)");
 
                     //break request into lots of requests for smaller time periods.
                     //NOS can't handle request >= 366 days 
@@ -664,8 +671,8 @@ public class EDDTableFromNOS extends EDDTable{
                         requestedBeginTime + maxDaysPerRequest * Calendar2.SECONDS_PER_DAY);
                     while (true) {
                         String msg = "  getting data for station=" + tID + 
-                            "  beginTime=" + Calendar2.epochSecondsToIsoStringT(tRequestedBeginTime) +
-                            "  endTime=" + Calendar2.epochSecondsToIsoStringT(tRequestedEndTime);
+                            "  beginTime=" + Calendar2.epochSecondsToIsoStringTZ(tRequestedBeginTime) +
+                            "  endTime=" + Calendar2.epochSecondsToIsoStringTZ(tRequestedEndTime);
                         if (reallyVerbose) String2.log(msg);
                         long getTime = System.currentTimeMillis();
                         int oldNRows = table.nRows();
@@ -693,7 +700,7 @@ public class EDDTableFromNOS extends EDDTable{
                         symbol = bodyElement.addChildElement(name);
                         GregorianCalendar gc = Calendar2.epochSecondsToGc(tRequestedBeginTime);
                         //SimpleDateFormats are not thread-safe, so have to synchronize their use
-                        synchronized (simpleRequestDateFormat) {
+                        synchronized(simpleRequestDateFormat) {
                             symbol.addTextNode(simpleRequestDateFormat.format(gc.getTime()));
                         }
 
@@ -701,7 +708,7 @@ public class EDDTableFromNOS extends EDDTable{
                         symbol = bodyElement.addChildElement(name);
                         gc = Calendar2.epochSecondsToGc(tRequestedEndTime);
                         //SimpleDateFormats are not thread-safe, so have to synchronize their use
-                        synchronized (simpleRequestDateFormat) {
+                        synchronized(simpleRequestDateFormat) {
                             symbol.addTextNode(simpleRequestDateFormat.format(gc.getTime()));
                         }
 
@@ -749,7 +756,7 @@ public class EDDTableFromNOS extends EDDTable{
                         //   Fine, but it also allows hh:mm, so then is more precise.
                         GregorianCalendar gc = Calendar2.epochSecondsToGc(tRequestedBeginTime);
                         //SimpleDateFormats are not thread-safe, so have to synchronize their use
-                        synchronized (simpleRequestDateFormat) {
+                        synchronized(simpleRequestDateFormat) {
                             requestSB.append("    <beginDate xmlns=\"\">" + 
                                 simpleRequestDateFormat.format(gc.getTime()) +
                                 "</beginDate> \n");
@@ -757,7 +764,7 @@ public class EDDTableFromNOS extends EDDTable{
 
                         gc = Calendar2.epochSecondsToGc(tRequestedEndTime);
                         //SimpleDateFormats are not thread-safe, so have to synchronize their use
-                        synchronized (simpleRequestDateFormat) {
+                        synchronized(simpleRequestDateFormat) {
                             requestSB.append("    <endDate xmlns=\"\">" + 
                                 simpleRequestDateFormat.format(gc.getTime()) +
                                 "</endDate> \n");
@@ -842,7 +849,7 @@ public class EDDTableFromNOS extends EDDTable{
      * @param doLongTest
      * @throws Throwable if trouble
      */
-    public static void test(boolean doLongTest) throws Throwable {
+    public static void basicTest(boolean doLongTest) throws Throwable {
         String2.log("\n****************** EDDTableFromNOS.test() *****************\n");
         verbose = true;
         reallyVerbose = true;
@@ -1033,7 +1040,7 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
 "    Float64 Northernmost_Northing 71.3601;[10]\n" +
 "    String sourceUrl \"https://opendap.co-ops.nos.noaa.gov/axis/services/Wind\";[10]\n" +
 "    Float64 Southernmost_Northing -14.28;[10]\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v29\";[10]\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v55\";[10]\n" +
 "    String summary \"[Normally, the summary describes the dataset. Here, it describes[10]\n" +
 "the server.][10]\n" +
 "NOS CO-OPS has developed a web-based application that serves as an[10]\n" +
@@ -1463,7 +1470,7 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
         symbol = bodyElement.addChildElement(name);
         GregorianCalendar gc = Calendar2.epochSecondsToGc(tRequestedBeginTime);
         //SimpleDateFormats are not thread-safe, so have to synchronize their use
-        synchronized (simpleRequestDateFormat) {
+        synchronized(simpleRequestDateFormat) {
             symbol.addTextNode(simpleRequestDateFormat.format(gc.getTime()));
         }
 
@@ -1471,7 +1478,7 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
         symbol = bodyElement.addChildElement(name);
         gc = Calendar2.epochSecondsToGc(tRequestedEndTime);
         //SimpleDateFormats are not thread-safe, so have to synchronize their use
-        synchronized (simpleRequestDateFormat) {
+        synchronized(simpleRequestDateFormat) {
             symbol.addTextNode(simpleRequestDateFormat.format(gc.getTime()));
         }
 
@@ -1493,7 +1500,7 @@ today + " " + EDStatic.erddapUrl + //in tests, always use non-https url
         String2.log("\nresponse=\n" + response);
 /*
 <?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.o
-rg/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+rg/2001/XMLSchema" xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance">
  <soapenv:Body>
   <ns1:exportStationCodesXMLResponse soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:ns1="http://cdmo.baruch.sc.edu/
 webservices/xmldatarequest.cfc?wsdl">
@@ -1557,7 +1564,7 @@ webservices/xmldatarequest.cfc?wsdl">
         requestSoap(wsdlUrl, sourceUrl, getWhat);
 /*
 <?xml version="1.0" encoding="utf-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.o
-rg/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+rg/2001/XMLSchema" xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance">
  <soapenv:Body>
   <ns1:exportStationCodesXMLResponse soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:ns1="http://cdmo.baruch.sc.edu/
 webservices/xmldatarequest.cfc?wsdl">
@@ -1625,7 +1632,7 @@ webservices/xmldatarequest.cfc?wsdl">
 
         if (testMode && getWhat.equals("exportStationCodesXML")) {
             String2.log("\n*** getting station codes from " + stationCodesFileName); Math2.sleep(3000);
-            is = new FileInputStream(stationCodesFileName);
+            is = File2.getDecompressedBufferedInputStream(stationCodesFileName);
 
         } else {
 
@@ -1656,71 +1663,119 @@ webservices/xmldatarequest.cfc?wsdl">
 
             //one time: store stationCodes in a file
             if (false) {
-                FileOutputStream fos = new FileOutputStream(stationCodesFileName);
-                receiveMessage.writeTo(fos);
-                fos.close();
+                OutputStream fos = new BufferedOutputStream(new FileOutputStream(stationCodesFileName));
+                try {
+                    receiveMessage.writeTo(fos);
+                } finally {
+                    fos.close();
+                }
             }
         }
 
         Table table = new Table();
         SimpleXMLReader xmlReader = new SimpleXMLReader(is);
+        try {
 
-        //read to <data>
-        String tags;
-        do {
-            xmlReader.nextTag();
-            tags = xmlReader.allTags();
-            //if (reallyVerbose) String2.log("  tags=" + tags);
-        } while (!tags.endsWith("<data>"));
+            //read to <data>
+            String tags;
+            do {
+                xmlReader.nextTag();
+                tags = xmlReader.allTags();
+                //if (reallyVerbose) String2.log("  tags=" + tags);
+            } while (!tags.endsWith("<data>"));
 
-        String startOfTags = xmlReader.allTags();
-        int startOfTagsN = xmlReader.stackSize();
-        int startOfTagsLength = startOfTags.length();
-        int row = -1, col = -1, nCols = -1;
-        boolean usual = false;
-        while (true) {
-            xmlReader.nextTag();
-            tags = xmlReader.allTags();
-//            if (reallyVerbose) String2.log("  tags=" + tags);
-            if (xmlReader.stackSize() == startOfTagsN) 
-                break; //the </data> tag
-            String localTags = tags.substring(startOfTagsLength);
+            String startOfTags = xmlReader.allTags();
+            int startOfTagsN = xmlReader.stackSize();
+            int startOfTagsLength = startOfTags.length();
+            int row = -1, col = -1, nCols = -1;
+            boolean usual = false;
+            while (true) {
+                xmlReader.nextTag();
+                tags = xmlReader.allTags();
+    //            if (reallyVerbose) String2.log("  tags=" + tags);
+                if (xmlReader.stackSize() == startOfTagsN) 
+                    break; //the </data> tag
+                String localTags = tags.substring(startOfTagsLength);
 
-            //try to make the tag names as consistent, descriptive and readable as possible
-            if      (localTags.equals("<r>")) {
-                col = -1;
-            } else if (localTags.equals("</r>")) {
-                if (row == -1) {
-                    nCols = table.nColumns();
-                } else if ((col+1) != nCols) {
-                    throw new SimpleException(
-                        "Row=" + row + " had the wrong number of columns (" + (col+1) + "!=" + nCols + 
-                        ") on XML line #" + xmlReader.lineNumber() + ".");
-                }
-                row++;
-            } else if (localTags.equals("<r><c>")) {
-                col++;
-                String v = xmlReader.attributeValue("v");
-                if (v == null)
-                    throw new SimpleException(
-                        "Unexpected response from server: no 'v' attribute for <c> tag on XML line #" +  
-                        xmlReader.lineNumber() + ".");
-//                if (reallyVerbose) String2.log("    v=\"" + v + "\"");
-                v = v.trim();
-                if (row == -1) {
-                    table.addColumn(v, new StringArray());
+                //try to make the tag names as consistent, descriptive and readable as possible
+                if      (localTags.equals("<r>")) {
+                    col = -1;
+                } else if (localTags.equals("</r>")) {
+                    if (row == -1) {
+                        nCols = table.nColumns();
+                    } else if ((col+1) != nCols) {
+                        throw new SimpleException(
+                            "Row=" + row + " had the wrong number of columns (" + (col+1) + "!=" + nCols + 
+                            ") on XML line #" + xmlReader.lineNumber() + ".");
+                    }
+                    row++;
+                } else if (localTags.equals("<r><c>")) {
+                    col++;
+                    String v = xmlReader.attributeValue("v");
+                    if (v == null)
+                        throw new SimpleException(
+                            "Unexpected response from server: no 'v' attribute for <c> tag on XML line #" +  
+                            xmlReader.lineNumber() + ".");
+    //                if (reallyVerbose) String2.log("    v=\"" + v + "\"");
+                    v = v.trim();
+                    if (row == -1) {
+                        table.addColumn(v, new StringArray());
+                    } else {
+                        table.getColumn(col).addString(v.equals("null")? "" : v);
+                    }
+                } else if (localTags.equals("<r></c>")) {
                 } else {
-                    table.getColumn(col).addString(v.equals("null")? "" : v);
+                    xmlReader.unexpectedTagException();
                 }
-            } else if (localTags.equals("<r></c>")) {
-            } else {
-                xmlReader.unexpectedTagException();
             }
+        } finally {
+            xmlReader.close();
         }
 
         if (verbose) String2.log("\n***table=\n" + table.saveAsCsvASCIIString());
 
         return table;
+    }
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 0;
+        String msg = "\n^^^ EDDTableFromNOS.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    if (test ==  0) basicTest(doSlowTestsToo);
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.IntArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -127,7 +128,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
                 throw new SimpleException("There is no sourceDataName=" + name +
                    ". The available names are [" + table.getColumnNamesCSSVString() + "].");
             sourceDataAttributes[dni].add(table.columnAttributes(tc));
-            Test.ensureEqual(table.getColumn(tc).elementClassString(), 
+            Test.ensureEqual(table.getColumn(tc).elementTypeString(), 
                 sourceDataTypes[dni], "Unexpected source dataType for sourceDataName=" +
                 name + ".");
         }
@@ -139,6 +140,8 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
      * @param tFullName the name of the decompressed data file
      * @param sourceAxisNames the names of the desired source axis variables.
      *   If there is a special axis0, this will not include axis0's name.
+     * @param sourceDataNames When there are unnamed dimensions, this is
+     *   to find out the shape of the variable to make index values 0, 1, size-1.
      * @return a PrimitiveArray[] with the results (with the requested
      *   sourceDataTypes). It needn't set sourceGlobalAttributes or
      *   sourceDataAttributes (but see getSourceMetadata).
@@ -146,7 +149,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
      * this doesn't call addBadFile or requestReloadASAP().
      */
     public PrimitiveArray[] lowGetSourceAxisValues(String tFullName,
-            StringArray sourceAxisNames) throws Throwable {
+            StringArray sourceAxisNames, StringArray sourceDataNames) throws Throwable {
 
         //for this class, only elapsedTime is available
         if (sourceAxisNames.size() != 1 ||
@@ -182,9 +185,9 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
      * @return a PrimitiveArray[] with an element for each tDataVariable with
      *   the dataValues.
      *   <br>The dataValues are straight from the source, not modified.
-     *   <br>The primitiveArray dataTypes are usually the sourceDataTypeClass, but
+     *   <br>The primitiveArray dataTypes are usually the sourceDataPAType, but
      *   can be any type. EDDGridFromFiles will convert to the
-     *   sourceDataTypeClass.
+     *   sourceDataPAType.
      *   <br>Note the lack of axisVariable values!
      * @throws Throwable if trouble (notably, WaitThenTryAgainException). If
      *   there is trouble, this doesn't call addBadFile or requestReloadASAP().
@@ -220,7 +223,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
                 if (Double.isNaN(mv))
                     mv = edv.sourceMissingValue();
                 paa[dvi] = PrimitiveArray.factory(
-                    edv.sourceDataTypeClass(), howManyRows, "" + mv);
+                    edv.sourceDataPAType(), howManyRows, "" + mv);
             }
         }            
         return paa;
@@ -326,13 +329,13 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
         Attributes sourceAtts = new Attributes();
         Attributes addAtts = (new Attributes()).
             add("units", "seconds since 1970-01-01T00:00:00Z");
-        Class tClass = null;
+        PAType tPAType = null;
         if (extractDataType.startsWith("timeFormat=")) {
-            tClass = String.class;
+            tPAType = PAType.STRING;
         } else {
-            tClass = PrimitiveArray.elementStringToClass(extractDataType);
+            tPAType = PAType.fromCohortString(extractDataType);
         }
-        PrimitiveArray pa = PrimitiveArray.factory(tClass, 1, false);
+        PrimitiveArray pa = PrimitiveArray.factory(tPAType, 1, false);
         axisSourceTable.addColumn(0, 
             //***fileName,dataType,extractRegex,captureGroupNumber 
             "***fileName," + String2.toJson(extractDataType) + "," + 
@@ -365,15 +368,14 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
                 addAtts.set("ioos_category", "Other");
             if (pa.isIntegerType()) {
                 addAtts
-                    .add("colorBarMinimum", Math2.niceDouble(-pa.missingValue(), 2))
-                    .add("colorBarMaximum", Math2.niceDouble( pa.missingValue(), 2));
+                    .add("colorBarMinimum", Math2.niceDouble(-pa.missingValueAsDouble(), 2))
+                    .add("colorBarMaximum", Math2.niceDouble( pa.missingValueAsDouble(), 2));
             }
             dataSourceTable.addColumn(col - 1, varName, pa, sourceAtts);
             dataAddTable.addColumn(   col - 1, varName, pa, addAtts);
 
             //add missing_value and/or _FillValue if needed
             addMvFvAttsIfNeeded(varName, pa, sourceAtts, addAtts);
-
         }
 
         //after dataVariables known, add global attributes in the axisAddTable
@@ -415,8 +417,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
             "    <metadataFrom>last</metadataFrom>\n" +
             "    <matchAxisNDigits>" + tMatchNDigits + "</matchAxisNDigits>\n" +
             "    <dimensionValuesInMemory>false</dimensionValuesInMemory>\n" +
-            "    <fileTableInMemory>false</fileTableInMemory>\n" +
-            "    <accessibleViaFiles>false</accessibleViaFiles>\n");
+            "    <fileTableInMemory>false</fileTableInMemory>\n");
 
         sb.append(writeAttsForDatasetsXml(false, globalSourceAtts, "    "));
         sb.append(writeAttsForDatasetsXml(true,  globalAddAtts,    "    "));
@@ -437,7 +438,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
     /** 
      * This tests generateDatasetsXml. 
      * The test files are from Jim Potemra 
-     * http://oos.soest.hawaii.edu/erddap/files/aco_acoustic/
+     * https://pae-paha.pacioos.hawaii.edu/erddap/files/aco_acoustic/
      * Note that the first 3 files (for :00, :05, :10 minutes) have float data,
      *   seem to be have almost all ~0,
      *   whereas the :15 and :20 files have audible short data. 
@@ -472,7 +473,6 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "    <matchAxisNDigits>20</matchAxisNDigits>\n" +
 "    <dimensionValuesInMemory>false</dimensionValuesInMemory>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"audioBigEndian\">false</att>\n" +
 "        <att name=\"audioChannels\" type=\"int\">1</att>\n" +
@@ -487,9 +487,9 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "        <att name=\"Conventions\">COARDS, CF-1.6, ACDD-1.3</att>\n" +
 "        <att name=\"infoUrl\">???</att>\n" +
 "        <att name=\"institution\">???</att>\n" +
-"        <att name=\"keywords\">channel, channel_1, data, elapsedTime, local, source, time</att>\n" +
+"        <att name=\"keywords\">channel, channel_1, data, elapsedtime, local, source, time</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"summary\">Audio data from a local source.</att>\n" +
 "        <att name=\"title\">Audio data from a local source.</att>\n" +
 "    </addAttributes>\n" +
@@ -560,7 +560,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
     /** 
      * This tests generateDatasetsXml. 
      * The test files are from Jim Potemra 
-     * http://oos.soest.hawaii.edu/erddap/files/aco_acoustic/
+     * https://pae-paha.pacioos.hawaii.edu/erddap/files/aco_acoustic/
      * Note that the first 3 files (for :00, :05, :10 minutes) have float data,
      *   seem to be have almost all ~0,
      *   whereas the :15 and :20 files have audible short data. 
@@ -571,7 +571,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
         String2.log("\n*** EDDGridFromAudioFiles.testGenerateDatasetsXml2");
 
         //test files are from Jim Potemra 
-        //http://oos.soest.hawaii.edu/erddap/files/aco_acoustic/
+        //https://pae-paha.pacioos.hawaii.edu/erddap/files/aco_acoustic/
         //Note that the first 3 files (for :00, :05, :10 minutes) have float data,
         //  seem to be have almost all ~0,
         //  whereas the :15 and :20 files have audible short data. 
@@ -602,7 +602,6 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "    <matchAxisNDigits>20</matchAxisNDigits>\n" +
 "    <dimensionValuesInMemory>false</dimensionValuesInMemory>\n" +
 "    <fileTableInMemory>false</fileTableInMemory>\n" +
-"    <accessibleViaFiles>false</accessibleViaFiles>\n" +
 "    <!-- sourceAttributes>\n" +
 "        <att name=\"audioBigEndian\">false</att>\n" +
 "        <att name=\"audioChannels\" type=\"int\">1</att>\n" +
@@ -617,9 +616,9 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "        <att name=\"Conventions\">COARDS, CF-1.6, ACDD-1.3</att>\n" +
 "        <att name=\"infoUrl\">???</att>\n" +
 "        <att name=\"institution\">???</att>\n" +
-"        <att name=\"keywords\">channel, channel_1, data, elapsedTime, local, source, time</att>\n" +
+"        <att name=\"keywords\">channel, channel_1, data, elapsedtime, local, source, time</att>\n" +
 "        <att name=\"license\">[standard]</att>\n" +
-"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v55</att>\n" +
+"        <att name=\"standard_name_vocabulary\">CF Standard Name Table v70</att>\n" +
 "        <att name=\"summary\">Audio data from a local source.</att>\n" +
 "        <att name=\"title\">Audio data from a local source.</att>\n" +
 "    </addAttributes>\n" +
@@ -651,6 +650,7 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "            <att name=\"long_name\">Channel 1</att>\n" +
 "        </sourceAttributes -->\n" +
 "        <addAttributes>\n" +
+"            <att name=\"_FillValue\" type=\"short\">32767</att>\n" +
 "            <att name=\"colorBarMaximum\" type=\"double\">33000.0</att>\n" +
 "            <att name=\"colorBarMinimum\" type=\"double\">-33000.0</att>\n" +
 "            <att name=\"ioos_category\">Other</att>\n" +
@@ -708,6 +708,9 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 
 
         //.dds
+        tName = edd.makeNewFileForDapQuery(null, null, "", 
+            dir, edd.className() + "_", ".dds"); 
+        results = String2.directReadFrom88591File(dir + tName);
         expected = 
 "Dataset {\n" +
 "  Float64 time[time = 2];\n" +
@@ -720,12 +723,12 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "      Float64 elapsedTime[elapsedTime = 28800000];\n" +
 "  } channel_1;\n" +
 "} testGridWav;\n";
-        tName = edd.makeNewFileForDapQuery(null, null, "", 
-            dir, edd.className() + "_", ".dds"); 
-        results = String2.directReadFrom88591File(dir + tName);
         Test.ensureEqual(results, expected, "results=\n" + results);
 
         //*** .das
+        tName = edd.makeNewFileForDapQuery(null, null, "", 
+            dir, edd.className() + "_", ".das"); 
+        results = String2.directReadFrom88591File(dir + tName);
         expected = 
 "Attributes {\n" +
 "  time {\n" +
@@ -763,10 +766,6 @@ public class EDDGridFromAudioFiles extends EDDGridFromFiles {
 "    String defaultDataQuery \"&time=min(time)\";\n" +
 "    String defaultGraphQuery \"channel_1[0][(0):(1)]&.draw=lines&.vars=elapsedTime|time\";\n" +
 "    String history \"" + today;
-
-        tName = edd.makeNewFileForDapQuery(null, null, "", 
-            dir, edd.className() + "_", ".das"); 
-        results = String2.directReadFrom88591File(dir + tName);
         Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
 
 expected = "http://localhost:8080/cwexperimental/griddap/testGridWav.das\";\n" +
@@ -781,7 +780,7 @@ expected = "http://localhost:8080/cwexperimental/griddap/testGridWav.das\";\n" +
 "particular purpose, or assumes any legal liability for the accuracy,\n" +
 "completeness, or usefulness, of this information.\";\n" +
 "    String sourceUrl \"(local files)\";\n" +
-"    String standard_name_vocabulary \"CF Standard Name Table v55\";\n" +
+"    String standard_name_vocabulary \"CF Standard Name Table v70\";\n" +
 "    String summary \"Audio data from a local source.\";\n" +
 "    String time_coverage_end \"2014-11-19T00:20:00Z\";\n" +
 "    String time_coverage_start \"2014-11-19T00:15:00Z\";\n" +
@@ -997,16 +996,52 @@ expected =
 
     }
 
-    /** This tests this class. */
-    public static void test() throws Throwable {
-/* for releases, this line should have open/close comment */
-        testGenerateDatasetsXml();
-        testGenerateDatasetsXml2();
-        //oneTimeFixFiles();  
-        testBasic(true);
-        testBasic(false);
-        testByteRangeRequest();
-        /* */
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? 0 : 2;
+        String msg = "\n^^^ EDDGridFromAudioFiles.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    if (test ==  0) testBasic(true);
+                    if (test ==  1) testBasic(false);
+
+                } else {
+                    if (test ==  0) testGenerateDatasetsXml();
+                    if (test ==  1) testGenerateDatasetsXml2();
+                    if (test ==  2) testByteRangeRequest();
+
+                    //not usually run:
+                    //if (test == 1000) oneTimeFixFiles();  
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

@@ -7,6 +7,7 @@ package gov.noaa.pfel.erddap.dataset;
 import com.cohort.array.Attributes;
 import com.cohort.array.ByteArray;
 import com.cohort.array.DoubleArray;
+import com.cohort.array.PAType;
 import com.cohort.array.PrimitiveArray;
 import com.cohort.array.StringArray;
 import com.cohort.util.Calendar2;
@@ -91,7 +92,8 @@ public class EDDTableCopy extends EDDTable{
         boolean tFileTableInMemory = false;
         String tDefaultDataQuery = null;
         String tDefaultGraphQuery = null;
-        boolean tAccessibleViaFiles = false;
+        String tAddVariablesWhere = null;
+        boolean tAccessibleViaFiles = EDStatic.defaultAccessibleViaFiles;
         int tStandardizeWhat = Integer.MAX_VALUE; //not specified by user
         int tnThreads = -1; //interpret invalid values (like -1) as EDStatic.nTableThreads
 
@@ -137,6 +139,8 @@ public class EDDTableCopy extends EDDTable{
             else if (localTags.equals("</defaultDataQuery>")) tDefaultDataQuery = content; 
             else if (localTags.equals( "<defaultGraphQuery>")) {}
             else if (localTags.equals("</defaultGraphQuery>")) tDefaultGraphQuery = content; 
+            else if (localTags.equals( "<addVariablesWhere>")) {}
+            else if (localTags.equals("</addVariablesWhere>")) tAddVariablesWhere = content; 
             else if (localTags.equals( "<accessibleViaFiles>")) {}
             else if (localTags.equals("</accessibleViaFiles>")) tAccessibleViaFiles = String2.parseBoolean(content); 
             else if (localTags.equals( "<standardizeWhat>")) {}
@@ -146,7 +150,7 @@ public class EDDTableCopy extends EDDTable{
             else if (localTags.equals("<dataset>")) {
                 if ("false".equals(xmlReader.attributeValue("active"))) {
                     //skip it - read to </dataset>
-                    if (verbose) String2.log("  skipping " + xmlReader.attributeValue("datasetID") + 
+                    if (verbose) String2.log("  skipping datasetID=" + xmlReader.attributeValue("datasetID") + 
                         " because active=\"false\".");
                     while (xmlReader.stackSize() != startOfTagsN + 1 ||
                            !xmlReader.allTags().substring(startOfTagsLength).equals("</dataset>")) {
@@ -179,7 +183,8 @@ public class EDDTableCopy extends EDDTable{
         return new EDDTableCopy(tDatasetID, 
             tAccessibleTo, tGraphsAccessibleTo, 
             tOnChange, tFgdcFile, tIso19115File, tSosOfferingPrefix,
-            tDefaultDataQuery, tDefaultGraphQuery, tReloadEveryNMinutes, tStandardizeWhat,
+            tDefaultDataQuery, tDefaultGraphQuery, tAddVariablesWhere, 
+            tReloadEveryNMinutes, tStandardizeWhat,
             tExtractDestinationNames, tOrderExtractBy, tSourceNeedsExpandedFP_EQ,
             tSourceEdd, tFileTableInMemory, tAccessibleViaFiles, tnThreads);
     }
@@ -229,7 +234,7 @@ public class EDDTableCopy extends EDDTable{
     public EDDTableCopy(String tDatasetID, 
         String tAccessibleTo, String tGraphsAccessibleTo, 
         StringArray tOnChange, String tFgdcFile, String tIso19115File, String tSosOfferingPrefix,
-        String tDefaultDataQuery, String tDefaultGraphQuery, 
+        String tDefaultDataQuery, String tDefaultGraphQuery, String tAddVariablesWhere, 
         int tReloadEveryNMinutes, int tStandardizeWhat,
         String tExtractDestinationNames, String tOrderExtractBy,
         Boolean tSourceNeedsExpandedFP_EQ,
@@ -257,6 +262,7 @@ public class EDDTableCopy extends EDDTable{
         setReloadEveryNMinutes(tReloadEveryNMinutes);
         standardizeWhat = tStandardizeWhat < 0 || tStandardizeWhat == Integer.MAX_VALUE?
             defaultStandardizeWhat() : tStandardizeWhat;
+        accessibleViaFiles = EDStatic.filesActive && tAccessibleViaFiles;
         nThreads = tnThreads; //interpret invalid values (like -1) as EDStatic.nTableThreads
 
         //check some things
@@ -325,7 +331,7 @@ public class EDDTableCopy extends EDDTable{
                     int nCols = table.nColumns();
                     boolean isString[] = new boolean[nCols];
                     for (int col = 0; col < nCols; col++) 
-                        isString[col] = table.getColumn(col).elementClass() == String.class;
+                        isString[col] = table.getColumn(col).elementType() == PAType.STRING;
 
                     //make a task for each row (if the file doesn't already exist)
                     for (int row = 0; row < nRows; row++) {
@@ -415,12 +421,12 @@ public class EDDTableCopy extends EDDTable{
             Table table = new Table();
             String2.log("!!! sourceEDD is unavailable, so getting dataVariable info from youngest file\n" + 
                 getFromName);
-            table.readFlatNc(getFromName, null, 0);  //null=allVars, standardizeWhat=0 because data is already unpacked
+            table.readFlatNc(getFromName, null, 0);  //null=allVars, standardizeWhat=0 because data is already unpacked. 
             nDataVariables = table.nColumns();
             tDataVariables = new Object[nDataVariables][];
             for (int dv = 0; dv < nDataVariables; dv++) {
                 tDataVariables[dv] = new Object[]{table.getColumnName(dv), table.getColumnName(dv), 
-                    new Attributes(), table.getColumn(dv).elementClassString()};
+                    new Attributes(), table.getColumn(dv).elementTypeString()};
             }
         } else {
             //get info from sourceEdd, which is a standard EDDTable
@@ -461,11 +467,12 @@ public class EDDTableCopy extends EDDTable{
             tReloadEveryNMinutes, 
             copyDatasetDir, fileNameRegex, recursive, ".*", //pathRegex is for original source files 
             EDDTableFromFiles.MF_LAST,
-            "", 1, 2, "", //columnNamesRow and firstDataRow are irrelevant for .nc files, but must be valid values
+            "", "", "", 1, 2, "", //columnNamesRow and firstDataRow are irrelevant for .nc files, but must be valid values
             null, null, null, null,  //extract from fileNames
             sortedColumn, 
             tExtractDestinationNames,
-            tSourceNeedsExpandedFP_EQ, tFileTableInMemory, standardizeWhat, nThreads); 
+            tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
+            tAccessibleViaFiles, standardizeWhat, nThreads); 
 
         //copy things from localEdd 
         sourceNeedsExpandedFP_EQ = tSourceNeedsExpandedFP_EQ;
@@ -496,12 +503,8 @@ public class EDDTableCopy extends EDDTable{
         sosMinLon        = localEdd.sosMinLon; 
         sosMaxLon        = localEdd.sosMaxLon;
 
-        //accessibleViaFiles
-        if (EDStatic.filesActive && tAccessibleViaFiles) {
-            accessibleViaFilesDir = copyDatasetDir;
-            accessibleViaFilesRegex = fileNameRegex;
-            accessibleViaFilesRecursive = recursive;
-        }
+        //make addVariablesWhereAttNames and addVariablesWhereAttValues
+        makeAddVariablesWhereAttNamesAndValues(tAddVariablesWhere);
 
         //ensure the setup is valid
         ensureValid(); //this ensures many things are set, e.g., sourceUrl
@@ -511,10 +514,11 @@ public class EDDTableCopy extends EDDTable{
             tryToSubscribeToChildFromErddap(sourceEdd);
 
         //finally
+        long cTime = System.currentTimeMillis() - constructionStartMillis;
         if (verbose) String2.log(
             (debugMode? "\n" + toString() : "") +
             "\n*** EDDTableCopy " + datasetID + " constructor finished. TIME=" + 
-            (System.currentTimeMillis() - constructionStartMillis) + "ms\n"); 
+            cTime + "ms" + (cTime >= 10000? "  (>10s!)" : "") + "\n"); 
 
     }
 
@@ -533,13 +537,13 @@ public class EDDTableCopy extends EDDTable{
         Object[][] tDataVariables,
         int tReloadEveryNMinutes,
         String tFileDir, String tFileNameRegex, boolean tRecursive, String tPathRegex, 
-        String tMetadataFrom, String tCharset, 
+        String tMetadataFrom, String tCharset, String skipHeaderToRegex, String skipLinesRegex,
         int tColumnNamesRow, int tFirstDataRow, String tColumnSeparator,
         String tPreExtractRegex, String tPostExtractRegex, String tExtractRegex, 
         String tColumnNameForExtract,
         String tSortedColumnSourceName, String tSortFilesBySourceNames, 
         boolean tSourceNeedsExpandedFP_EQ, boolean tFileTableInMemory, 
-        int tStandardizeWhat, int tnThreads) 
+        boolean tAccessibleViaFiles, int tStandardizeWhat, int tnThreads) 
         throws Throwable {
 
         return new EDDTableFromNcFiles(tDatasetID, 
@@ -549,15 +553,17 @@ public class EDDTableCopy extends EDDTable{
             tAddGlobalAttributes, 
             tDataVariables, tReloadEveryNMinutes, 0, //tUpdateEveryNMillis,
             tFileDir, tFileNameRegex, tRecursive, tPathRegex, tMetadataFrom,
-            tCharset, tColumnNamesRow, tFirstDataRow, tColumnSeparator, 
+            tCharset, skipHeaderToRegex, skipLinesRegex,
+            tColumnNamesRow, tFirstDataRow, tColumnSeparator, 
             tPreExtractRegex, tPostExtractRegex, tExtractRegex, 
             tColumnNameForExtract,
             tSortedColumnSourceName, tSortFilesBySourceNames,
             tSourceNeedsExpandedFP_EQ, tFileTableInMemory, 
-            false, //accessibleViaFiles is always false. parent may or may not be.  
+            tAccessibleViaFiles,
             false, //removeMVrows is irrelevant for EDDTableFromNcFiles
             tStandardizeWhat, tnThreads, 
-            "", -1, ""); //cacheFromUrl, cacheSizeGB, cachePartialPathRegex
+            "", -1, "", //cacheFromUrl, cacheSizeGB, cachePartialPathRegex
+            null); //addVariablesWhere
     }
 
 
@@ -584,21 +590,37 @@ public class EDDTableCopy extends EDDTable{
     }
 
     /** 
-     * This returns a fileTable (formatted like 
-     * FileVisitorDNLS.oneStep(tDirectoriesToo=false, size is LongArray,
-     * and lastMod is LongArray of epochMillis)
+     * This returns a fileTable 
      * with valid files (or null if unavailable or any trouble).
      * This is a copy of any internal data, so client can modify the contents.
      *
      * @param nextPath is the partial path (with trailing slash) to be appended 
      *   onto the local fileDir (or wherever files are, even url).
      * @return null if trouble,
-     *   or Object[2] where [0] is a sorted DNLS table which just has files in fileDir + nextPath and 
-     *   [1] is a sorted String[] with the short names of directories that are 1 level lower.
+     *   or Object[3] where 
+     *   [0] is a sorted table with file "Name" (String), "Last modified" (long millis), 
+     *     "Size" (long), and "Description" (String, but usually no content),
+     *   [1] is a sorted String[] with the short names of directories that are 1 level lower, and
+     *   [2] is the local directory corresponding to this (or null, if not a local dir).
      */
     public Object[] accessibleViaFilesFileTable(String nextPath) {
+        if (!accessibleViaFiles)
+            return null;
         return localEdd.accessibleViaFilesFileTable(nextPath);
     }
+
+    /**
+     * This converts a relativeFileName into a full localFileName (which may be a url).
+     * 
+     * @param relativeFileName (for most EDDTypes, just offset by fileDir)
+     * @return full localFileName or null if any error (including, file isn't in
+     *    list of valid files for this dataset)
+     */
+     public String accessibleViaFilesGetLocal(String relativeFileName) {
+         if (!accessibleViaFiles)
+             return null;
+         return localEdd.accessibleViaFilesGetLocal(relativeFileName);
+     }
 
     /**
      * The basic tests of this class (erdGlobecBottle).
@@ -680,6 +702,7 @@ public class EDDTableCopy extends EDDTable{
 "  bottle_posn {\n" +
 "    String _CoordinateAxisType \"Height\";\n" +
 "    Byte _FillValue 127;\n" +
+"    String _Unsigned \"false\";\n" +
 "    Byte actual_range 0, 12;\n" +
 "    String axis \"Z\";\n" +
 "    Float64 colorBarMaximum 12.0;\n" +
@@ -1075,34 +1098,28 @@ public class EDDTableCopy extends EDDTable{
             //tName = edd.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
             //    edd.className() + "_Data", ".dods"); 
             //SSR.displayInBrowser("file://" + EDStatic.fullTestCacheDirectory + tName);
-            try {
-                String2.log("\ndo .dods test");
-                String tUrl = EDStatic.erddapUrl + //in tests, always use non-https url
-                    "/tabledap/" + edd.datasetID();
-                //for diagnosing during development:
-                //String2.log(String2.annotatedString(SSR.getUrlResponseStringUnchanged(
-                //    "https://oceanwatch.pfeg.noaa.gov/opendap/GLOBEC/GLOBEC_vpt.dods?stn_id&unique()")));
-                //String2.log("\nDAS RESPONSE=" + SSR.getUrlResponseStringUnchanged(tUrl + ".das?" + userDapQuery));
-                //String2.log("\nDODS RESPONSE=" + String2.annotatedString(SSR.getUrlResponseStringUnchanged(tUrl + ".dods?" + userDapQuery)));
+            String2.log("\ndo .dods test");
+            String tUrl = EDStatic.erddapUrl + //in tests, always use non-https url
+                "/tabledap/" + edd.datasetID();
+            //for diagnosing during development:
+            //String2.log(String2.annotatedString(SSR.getUrlResponseStringUnchanged(
+            //    "https://oceanwatch.pfeg.noaa.gov/opendap/GLOBEC/GLOBEC_vpt.dods?stn_id&unique()")));
+            //String2.log("\nDAS RESPONSE=" + SSR.getUrlResponseStringUnchanged(tUrl + ".das?" + userDapQuery));
+            //String2.log("\nDODS RESPONSE=" + String2.annotatedString(SSR.getUrlResponseStringUnchanged(tUrl + ".dods?" + userDapQuery)));
 
-                //test if table.readOpendapSequence works with Erddap opendap server
-                //!!!THIS READS DATA FROM ERDDAP SERVER RUNNING ON EDStatic.erddapUrl!!! //in tests, always use non-https url                
-                //!!!THIS IS NOT JUST A LOCAL TEST!!!
-                Table tTable = new Table();
-                tTable.readOpendapSequence(tUrl + "?" + userDapQuery, false);
-                Test.ensureEqual(tTable.globalAttributes().getString("title"), "GLOBEC NEP Rosette Bottle Data (2002)", "");
-                Test.ensureEqual(tTable.columnAttributes(2).getString("units"), EDV.TIME_UNITS, "");
-                Test.ensureEqual(tTable.getColumnNames(), new String[]{"longitude", "NO3", "time", "ship"}, "");
-                Test.ensureEqual(tTable.getFloatData(0, 0), -124.4f, "");
-                Test.ensureEqual(tTable.getFloatData(1, 0), 35.7f, "");
-                Test.ensureEqual(tTable.getDoubleData(2, 0), 1.02833814E9, "");
-                Test.ensureEqual(tTable.getStringData(3, 0), "New_Horizon", "");
-                String2.log("  .dods test succeeded");
-            } catch (Throwable t) {
-                String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                    "\nError accessing " + EDStatic.erddapUrl + //in tests, always use non-https url
-                    " and reading erddap as a data source."); 
-            }
+            //test if table.readOpendapSequence works with Erddap opendap server
+            //!!!THIS READS DATA FROM ERDDAP SERVER RUNNING ON EDStatic.erddapUrl!!! //in tests, always use non-https url                
+            //!!!THIS IS NOT JUST A LOCAL TEST!!!
+            Table tTable = new Table();
+            tTable.readOpendapSequence(tUrl + "?" + userDapQuery, false);
+            Test.ensureEqual(tTable.globalAttributes().getString("title"), "GLOBEC NEP Rosette Bottle Data (2002)", "");
+            Test.ensureEqual(tTable.columnAttributes(2).getString("units"), EDV.TIME_UNITS, "");
+            Test.ensureEqual(tTable.getColumnNames(), new String[]{"longitude", "NO3", "time", "ship"}, "");
+            Test.ensureEqual(tTable.getFloatData(0, 0), -124.4f, "");
+            Test.ensureEqual(tTable.getFloatData(1, 0), 35.7f, "");
+            Test.ensureEqual(tTable.getDoubleData(2, 0), 1.02833814E9, "");
+            Test.ensureEqual(tTable.getStringData(3, 0), "New_Horizon", "");
+            String2.log("  .dods test succeeded");
 
             //test .png
             tName = edd.makeNewFileForDapQuery(null, null, userDapQuery, EDStatic.fullTestCacheDirectory, 
@@ -1110,8 +1127,7 @@ public class EDDTableCopy extends EDDTable{
             SSR.displayInBrowser("file://" + EDStatic.fullTestCacheDirectory + tName);
 
         } catch (Throwable t) {
-            String2.pressEnterToContinue(MustBe.throwableToString(t) + 
-                "\n*** This EDDTableCopy test requires testTableCopy"); 
+            throw new RuntimeException("*** This EDDTableCopy test requires testTableCopy", t); 
         }
 
     } //end of testBasic
@@ -1316,25 +1332,169 @@ reallyVerbose=false;
     } //end of testRepPostDet
         
 
-    /**
-     * This tests the methods in this class.
-     *
-     * @throws Throwable if trouble
+   /**
+     * This tests the /files/ "files" system.
+     * This requires testTableCopy in the localhost ERDDAP.
      */
-    public static void test() throws Throwable {
-        String2.log("\n****************** EDDTableCopy.test() *****************\n");
-        testVerboseOn();
+    public static void testFiles() throws Throwable {
 
-/* for releases, this line should have open/close comment */
-        //always done
-        testBasic();    //tests testTableCopy dataset on local erddap
+        String2.log("\n*** EDDTableCopy.testFiles()\n");
+        String tDir = EDStatic.fullTestCacheDirectory;
+        String dapQuery, tName, start, query, results, expected;
+        int po;
 
-        //no longer active?
-        //testRepPostDet(true);  //checkSourceData 
-        //testRepPostDet(false); //checkSourceData (faster)
-        
-        //not usually done
+        try {
+            //get /files/datasetID/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableCopy/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"nh0207/,NaN,NaN,\n" +
+"w0205/,NaN,NaN,\n";
+            Test.ensureEqual(results, expected, "results=\n" + results);
 
+            //get /files/datasetID/
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableCopy/");
+            Test.ensureTrue(results.indexOf("nh0207&#x2f;")                > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("nh0207/")                     > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("w0205&#x2f;")                 > 0, "results=\n" + results);
+            Test.ensureTrue(results.indexOf("w0205/")                      > 0, "results=\n" + results);
+
+            //get /files/datasetID/subdir/.csv
+            results = SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableCopy/nh0207/.csv");
+            expected = 
+"Name,Last modified,Size,Description\n" +
+"1.nc,1429890814000,14112,\n" +
+"10.nc,1429890818000,14768,\n" +
+"100.nc,1429890854000,14440,\n";
+            Test.ensureEqual(results.substring(0, expected.length()), expected, "results=\n" + results);
+
+            //download a file in root
+
+            //download a file in subdir
+            results = String2.annotatedString(SSR.getUrlResponseStringNewline(
+                "http://localhost:8080/cwexperimental/files/testTableCopy/nh0207/100.nc").substring(0, 50));
+            expected = 
+"CDF[1][0][0][0][0][0][0][0][10]\n" +
+"[0][0][0][3][0][0][0][3]row[0][0][0][0][6][0][0][0][16]cruise_id_strlen[0][0][end]"; 
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent dataset
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Currently unknown datasetID=gibberish\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent directory
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testTableCopy/gibberish/");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testTableCopy/gibberish/\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: Resource not found: directory=gibberish/\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testTableCopy/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testTableCopy/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+            //try to download a non-existent file in existant subdir
+            try {
+                results = SSR.getUrlResponseStringNewline(
+                    "http://localhost:8080/cwexperimental/files/testTableCopy/nh0207/gibberish.csv");
+            } catch (Exception e) { 
+                results = e.toString();
+            }
+            expected = 
+"java.io.IOException: HTTP status code=404 java.io.FileNotFoundException: http://localhost:8080/cwexperimental/files/testTableCopy/nh0207/gibberish.csv\n" +
+"(Error {\n" +
+"    code=404;\n" +
+"    message=\"Not Found: File not found: gibberish.csv .\";\n" +
+"})";
+            Test.ensureEqual(results, expected, "results=\n" + results);
+
+ 
+
+        } catch (Throwable t) {
+            throw new RuntimeException("This test requires testTableCopy in the localhost ERDDAP.\n" +
+                "Unexpected error.", t); 
+        } 
+    }
+
+
+    /**
+     * This runs all of the interactive or not interactive tests for this class.
+     *
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
+     */
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 1;
+        String msg = "\n^^^ EDDTableCopy.test(" + interactive + ") test=";
+
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                    //no longer active
+                    //if (test == 1000) testRepPostDet(true);  //checkSourceData 
+                    //if (test == 1001) testRepPostDet(false); //checkSourceData (faster)
+
+                } else {
+                    if (test ==  0) testBasic();    //tests testTableCopy dataset on local erddap
+                    if (test ==  1) testFiles();    
+
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
+        }
     }
 
 }

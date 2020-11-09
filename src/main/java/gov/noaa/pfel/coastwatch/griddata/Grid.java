@@ -695,8 +695,8 @@ public class Grid  {
             double desiredMinLat, double desiredMaxLat,
             int desiredNLonPoints, int desiredNLatPoints)
             throws Exception {
-        //future: this cound accept data from files with different data types, e.g., float
-        //future: this cound accept data in different order (stored col-by-col, from lower left
+        //FUTURE: this cound accept data from files with different data types, e.g., float
+        //FUTURE: this cound accept data in different order (stored col-by-col, from lower left
 
         //ensure desired range is acceptable
         if (verbose) String2.log("Grid.readBinary");
@@ -924,7 +924,7 @@ switch to finally clause
      *
      * <p>.grd (GMT-style NetCDF) files are read with code in
      * netcdf-X.X.XX.jar which is part of the
-     * <a href="https://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html"
+     * <a href="https://www.unidata.ucar.edu/software/netcdf-java/"
      *  >NetCDF Java Library</a>
      * renamed as netcdf-latest.jar.
      * Put it in the classpath for the compiler and for Java.
@@ -1910,7 +1910,7 @@ switch to finally clause
      *
      * <p>.nc files are read with code in
      * netcdf-X.X.XX.jar which is part of the
-     * <a href="https://www.unidata.ucar.edu/software/thredds/current/netcdf-java/index.html">NetCDF Java Library</a>
+     * <a href="https://www.unidata.ucar.edu/software/netcdf-java/">NetCDF Java Library</a>
      * renamed as netcdf-latest.jar.
      * Put it in the classpath for the compiler and for Java.
      *
@@ -3217,7 +3217,7 @@ try {
             Variable spacingVar = grd.addVariable(rootGroup, "spacing", 
                 DataType.DOUBLE, sideDimList); 
 
-            ArrayInt.D1 dimension = new ArrayInt.D1(2);
+            ArrayInt.D1 dimension = new ArrayInt.D1(2, false); //isUnsigned
             dimension.set(0, lon.length);
             dimension.set(1, lat.length);
             Variable dimensionVar = grd.addVariable(rootGroup, "dimension", 
@@ -3265,8 +3265,7 @@ try {
 
         } catch (Exception e) {
             try {
-                if (grd != null)
-                    grd.close(); //make sure it is explicitly closed
+                if (grd != null) grd.abort(); //make sure it is explicitly closed
             } catch (Exception e2) {
                 //don't care
             }
@@ -3536,7 +3535,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
      * nor does it get information from the .grd file name.
      *
      * <p>This uses jhdf.jar which must be in the 
-     * String2.getContextDirectory()+"WEB-INF\lib" directory (for Tomcat)
+     * String2.webInfParentDirectory()+"WEB-INF\lib" directory (for Tomcat)
      * and on the javac's and java's classpath (for compiling and running outside
      * of Tomcat).
      *
@@ -3594,7 +3593,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
 
         //This is synchronized because all calls to HDFLibrary are static.
         //So I need to ensure that only one thread uses it at once.
-        synchronized (saveAsHDFLock) {
+        synchronized(saveAsHDFLock) {
             if (verbose) String2.log("Grid.saveAsHDF " + hdfFileName);
             String errorIn = String2.ERROR + " in HdfWriter.grdToHdf: ";
             
@@ -4284,7 +4283,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
                     // lat = b*row + d*col + f
                     double matrix[] = {0, latSpacing, lonSpacing, 0, lon[0], lat[0]}; //right side up
                     rootGroup.addAttribute(new Attribute("et_affine", 
-                        NcHelper.get1DArray(matrix))); //float64[] {a, b, c, d, e, f}
+                        NcHelper.get1DArray(matrix, false))); //float64[] {a, b, c, d, e, f}
                 } else {
                     rootGroup.addAttribute(NcHelper.createAttribute(nc3Mode, names[i], globalAttributes.get(names[i])));
                 }
@@ -4293,7 +4292,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
             //time attributes
             if (hasTime) 
                 timeVar.addAttribute(new Attribute("actual_range", 
-                    NcHelper.get1DArray(new double[]{centeredTimeDouble, centeredTimeDouble})));     
+                    NcHelper.get1DArray(new double[]{centeredTimeDouble, centeredTimeDouble}, false)));     
             timeVar.addAttribute(new Attribute("fraction_digits",     new Integer(0)));     
             timeVar.addAttribute(new Attribute("long_name", hasTime? "Centered Time" : "Place Holder for Time"));
             timeVar.addAttribute(new Attribute("units",               centeredTimeUnits));
@@ -4305,7 +4304,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
 
             //altitude attributes
             altitudeVar.addAttribute(new Attribute("actual_range",    
-                NcHelper.get1DArray(new double[]{0, 0})));     
+                NcHelper.get1DArray(new double[]{0, 0}, false)));     
             altitudeVar.addAttribute(new Attribute("fraction_digits",        new Integer(0)));     
             altitudeVar.addAttribute(new Attribute("long_name",              "Altitude"));
             altitudeVar.addAttribute(new Attribute("positive",               "up"));
@@ -4316,15 +4315,15 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
             altitudeVar.addAttribute(new Attribute("_CoordinateZisPositive", "up"));
 
             //lat
-            NcHelper.setAttributes(nc3Mode, latVar, latAttributes);
+            NcHelper.setAttributes(nc3Mode, latVar, latAttributes, false);  //unsigned=false because it is a float
             latVar.addAttribute(new Attribute("axis", "Y"));
 
             //lon
-            NcHelper.setAttributes(nc3Mode, lonVar, lonAttributes);
+            NcHelper.setAttributes(nc3Mode, lonVar, lonAttributes, false);  //unsigned=false because it is a float
             lonVar.addAttribute(new Attribute("axis", "X"));
 
             //data
-            NcHelper.setAttributes(nc3Mode, dataVar, dataAttributes);
+            NcHelper.setAttributes(nc3Mode, dataVar, dataAttributes, false);  //unsigned=false because it is a float
 
             //leave "define" mode
             nc.create();
@@ -4351,8 +4350,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
         } catch (Exception e) {
             //try to close the file
             try {
-                if (nc != null)
-                    nc.close(); //it calls flush() and doesn't like flush called separately
+                if (nc != null) nc.abort(); 
             } catch (Exception e2) {
                 //don't care
             }
@@ -4434,7 +4432,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
         Test.ensureEqual(grid2.globalAttributes().get("time_coverage_start"),        new StringArray(new String[]{"2003-03-04T00:00:00Z"}), "time_coverage_start");
         Test.ensureEqual(grid2.globalAttributes().get("time_coverage_end"),          new StringArray(new String[]{"2003-03-05T00:00:00Z"}), "time_coverage_end");
         //Test.ensureEqual(grid2.globalAttributes().get("time_coverage_resolution", new StringArray(new String[]{""}), "time_coverage_resolution");
-        Test.ensureEqual(grid2.globalAttributes().get("standard_name_vocabulary"),   new StringArray(new String[]{"CF Standard Name Table v55"}), "standard_name_vocabulary");
+        Test.ensureEqual(grid2.globalAttributes().get("standard_name_vocabulary"),   new StringArray(new String[]{"CF Standard Name Table v70"}), "standard_name_vocabulary");
         Test.ensureEqual(grid2.globalAttributes().get("license"),                    new StringArray(new String[]{"The data may be used and redistributed for free but is not intended for legal use, since it may contain inaccuracies. Neither the data Contributor, CoastWatch, NOAA, nor the United States Government, nor any of their employees or contractors, makes any warranty, express or implied, including warranties of merchantability and fitness for a particular purpose, or assumes any legal liability for the accuracy, completeness, or usefulness, of this information."}), "license");
         Test.ensureEqual(grid2.globalAttributes().get("contributor_name"),           new StringArray(new String[]{"NOAA NWS Monterey and NOAA CoastWatch"}), "contributor_name");
         Test.ensureEqual(grid2.globalAttributes().get("contributor_role"),           new StringArray(new String[]{"Source of level 2 data."}), "contributor_role");
@@ -5269,7 +5267,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
         Test.ensureTrue(File2.delete(testDir + daveName + ".xyz"), 
             errorIn + " while deleting " + testDir + daveName + ".xyz");
 
-        //future: check metadata
+        //FUTURE: check metadata
     }
 
     /**
@@ -5429,7 +5427,7 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
 //        Test.ensureTrue(File2.delete(testDir + daveName + ".grd"), 
 //            errorIn + " while deleting " + testDir + daveName + ".grd");
 
-        //future: check metadata
+        //FUTURE: check metadata
     }
 */
     /**
@@ -5980,65 +5978,74 @@ String2.log("et_affine=" + globalAttributes.get("et_affine"));
     }
 
 
+
     /**
-     * A main method -- used to test the methods in this class.
+     * This runs all of the interactive or not interactive tests for this class.
      *
-     * @param args is ignored  (use null)
-     * @throws Exception if trouble
+     * @param errorSB all caught exceptions are logged to this.
+     * @param interactive  If true, this runs all of the interactive tests; 
+     *   otherwise, this runs all of the non-interactive tests.
+     * @param doSlowTestsToo If true, this runs the slow tests, too.
+     * @param firstTest The first test to be run (0...).  Test numbers may change.
+     * @param lastTest The last test to be run, inclusive (0..., or -1 for the last test). 
+     *   Test numbers may change.
      */
-    public static void main(String args[]) throws Exception {
+    public static void test(StringBuilder errorSB, boolean interactive, 
+        boolean doSlowTestsToo, int firstTest, int lastTest) {
+        if (lastTest < 0)
+            lastTest = interactive? -1 : 13; //inclusive
+        String msg = "\n^^^ Grid.test(" + interactive + ") test=";
 
-        FileNameUtility fileNameUtility = new FileNameUtility("gov.noaa.pfel.coastwatch.CWBrowser");
+        for (int test = firstTest; test <= lastTest; test++) {
+            try {
+                long time = System.currentTimeMillis();
+                String2.log(msg + test);
 
-/* for releases, this line should have open/close comment */
-        Grid.verbose = true;
+                FileNameUtility fileNameUtility = null;
+                if (test == 5 || test == 6 || test == 7 || test == 12)
+                    fileNameUtility = new FileNameUtility("gov.noaa.pfel.coastwatch.CWBrowser");
 
-        //test readGrd speed
-        if (false) {
-            Grid grid = new Grid();
-            grid.readGrd("c:/temp/AT2005344_2005344_ssta_westus.grd", 
-                -180, 180, 22, 50, Integer.MAX_VALUE, Integer.MAX_VALUE);
+            
+                if (interactive) {
+                    //if (test ==  0) ...;
+
+                } else {
+                    //testLittleMethods
+                    if (test ==  0) testLittleMethods();
+                    if (test ==  1) testSubtract();
+                    if (test ==  2) testInterpolate();
+                    
+                    //readWrite tests
+                    if (test ==  3) testGrd(); //test first since others rely on it
+                    if (test ==  4) testReadGrdSubset();
+                    if (test ==  5) testNetCDF(fileNameUtility);
+                    if (test ==  6) testHDF(fileNameUtility, true);
+
+                    //saveAs tests
+                    if (test ==  7) testSaveAsGeotiff(fileNameUtility);
+                    if (test ==  8) testSaveAsASCII();
+                    if (test ==  9) testSaveAsEsriASCII();
+                    if (test == 10) testSaveAsMatlab();
+                    if (test == 11) testSaveAsXYZ();
+
+                    //testPM180
+                    if (test == 12) testPM180(fileNameUtility);
+
+                    //testForMemoryLeak();//not necessary to run unless trouble suspected
+                    if (test == 13) testSaveAs();
+
+                }
+
+                String2.log(msg + test + " finished successfully in " + (System.currentTimeMillis() - time) + " ms.");
+            } catch (Throwable testThrowable) {
+                String eMsg = msg + test + " caught throwable:\n" + 
+                    MustBe.throwableToString(testThrowable);
+                errorSB.append(eMsg);
+                String2.log(eMsg);
+                if (interactive) 
+                    String2.pressEnterToContinue("");
+            }
         }
-
-        //one-time thing for Cindy Bessey
-        //lsmask variable name: mask
-        //NorthAtlantic variable name: sst
-        //ncXYTtoAsciiXYT("c:/temp/temp/NorthAtlantic.nc", "c:/temp/temp/NorthAtlantic.xyz",
-        //    "lon", "lat", "time", "sst");
-
-        //maskAsciiXYT("c:/temp/temp/lsmask.xyz", "c:/temp/temp/NorthAtlantic.xyz", 
-        //    "c:/temp/temp/NorthAtlanticMasked.xyz");
-
-        //testLittleMethods
-        testLittleMethods();
-        testSubtract();
-        testInterpolate();
-        
-        //readWrite tests
-        testGrd(); //test first since others rely on it
-        testReadGrdSubset();
-        testNetCDF(fileNameUtility);
-        testHDF(fileNameUtility, true);
-
-        //saveAs tests
-        testSaveAsGeotiff(fileNameUtility);
-        testSaveAsASCII();
-        testSaveAsEsriASCII();
-        testSaveAsMatlab();
-        testSaveAsXYZ();
-
-        //testPM180
-        testPM180(fileNameUtility);
-
-        //testForMemoryLeak();//not necessary to run unless trouble suspected
-        testSaveAs();
-
-        /* */
-
-        //done
-        String2.log("\n***** Grid.main finished successfully");
-        Math2.incgc(2000); //in a test
-
     }
 
 
